@@ -14,8 +14,9 @@ Analytics(Python) 모듈이 주기적으로 수행하는 계산을 정의한다.
 각 구간이 걸리는 시간은 확정값이 아니라 **확률분포**로 다룬다.
 
 - WALK: `user_walking_profile`의 도보 속도 분포 + 구간에 포함된 신호등 대기 분포
-- TRANSIT: 그 차량이 승차역에 실제로 도착하는 시각의 분포 (외부 예측 + 보정된 오차)
-  와 차내 이동시간 분포
+  (실시간 신호 상태가 있으면 그 잔여시간, 없으면 주기 모델)
+- TRANSIT: 그 차량이 승차역에 실제로 도착하는 시각의 분포 (차량 위치에서 파생한 ETA 또는
+  시간표 + 보정된 오차)와 차내 이동시간 분포
 
 v1에서는 모든 분포를 정규분포로 근사하고 구간끼리 독립이라고 가정한다. 그러면 합의 평균은
 평균의 합, 분산은 분산의 합이다.
@@ -33,8 +34,17 @@ v1에서는 모든 분포를 정규분포로 근사하고 구간끼리 독립이
 σ_walk = d · σ_s / μ_s²
 ```
 
-여기에 구간에 속한 각 신호등(`route_leg_signal_crossings`)의 대기시간을 더한다. 보행자가
-신호 주기 `C` 안의 임의 시점에 균등하게 도착하고 적색 길이가 `R`이면, 대기 `W`는 확률
+여기에 구간에 속한 각 횡단(`route_leg_signal_crossings`, 교차로 × `approach_dir` ×
+`signal_kind`)의 대기시간 `W_i`를 더한다. `W_i`는 아래 두 모델 중 하나로 정하고, 어느 쪽이든
+합치는 식은 같다.
+
+```
+T_walk ~ N( μ_walk + Σ E[W_i] ,  σ_walk² + Σ Var[W_i] )
+```
+
+#### (a) 주기 모델 — 실시간 신호가 없는 교차로의 기본값
+
+보행자가 신호 주기 `C` 안의 임의 시점에 균등하게 도착하고 적색 길이가 `R`이면, 대기 `W`는 확률
 `(C−R)/C`로 0, 나머지 확률로 `Uniform(0, R)`이므로
 
 ```
@@ -43,12 +53,56 @@ E[W²]  = R³ / (3C)
 Var[W] = E[W²] − E[W]²
 ```
 
-주기 데이터(`traffic_signal_cycles`)가 없는 신호등은 `DEFAULT_ASSUMPTION` 행
-(예: C=120초, R=90초 → 평균 약 34초)으로 채워 두고 사용한다.
+`C`, `R`은 `traffic_signal_cycles`에서 요일유형×시간대로 조회한다. 행이 없는 교차로는
+`DEFAULT_ASSUMPTION` 행(예: C=120초, R=90초 → 평균 약 34초)으로 채워 두고 사용한다.
+
+#### (b) 실시간 신호 상태 — KLID `tl_drct_info` 커버 교차로
+
+계산 시각 `t_0`에 그 crossing의 `(traffic_signal_id, approach_dir, signal_kind)`와 일치하는
+`traffic_signal_states` 최신 행이 있고, 다음을 모두 만족하면 주기 모델 대신 실시간 값을 쓴다.
+
+- `t_0 − observed_at ≤ max_age` (기본 120초. 폴링 간격 60초의 두 배)
+- `remaining_ds`가 NULL이 아님 (원본 36001 = 알 수 없음)
+- `status`가 아래 GO 또는 STOP 중 하나
+
+기호:
 
 ```
-T_walk ~ N( μ_walk + Σ E[W_i] ,  σ_walk² + Σ Var[W_i] )
+t_arr      = t_0 + (구간 시작부터 이 횡단보도까지의 기대 소요시간)
+             -- 앞선 도보 거리의 μ_walk 몫 + 앞선 횡단들의 E[W]. v1은 횡단보도 위치를
+             -- 모르므로 구간 거리를 (횡단 수 + 1)로 등분해 배분한다
+phase_end  = observed_at + remaining_ds / 10          -- 지금 현시가 끝나는 시각
+G = C − R, R                                          -- 그 교차로의 주기 모델 값 (없으면 DEFAULT_ASSUMPTION)
 ```
+
+`status`(SAE J2735 MovementPhaseState) 분류:
+- **GO** (건널 수 있음): `protected-Movement-Allowed`, `permissive-Movement-Allowed`
+- **STOP** (기다림): `stop-And-Remain`
+- 그 외 (`protected-clearance`, `permissive-clearance`, `pre-Movement`, `unavailable`, `dark`, 빈 값,
+  처음 보는 문자열): v1은 해석하지 않고 (a)로 fallback
+
+API가 알려주는 건 **지금 현시의 잔여시간뿐**이므로 그 다음 현시 길이는 주기 모델의 `R`/`G`를
+빌린다. 그보다 더 뒤는 예측 지평선 밖이라 (a)로 돌아간다.
+
+```
+GO:
+  t_arr ≤ phase_end                    → W = 0
+  phase_end < t_arr ≤ phase_end + R    → W = phase_end + R − t_arr     -- 다음 적색에 걸림
+  t_arr > phase_end + R                → (a) 주기 모델
+
+STOP:
+  t_arr ≤ phase_end                    → W = phase_end − t_arr         -- 적색 끝까지 대기
+  phase_end < t_arr ≤ phase_end + G    → W = 0                          -- 다음 녹색 안에 도착
+  t_arr > phase_end + G                → (a) 주기 모델
+
+Var[W] = 0     -- t_arr가 주어지면 확정값. t_arr의 불확실성은 σ_walk에 이미 들어 있다
+```
+
+이 규칙은 `t_arr`를 점추정으로 쓰는 계단함수라 현시 경계 근처에서는 기대값이 과대/과소될 수
+있다. v2에서 `t_arr ~ N(·, σ²)`로 적분해 `E[W]`, `Var[W]`를 구하는 것으로 바꾸되 인터페이스는
+같다. 실시간 값이 실질적으로 효과를 내는 건 "지금 나가면"에 가까운 계산(출발 직전 5~10분 간격
+재계산, 첫 WALK 구간)이고, 경로 뒤쪽 횡단보도는 대부분 지평선 밖이라 (a)를 쓰게 된다. 그래서
+주기 모델은 커버 지역에서도 없앨 수 없다.
 
 ### 2.2 TRANSIT 구간
 
@@ -60,10 +114,13 @@ T_walk ~ N( μ_walk + Σ E[W_i] ,  σ_walk² + Σ Var[W_i] )
 V_board ~ N( predicted_at + bias ,  σ_pred² )
 ```
 
-- `predicted_at`: 계산 시점의 실시간 예측(`transit_arrival_observations` 최신값).
+- `predicted_at`: 계산 시점의 실시간 예측(`transit_arrival_observations` 최신값). KLID에는
+  도착예측 API가 없어 Backend가 차량 위치(`bus_position_observations`)를 노선 정류장 순서
+  (`transit_line_stops`) 폴리라인에 투영해 만든 ETA(`source='KLID_RTM_LOC_ETA'`)가 들어 있다.
   `has_realtime_api=false`이거나 예측이 없으면 `transit_schedules`의 시간표값.
 - `bias`, `σ_pred`: `transit_prediction_calibration`에서 노선×정류장×요일유형×시간대로
-  조회. 샘플 부족 시 노선 단위로 롤업, 그것도 없으면 `bias=0, σ=90초`.
+  조회. 샘플 부족 시 노선 단위로 롤업, 그것도 없으면 `bias=0, σ=90초`. 예측이 우리가 파생한
+  ETA이므로 이 값은 투영 로직의 체계적 오차를 흡수하는 역할도 한다.
 
 **차내 이동시간 `D`**
 
@@ -80,8 +137,8 @@ D ~ N( mean_sec , σ_travel² )      -- transit_travel_time_calibration
 V_alight = V_board + D ~ N( predicted_at + bias + mean_sec ,  σ_pred² + σ_travel² )
 ```
 
-**후보 차량 목록**: 실시간 API가 있으면 현재 예측된 다음 N대, 없으면 해당 `day_type`
-시간표에서 목표 시각 근처 N대.
+**후보 차량 목록**: 실시간 위치가 있으면 현재 승차역 상류에서 접근 중인 차량(`vehicle_no`별
+최신 ETA) N대, 없으면 해당 `day_type` 시간표에서 목표 시각 근처 N대.
 
 ## 3. 경로 전체를 뒤에서부터 역산
 
@@ -139,6 +196,7 @@ def recommend_departure(route, target_arrival_at, p=0.95):
 | `transit_prediction_calibration` | attempt의 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 그룹별 평균/표준편차. 샘플 5회 미만이면 노선 단위 값을 상속 |
 | `transit_travel_time_calibration` | attempt의 `alighted_at − vehicle_actual_departure_at` | 동일 |
 | `walking_segments` | trip/attempt의 인접 사건 시각 + `gps_traces` | DATA_MODEL.md의 규칙으로 파생 |
+| `traffic_signal_cycles` (`PUBLIC_API`) | `traffic_signal_states` 누적 | 커버 교차로는 실시간 상태의 현시 전환 시각에서 `R`, `C`를 추정해 주기 행을 갱신 → 지평선 밖 계산과 폴링이 꺼진 시간대에도 실측 기반 주기를 쓴다 |
 
 콜드스타트(기록 없음)는 `bias=0`, `σ_pred=90초`, 도보 속도 1.2 m/s ± 0.15 같은 보수적
 기본값으로 "일단 안전하게" 추천하고, 기록이 쌓일수록 분포가 좁아져 출발 시각이 뒤로 밀린다.

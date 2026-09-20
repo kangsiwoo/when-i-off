@@ -22,7 +22,7 @@ when-i-off/
   desktop/            TypeScript + React (Vite), Leaflet
   ios/                Swift (SwiftUI, CoreLocation)
   docs/               설계 문서 (현재)
-  docker-compose.yml  로컬 PostgreSQL 15+
+  docker-compose.yml  로컬 PostgreSQL 16
 ```
 
 ## 단계별 계획
@@ -33,8 +33,13 @@ when-i-off/
 - backend 스캐폴딩: Spring Boot + Kotlin, Flyway. `docs/db/schema.sql` →
   `backend/src/main/resources/db/migration/V1__init_schema.sql`
 - **공공데이터포털(data.go.kr) API 키 신청을 이 단계에서 바로 한다.** 승인에 며칠 걸릴 수
-  있음 (TAGO 버스도착정보, 서울 지하철 실시간 도착정보, 특일정보)
+  있음. 1차 소스는 KLID 전국통합데이터 두 개(초정밀버스 위치 실시간 `B551982/rte`, 교통안전
+  신호등 실시간 `B551982/rti`). 특일정보도 함께
 - 완료 기준: `./gradlew bootRun` 시 마이그레이션 적용, health check 통과
+
+> **#10 backend MVP에서 완료**: 모노레포 구조, `docker-compose.yml`(Postgres 16), Gradle/Kotlin
+> 스캐폴딩, Flyway `V1__init_schema.sql` + `V2__seed_default_user.sql`, GitHub Actions CI
+> (`backend-ci.yml`, Postgres 서비스 컨테이너). 남은 것: 실제 키 발급.
 
 ### Phase 1 — Backend 최소 API (2~3일) · 이슈 #3
 
@@ -45,6 +50,11 @@ when-i-off/
   idempotent)
 - 인증: 1인 사용이므로 고정 API 토큰(헤더)으로 시작. JWT는 필요해지면
 - 완료 기준: curl로 경로 등록 → trip 시작 → attempt 기록 → 이력 조회까지 됨
+
+> **#10 backend MVP에서 완료**: 전 테이블 JPA 엔티티/리포지토리, `X-Api-Token` 필터,
+> RFC 7807 에러 핸들러, 경로/구간/신호 crossing API, 노선·정류장·교차로 수동 등록 + 검색 API,
+> trip/attempt(upsert)/GPS 배치(500개, 중복 무시) API, Swagger UI. 상세는 [API.md](./API.md)의
+> 상태 열.
 
 ### Phase 2 — iOS 앱: 데이터 수집 MVP (1~2주) · 이슈 #4
 
@@ -64,16 +74,29 @@ when-i-off/
 
 ### Phase 3 — 외부 데이터 동기화 (3~5일) · 이슈 #5
 
-- TAGO 버스도착정보 → `transit_arrival_observations`. **폴링 범위를 사용자 경로에 있는
-  노선×정류장, 출퇴근 시간대(경로 목표 시각 ±90분)로 제한**해서 일일 호출 한도 안에서
-  운영 (개발계정은 일 1,000회 수준)
-- 지하철 실시간 도착정보 → 동일
+- KLID 버스 `rtm_loc_info`(차량 위치) → `bus_position_observations` → 노선 폴리라인 투영으로
+  ETA 파생 → `transit_arrival_observations`. KLID엔 도착예측 API가 없어서 이 파생이 필요하다.
+  마스터(`mst_info`, `ps_info`) → `transit_lines`/`transit_stops`/`transit_line_stops`
+- KLID 신호등 `tl_drct_info` → `traffic_signal_states` (서울·울산 커버). 마스터
+  `crsrd_map_info` → `traffic_signals`
+- **필터가 `stdgCd`(지자체)뿐이므로 폴링 범위를 활성 경로의 지자체 집합 × 출퇴근 창
+  (`wio.polling.windows`)으로 제한**해서 일일 호출 한도(개발계정 일 5,000회 수준) 안에서
+  운영. 상세는 ARCHITECTURE.md "외부 데이터 동기화"
+- **실제 키를 받은 첫 세션**: 화성/성남/서울 `totalCount` 확인
+  ([backend/README.md](../backend/README.md) 체크리스트). 버스 위치가 비어 있으면
+  `ArrivalPredictionProvider` 구현체를 TAGO 버스도착정보(15098530) / 경기 GBIS로 교체
+- 지하철 실시간 도착정보 → 같은 `ArrivalPredictionProvider`로 추가
 - 정적 시간표 import: GTX 등 실시간 없는 노선은 CSV로 수동 입력 → `transit_schedules`
 - 공휴일 캘린더(특일정보 API 또는 연 1회 수동) → `date → day_type` 매핑
 - 신호 주기: 공공 데이터가 있으면 연동, 없으면 desktop에서 수동 입력(`USER_OBSERVED`)
 - 앱의 attempt 생성 시 예측 스냅샷을 최신 observation에서 채우도록 backend 연결
 - 완료 기준: 출근 시간대에 observations가 30초~1분 간격으로 쌓이고, attempt에 예측
   스냅샷이 자동으로 들어감
+
+> **#10 backend MVP에서 착수**: 스키마에 `transit_line_stops`, `bus_position_observations`,
+> `traffic_signal_states`, `stdg_cd`, crossing의 `approach_dir`/`signal_kind` 반영, KLID 설정 키
+> (`wio.klid.*`, `wio.polling.*`), 관리 동기화 API 계약. 키 없이 진행했으므로 응답 포맷은 포털
+> Swagger + 기록된 샘플 기준이며 실제 응답으로 fixture를 갱신해야 한다.
 
 ### Phase 4 — Analytics v1 (1주) · 이슈 #6
 
@@ -109,7 +132,8 @@ when-i-off/
 
 | 리스크 | 대응 |
 |---|---|
-| 공공 API 키 승인 지연, 일일 호출 한도 | Phase 0에서 즉시 신청. 폴링 범위를 경로·시간대로 한정 |
+| 공공 API 키 승인 지연, 일일 호출 한도 | Phase 0에서 즉시 신청. 폴링 범위를 활성 경로의 지자체·시간대로 한정 (`stdgCd`가 유일한 필터라 노선 단위로 줄일 수 없음) |
+| KLID 커버리지 부족 (버스 위치는 중소도시 위주, 서울·경기 비어 있을 수 있음; 신호는 서울·울산만) | 키 받은 첫 세션에 화성/성남/서울 `totalCount` 확인. **TAGO 버스도착정보(15098530)와 경기 GBIS 키를 Phase 3 시작 전에 미리 신청**해 두고, 비어 있으면 `ArrivalPredictionProvider` 구현체만 교체. 신호는 주기 모델 fallback이 이미 있음 |
 | iOS 백그라운드 위치 제약 (geofence 20개, 정확도 저하) | 활성 경로 1개 지점만 등록. 지하 역사에서 GPS 유실 시 `alighted_at`이 지상에서 늦게 잡힐 수 있음 → 이동시간 보정에 노이즈, 사용자가 수정 가능하게 |
 | GTX 실시간 API 부재 | 시간표 + 실측 보정만으로 시작 (`has_realtime_api=false`) |
 | 콜드스타트 | 처음 1~2주는 추천이 보수적(일찍 나가라)임을 UI에 명시 |
