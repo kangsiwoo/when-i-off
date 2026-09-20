@@ -19,14 +19,20 @@
 | GET | `/traffic-signals/nearby?lat=&lng=` | 근처 신호등 검색 |
 | PUT | `/route-legs/{id}/signal-crossings` | 도보 구간의 신호등 순서 등록 |
 
-## 탑승 기록 (앱에서 주로 사용)
+## 이동 기록 (앱에서 주로 사용)
 
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/boarding-attempts` | 탑승 시도 생성 (leg_id, left_home_at 등 초기값) |
-| PATCH | `/boarding-attempts/{id}` | 도착/결과 갱신 (arrived_at_stop_at, result 등) |
-| GET | `/boarding-attempts?routeId=&from=&to=` | 이력 조회 (통계/히스토리 화면용) |
-| POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (오프라인 후 재전송 대비) |
+| POST | `/commute-trips` | 이동 시작 (route_id, trip_date, left_home_at) |
+| PATCH | `/commute-trips/{id}` | 목적지 도착 등 갱신 (arrived_destination_at) |
+| POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도 생성 (leg_id, arrived_at_stop_at, 예측 스냅샷) |
+| PATCH | `/boarding-attempts/{id}` | 결과 갱신 (vehicle_actual_departure_at, alighted_at, result) |
+| GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts 포함, 히스토리 화면용) |
+| POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (trip_id 선택, 오프라인 후 재전송 대비) |
+
+trip과 attempt는 앱이 geofence 이벤트로 자동 생성/갱신하는 것이 기본이고, 사용자 입력은
+`result`(탔음/놓침)와 보정용 시각 수정에 한정한다. 같은 trip·leg에 attempt는 하나만
+허용(`UNIQUE`)하므로 재전송은 idempotent하게 upsert로 처리한다.
 
 앱은 실시간으로 매 GPS 포인트를 보내기보다 일정 주기(예: 10~30초) 또는 위치 변화 임계치마다
 배치로 모아 `/gps-traces/batch`에 보내는 것을 권장 (배터리/네트워크 절약).

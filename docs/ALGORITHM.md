@@ -1,125 +1,152 @@
 # 최적 출발 시각 계산 알고리즘
 
 Analytics(Python) 모듈이 주기적으로 수행하는 계산을 정의한다. 목표는 "특정 목표 도착
-시각(또는 특정 차량)을 맞추기 위해 언제 집을 나서야 하는가"를 확률적으로 답하는 것이다.
+시각을 맞추기 위해 언제 집을 나서야 하는가"를 확률적으로 답하는 것이다.
 
 ## 1. 기본 아이디어
 
 출퇴근 경로는 구간(leg)의 연쇄다.
 
 ```
-집 --(WALK)--> 정류장 --(BUS)--> 환승지 --(WALK)--> 역 --(GTX)--> 도착역 --(WALK)--> 회사
+집 --(WALK)--> 정류장 --(TRANSIT: 버스)--> 환승지 --(WALK)--> 역 --(TRANSIT: GTX)--> 도착역 --(WALK)--> 회사
 ```
 
 각 구간이 걸리는 시간은 확정값이 아니라 **확률분포**로 다룬다.
 
-- 도보 구간: `user_walking_profile`의 평균/표준편차 (+ 구간에 포함된 신호등 기대 대기시간)
-- 탑승 구간: 그 차량이 실제로 정류장/역에 도착하는 시각의 분포 (외부 예측 + 보정된 오차)
+- WALK: `user_walking_profile`의 도보 속도 분포 + 구간에 포함된 신호등 대기 분포
+- TRANSIT: 그 차량이 승차역에 실제로 도착하는 시각의 분포 (외부 예측 + 보정된 오차)
+  와 차내 이동시간 분포
 
-전체 경로의 "정류장/역 도착까지 걸리는 시간"은 각 구간 시간의 합이고, 정규분포로 근사하면
-평균은 각 평균의 합, 분산은 각 분산의 합이다 (구간별 시간이 서로 독립이라고 가정).
+v1에서는 모든 분포를 정규분포로 근사하고 구간끼리 독립이라고 가정한다. 그러면 합의 평균은
+평균의 합, 분산은 분산의 합이다.
 
 ## 2. 구간별 모델
 
-### 2.1 도보 구간 시간 모델
+### 2.1 WALK 구간
+
+거리 `d`(`walking_segments`의 실측 평균, 없으면 `planned_distance_m`), 도보 속도
+`S ~ N(μ_s, σ_s²)` (`user_walking_profile`, 구간 전용 행이 없거나 `sample_count`가
+임계치 미만이면 전역 행으로 fallback)일 때 순수 도보 시간은 delta method로 근사한다.
 
 ```
-walk_time(leg) ~ Normal(mu_walk, sigma_walk^2) + sum(signal_wait_i)
+μ_walk = d / μ_s
+σ_walk = d · σ_s / μ_s²
 ```
 
-- `mu_walk`, `sigma_walk`: `user_walking_profile`에서 조회. 해당 구간 전용 데이터가
-  없으면(`sample_count`가 임계치 미달) 사용자의 전역 프로필로 fallback.
-- `signal_wait_i`: 그 구간에 속한 각 신호등(`route_leg_signal_crossings` 순서대로)의
-  기대 대기시간. 보행자가 신호 도착 시점을 균등분포로 가정하면
-
-  ```
-  E[wait] = red_duration^2 / (2 * cycle_duration)
-  Var[wait] = (적색 구간에 도착했을 확률 기반의 2차 모멘트, 균등분포 공식 사용)
-  ```
-
-  단순화 버전(v1)으로는 `E[wait] = red_duration / 2 * P(적색에 도착)`, 여기서
-  `P(적색에 도착) = red_duration / cycle_duration` 를 쓴다. 신호 데이터가 없는 경우
-  `traffic_signal_cycles.source = 'USER_OBSERVED'` 값이나, 그마저 없으면 구간별 기본값
-  (예: 15초)을 사용한다.
-
-### 2.2 탑승 구간 시간 모델 (특정 차량을 기준으로)
-
-한 차량(예: 오늘 아침 8:03 도착 예정인 버스)에 대해:
+여기에 구간에 속한 각 신호등(`route_leg_signal_crossings`)의 대기시간을 더한다. 보행자가
+신호 주기 `C` 안의 임의 시점에 균등하게 도착하고 적색 길이가 `R`이면, 대기 `W`는 확률
+`(C−R)/C`로 0, 나머지 확률로 `Uniform(0, R)`이므로
 
 ```
-vehicle_arrival(t) ~ predicted_time(t) + bias(line, stop, time_band)
-                      , variance = base_variance + observed_variance(line, stop, time_band)
+E[W]   = R² / (2C)
+E[W²]  = R³ / (3C)
+Var[W] = E[W²] − E[W]²
 ```
 
-- `predicted_time(t)`: 조회 시점 `t`의 외부 API 실시간 예측, 없으면
-  `transit_schedules`의 정적 시간표
-- `bias`, `observed_variance`: `transit_arrival_observations`(예측 스냅샷)와
-  `boarding_attempts.vehicle_actual_departure_at`(실측)를 노선×정류장×요일유형×시간대로
-  묶어서 계산한 (실제 - 예측)의 평균/분산. 샘플이 부족하면 노선 단위로 롤업(rollup)해서
-  좁은 그룹의 분산 폭증을 막는다.
-- GTX처럼 실시간 API 자체가 없는 경우 `predicted_time`은 항상 정적 시간표값이고,
-  `bias`/`variance`는 오로지 실측 기록에서만 학습된다 (콜드스타트 시엔 보수적으로 넓은
-  기본 분산을 준다).
+주기 데이터(`traffic_signal_cycles`)가 없는 신호등은 `DEFAULT_ASSUMPTION` 행
+(예: C=120초, R=90초 → 평균 약 34초)으로 채워 두고 사용한다.
 
-## 3. 경로 전체로 합성
+```
+T_walk ~ N( μ_walk + Σ E[W_i] ,  σ_walk² + Σ Var[W_i] )
+```
 
-목표가 "회사에 목표 도착 시각 `T_target`까지 도착"이라면, 경로를 **뒤에서부터** 역산한다.
+### 2.2 TRANSIT 구간
 
-1. 마지막 구간(회사까지 도보)의 `walk_time` 분포로부터, 마지막 탑승 구간의 하차역에서
-   "이 시각까지는 내려야 한다"는 `T_alight_needed`를 구한다. 목표 확률 `p`(예: 0.95)를
-   만족하려면 여유시간을 분포의 `p`-분위수로 잡는다:
-   `T_alight_needed = T_target - Quantile(walk_time, p)`
-2. 그 시각에 맞는 탑승 구간(예: GTX)의 실제 후보 차량들 중, 도착 예상 시각이
-   `T_alight_needed` 이전일 확률이 `p` 이상인 가장 늦은 차량을 고른다.
-3. 그 차량을 타려면 승차역에 언제 도착해야 하는지(`T_board_needed`)를 같은 방식으로 구하고,
-   그 앞 도보 구간에 대해 반복한다.
-4. 맨 앞 구간(집 → 첫 정류장)까지 역산하면 최종적으로 `leave_home_at`이 나온다.
+특정 후보 차량(예: 오늘 8:03 도착 예정인 버스)에 대해 두 개의 확률변수를 둔다.
 
-이 과정을 코드로 표현하면 (개념적 pseudocode):
+**승차역 출발 시각 `V_board`**
+
+```
+V_board ~ N( predicted_at + bias ,  σ_pred² )
+```
+
+- `predicted_at`: 계산 시점의 실시간 예측(`transit_arrival_observations` 최신값).
+  `has_realtime_api=false`이거나 예측이 없으면 `transit_schedules`의 시간표값.
+- `bias`, `σ_pred`: `transit_prediction_calibration`에서 노선×정류장×요일유형×시간대로
+  조회. 샘플 부족 시 노선 단위로 롤업, 그것도 없으면 `bias=0, σ=90초`.
+
+**차내 이동시간 `D`**
+
+```
+D ~ N( mean_sec , σ_travel² )      -- transit_travel_time_calibration
+```
+
+샘플이 없으면 `route_legs.planned_travel_sec`을 평균으로, 표준편차는 평균의 15% 같은
+보수적 기본값을 쓴다.
+
+**하차역 도착 시각**
+
+```
+V_alight = V_board + D ~ N( predicted_at + bias + mean_sec ,  σ_pred² + σ_travel² )
+```
+
+**후보 차량 목록**: 실시간 API가 있으면 현재 예측된 다음 N대, 없으면 해당 `day_type`
+시간표에서 목표 시각 근처 N대.
+
+## 3. 경로 전체를 뒤에서부터 역산
+
+목표 "회사에 `T_target`까지 도착", 목표 성공확률 `p`(예: 0.95).
+`needed_at`을 "이 시각까지는 여기에 있어야 한다"로 두고 마지막 구간부터 앞으로 간다.
+
+- **WALK**: 도보 시간이 `p` 확률로 `Q_walk(p)` 이내이므로
+  `needed_at ← needed_at − Q_walk(p)`
+- **TRANSIT**: 후보 중 `P(V_alight ≤ needed_at) ≥ p`, 즉 `Q_{V_alight}(p) ≤ needed_at`인
+  차량 가운데 **가장 늦은** 것을 고른다 (그래야 집에서 가장 늦게 나가도 된다). 그 차를
+  `p` 확률로 잡으려면 차가 평소보다 **일찍** 올 경우까지 대비해야 하므로 승차역에는
+  `V_board`의 **하위** 분위수까지 도착해야 한다:
+  `needed_at ← Q_{V_board}(1 − p)`
+  만족하는 차량이 하나도 없으면 후보 창을 앞으로 넓혀(한 대 더 이른 차) 재시도.
+
+맨 앞 구간까지 끝나면 `needed_at`이 곧 `leave_home_at`이다.
 
 ```python
 def recommend_departure(route, target_arrival_at, p=0.95):
     needed_at = target_arrival_at
+    chosen = []
     for leg in reversed(route.legs):
-        if leg.type == WALK:
-            dist = walk_time_distribution(leg)
-            needed_at = needed_at - dist.quantile(p)
-        else:  # BUS / SUBWAY / GTX
-            candidates = get_candidate_vehicles(leg, before=needed_at)
-            vehicle = pick_latest_feasible(candidates, needed_at, p)
-            needed_at = vehicle.boarding_time_distribution.quantile(p)  # 승차역 도착 필요 시각
-    return needed_at  # == leave_home_at
+        if leg.type == "WALK":
+            needed_at -= walk_time(leg).quantile(p)
+        else:
+            candidates = candidate_vehicles(leg, around=needed_at)
+            feasible = [v for v in candidates if v.alight_dist.quantile(p) <= needed_at]
+            vehicle = max(feasible, key=lambda v: v.board_dist.mean)
+            chosen.append((leg, vehicle))
+            needed_at = vehicle.board_dist.quantile(1 - p)
+    return needed_at, chosen
 ```
 
-`pick_latest_feasible`: 각 후보 차량에 대해
-`P(vehicle_arrival <= needed_at_at_alight) >= p` 를 만족하는 차량 중 가장 늦게(=집에서
-가장 늦게 나가도 되는) 출발하는 것을 고른다. 어떤 차량도 만족 못 하면 한 단계 이른 차량으로
-내려가며 재시도(=한 대 일찍 타야 한다는 의미)한다.
+`p`는 구간마다 독립적으로 적용되므로 TRANSIT 구간이 k개면 전체 성공확률은 대략 `p^k`다.
+"전체 95%"를 원하면 구간별 `p = 0.95^(1/k)`로 올려서 넣는다. v1에서는 구간별 `p`를 그대로
+쓰고 결과의 `catch_probability`에 곱한 값을 기록한다.
 
 ## 4. 출력
 
-`departure_recommendations`에 다음을 기록한다.
+`departure_recommendations`에 기록한다.
 
-- `recommended_leave_home_at`
-- `catch_probability` (선택된 차량 기준 실제 계산된 성공확률, 목표 `p`와 다를 수 있음 —
-  후보가 마땅치 않으면 더 낮아질 수도 있음)
-- `buffer_seconds` (평균 대비 여유시간 총합, 사용자가 "왜 이 시각인지" 이해하는 데 참고)
-- `model_version` (보정 로직이 바뀔 때 과거 추천과 비교 가능하게)
+- `recommended_leave_home_at` = 위의 최종 `needed_at`
+- `catch_probability` = 선택된 각 TRANSIT 구간의 실제 계산된 성공확률의 곱
+- `buffer_seconds` = `Σ(분위수 − 평균)`, 즉 평균 소요시간 대비 얹은 여유의 총합
+  (사용자가 "왜 이렇게 일찍 나가라는지" 이해하는 데 참고)
+- `model_version` = 보정 로직 버전 (바뀔 때 과거 추천과 비교 가능하게)
 
-## 5. 모델 캘리브레이션 갱신 주기
+## 5. 캘리브레이션 갱신
 
-- `user_walking_profile`: 매일 배치, 이동 평균(EWMA, 최근 데이터에 더 큰 가중치) 또는
-  최근 N개 샘플 윈도우로 갱신. 계절/장비(우천 시 느려짐 등)를 나중에 반영하려면
-  `route_leg_id` 대신 `(route_leg_id, weather_condition)` 조합으로 확장 가능(v1 범위 아님).
-- 노선별 `bias`/`variance`: 마찬가지로 매일 배치, 최소 샘플 수(예: 5회) 미달 그룹은
-  상위 그룹(노선 전체)의 값을 그대로 상속.
-- 초기 콜드스타트(기록이 전혀 없을 때)는 `bias=0`, `variance`는 넉넉한 기본값(예: 표준편차
-  90초)으로 시작해서 "일단 안전하게" 추천하고, 기록이 쌓일수록 좁아진다.
+모두 매일 새벽 배치로 갱신한다.
 
-## 6. v1 범위에서 단순화한 것 (의도적으로 생략)
+| 대상 | 원재료 | 방법 |
+|---|---|---|
+| `user_walking_profile` | `walking_segments` | 최근 N회 윈도우 또는 EWMA. 구간별 행은 `sample_count ≥ 5`부터 사용, 그 전엔 전역 행 |
+| `transit_prediction_calibration` | attempt의 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 그룹별 평균/표준편차. 샘플 5회 미만이면 노선 단위 값을 상속 |
+| `transit_travel_time_calibration` | attempt의 `alighted_at − vehicle_actual_departure_at` | 동일 |
+| `walking_segments` | trip/attempt의 인접 사건 시각 + `gps_traces` | DATA_MODEL.md의 규칙으로 파생 |
 
-- 구간 간 독립 가정 (실제로는 "버스가 늦으면 다음 환승도 촘촘해진다" 같은 상관관계가 있을
-  수 있으나 v1에서는 무시)
-- 날씨/요일 세부 조건 (스키마상 `day_type`만 두고 날씨는 나중 확장 포인트로 남김)
-- 정규분포 근사 (실제 분포가 두꺼운 꼬리를 가질 수 있으나, 우선 평균·표준편차만으로 시작하고
-  필요해지면 경험적 분포(empirical CDF)로 교체)
+콜드스타트(기록 없음)는 `bias=0`, `σ_pred=90초`, 도보 속도 1.2 m/s ± 0.15 같은 보수적
+기본값으로 "일단 안전하게" 추천하고, 기록이 쌓일수록 분포가 좁아져 출발 시각이 뒤로 밀린다.
+
+## 6. v1에서 의도적으로 생략한 것
+
+- 구간 간 독립 가정 ("버스가 늦으면 환승도 촘촘해진다" 같은 상관관계 무시)
+- 날씨/계절 조건 (스키마엔 `day_type`만 있음, 필요하면 프로필 키에 추가)
+- 정규분포 근사 (실제로는 꼬리가 두꺼울 수 있음. 샘플이 충분해지면 경험적 분포(empirical
+  CDF)의 분위수로 교체 가능하도록 `quantile()` 인터페이스만 유지)
+- "가장 늦은 차"만 고르는 정책 (한 대 앞 차를 타서 여유를 두는 옵션 등은 UI 설정으로 확장)
