@@ -206,12 +206,12 @@ class KlidIngestionIT {
     fun `admin sync endpoints are token protected and return counts`() {
         mockMvc
             .post(
-                "/api/v1/admin/sync/bus-master",
+                "/api/v1/admin/sync/klid/bus-master",
             ) { param("stdgCd", HWASEONG) }
             .andExpect { status { isUnauthorized() } }
 
         mockMvc
-            .post("/api/v1/admin/sync/bus-master") {
+            .post("/api/v1/admin/sync/klid/bus-master") {
                 header(ApiTokenFilter.HEADER, "test-token")
                 param("stdgCd", HWASEONG)
             }.andExpect {
@@ -223,7 +223,7 @@ class KlidIngestionIT {
             }
 
         mockMvc
-            .post("/api/v1/admin/sync/intersections") {
+            .post("/api/v1/admin/sync/klid/intersections") {
                 header(ApiTokenFilter.HEADER, "test-token")
                 param("stdgCd", SEOUL)
             }.andExpect {
@@ -232,7 +232,7 @@ class KlidIngestionIT {
             }
 
         mockMvc
-            .post("/api/v1/admin/sync/intersections") {
+            .post("/api/v1/admin/sync/klid/intersections") {
                 header(ApiTokenFilter.HEADER, "test-token")
                 param("stdgCd", "seoul")
             }.andExpect { status { isBadRequest() } }
@@ -249,7 +249,7 @@ class KlidIngestionIT {
         }
 
         mockMvc
-            .post("/api/v1/admin/sync/bus-master") {
+            .post("/api/v1/admin/sync/klid/bus-master") {
                 header(ApiTokenFilter.HEADER, "test-token")
                 param("stdgCd", HWASEONG)
             }.andExpect {

@@ -110,15 +110,18 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 
 | 상태 | Method | Path | 설명 |
 |---|---|---|---|
-| 계약 | POST | `/admin/sync/klid/bus-master?stdgCd=` | `mst_info` + `ps_info` → `transit_lines`, `transit_stops`, `transit_line_stops` upsert |
-| 계약 | POST | `/admin/sync/klid/intersections?stdgCd=` | `crsrd_map_info` → `traffic_signals` upsert |
+| ✔ | POST | `/admin/sync/klid/bus-master?stdgCd=` | `mst_info` + `ps_info` → `transit_lines`, `transit_stops`, `transit_line_stops` upsert |
+| ✔ | POST | `/admin/sync/klid/intersections?stdgCd=` | `crsrd_map_info` → `traffic_signals` upsert |
 | 계약 | POST | `/admin/sync/klid/bus-positions?stdgCd=` | `rtm_loc_info` 1회 수집 → `bus_position_observations` (+ 우리 경로 노선의 ETA → `transit_arrival_observations`) |
 | 계약 | POST | `/admin/sync/klid/signal-states?stdgCd=` | `tl_drct_info` 1회 수집 → `traffic_signal_states` |
 | 계약 | GET | `/admin/sync/status` | 잡별 마지막 실행 시각/결과, 폴링 활성 여부와 현재 대상 `stdgCd` 집합 |
 
-- `stdgCd`는 10자리 숫자 문자열. 생략하면 활성 경로에서 계산한 지자체 집합 전부에 대해 실행
-- 응답(동기): `{ "job": "bus-master", "stdgCd": "4159000000", "totalCount": 812, "fetched": 812, "upserted": 37, "skipped": 775, "startedAt": …, "finishedAt": … }`.
-  `skipped`는 지자체 전체를 받았지만 우리 경로와 무관해서 버린 수 (`stdgCd`만 필터할 수 있어
+- `stdgCd`는 10자리 숫자 문자열(아니면 `400`). 구현된 마스터 동기화 두 개는 필수이고,
+  계약 단계인 폴링 1회 실행은 생략 시 활성 경로에서 계산한 지자체 집합 전부에 대해 실행
+- 응답(동기, 구현): 잡별 카운트 객체 `{ "fetched", "created", "updated", "skipped" }`를 대상 테이블마다 돌려준다.
+  `bus-master` → `{ "stdgCd": "4159000000", "lines": {…}, "stops": {…}, "lineStops": {…} }`,
+  `intersections` → `{ "stdgCd": "1100000000", "intersections": {…} }`.
+  `skipped`는 지자체 전체를 받았지만 키/좌표가 비어 있어 버린 수, 변경 없는 행은 어느 카운트에도 들지 않는다 (`stdgCd`만 필터할 수 있어
   메모리 필터가 필수인 것을 확인하는 지표)
 - upsert 키: 노선 `(mode, stdgCd, rteId)`, 정류장 `(mode, stdgCd, bstaId)`, 교차로 `(stdgCd, crsrdId)`,
   노선-정류장 `(line, drcGbnCd, bstaSn)`. 같은 데이터를 두 번 돌려도 결과가 같다

@@ -34,7 +34,7 @@ data class IntersectionSyncResponse(
 )
 
 @RestController
-@RequestMapping("/api/v1/admin/sync")
+@RequestMapping("/api/v1/admin/sync/klid")
 class AdminSyncController(
     private val masterSyncService: KlidMasterSyncService,
     private val intersectionSyncService: IntersectionSyncService,
