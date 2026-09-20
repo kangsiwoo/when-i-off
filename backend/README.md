@@ -10,7 +10,7 @@ Kotlin + Spring Boot 3.5, JDK 21, PostgreSQL 16, Flyway. 설계는 [`docs/`](../
 docker compose up -d
 
 # 2. 환경변수. 루트의 .env.example을 복사해서 채운다
-cp .env.example .env          # WIO_API_TOKEN은 아무 문자열, KLID 키는 있으면 "Decoding" 키
+cp .env.example .env          # WIO_API_TOKEN은 아무 문자열, KLID 키는 있으면 그대로 넣는다
 set -a; . ./.env; set +a      # 또는 IDE 실행 설정에 넣는다
 
 # 3. 실행 (부팅 시 Flyway가 V1 스키마 + V2 기본 사용자를 적용)
@@ -31,8 +31,8 @@ cd backend
 |---|---|---|---|
 | `spring.datasource.*` | `WIO_DB_URL`, `WIO_DB_USER`, `WIO_DB_PASSWORD` | `jdbc:postgresql://localhost:5432/when_i_off`, `wio`/`wio` | DB |
 | `wio.api-token` | `WIO_API_TOKEN` | (필수) | 고정 API 토큰 |
-| `wio.klid.bus.service-key` | `REALTIME_BUS_API_KEY` | 빈 문자열 | KLID 버스 `rte` 서비스 키 (디코딩된 값) |
-| `wio.klid.signal.service-key` | `TRAFFIC_SIGNAL_API_KEY` | 빈 문자열 | KLID 신호등 `rti` 서비스 키 (디코딩된 값) |
+| `wio.klid.bus.service-key` | `PRECISE_BUS_API` | 빈 문자열 | KLID 버스 `rte` 서비스 키 (Decoding/Encoding 둘 다 가능) |
+| `wio.klid.signal.service-key` | `REALTIME_TREFFIC_LIGHT_API` | 빈 문자열 | KLID 신호등 `rti` 서비스 키 (Decoding/Encoding 둘 다 가능) |
 | `wio.klid.connect-timeout` / `read-timeout` / `max-retries` / `retry-backoff` | | 5s / 20s / 2 / 500ms | KLID 클라이언트 |
 | `wio.polling.enabled` | | `false` | 실시간 폴링 스케줄러 on/off |
 | `wio.polling.interval-ms` | | 60000 | 폴링 간격 |
@@ -69,8 +69,8 @@ WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_
 ## KLID 동기화 — 마스터 + 폴링 how-to
 
 KLID(한국지역정보개발원 전국통합데이터) 두 서비스를 쓴다. 공공데이터포털에서 각각 활용신청:
-- 버스: 초정밀버스 위치 실시간 정보 (`apis.data.go.kr/B551982/rte`) → `REALTIME_BUS_API_KEY`
-- 신호등: 교통안전 신호등 실시간 정보 (`apis.data.go.kr/B551982/rti`) → `TRAFFIC_SIGNAL_API_KEY`
+- 버스: 초정밀버스 위치 실시간 정보 (`apis.data.go.kr/B551982/rte`) → `PRECISE_BUS_API`
+- 신호등: 교통안전 신호등 실시간 정보 (`apis.data.go.kr/B551982/rti`) → `REALTIME_TREFFIC_LIGHT_API`
 
 유일한 필터는 `stdgCd`(법정동 시도코드 10자리)이고 노선/교차로 단위 조회는 없다. 자주 쓰는 코드:
 서울 `1100000000`, 성남 `4113000000`, 화성 `4159000000`.
@@ -101,18 +101,23 @@ curl -s -H "$T" localhost:8080/api/v1/admin/sync/status
 키 없이 만든 코드라 응답 포맷은 포털 Swagger와 기록된 샘플로만 검증됐다. 키를 받으면 **코드를
 더 쓰기 전에** 아래를 먼저 확인한다.
 
-1. 키 인코딩: `.env`에는 포털의 **Decoding** 키를 넣는다. 클라이언트가 한 번만 인코딩한다.
-   `Unauthorized`/`K30`이 오면 대부분 이중 인코딩 아니면 미승인 상태
+1. 키 인코딩: `.env`에는 포털의 **Decoding**/**Encoding** 키 중 아무거나 넣어도 된다. 클라이언트가
+   값에 `%`가 있으면 이미 인코딩된 키로 보고 그대로 보내고, 없으면 한 번만 인코딩한다.
+   `Unauthorized`/`K30`이 오면 대부분 미승인 상태. (공공데이터포털 활용신청 참고사항: "API 환경
+   또는 API 호출 조건에 따라 인증키가 적용되는 방식이 다를 수 있다" — 포털도 두 형태 중 실제로
+   구동되는 키를 쓰라고 안내한다)
 2. **커버리지 `totalCount` 확인** — 세 지자체를 각 서비스에 대해 한 번씩:
 
    ```bash
-   K="$REALTIME_BUS_API_KEY"   # 셸에서 직접 curl할 땐 --data-urlencode로 한 번만 인코딩
+   # 아래 --data-urlencode는 Decoding 키 기준. Encoding 키(값에 `%` 포함)라면
+   # 이중 인코딩되므로 `-d "serviceKey=$K"`로 바꿔 그대로 실어 보낸다
+   K="$PRECISE_BUS_API"
    for cd in 4159000000 4113000000 1100000000; do
      curl -sG "https://apis.data.go.kr/B551982/rte/rtm_loc_info" \
        --data-urlencode "serviceKey=$K" -d "stdgCd=$cd" -d "numOfRows=1" -d "pageNo=1" -d "type=json" \
        | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["header"]["resultCode"], d.get("body",{}).get("totalCount"))'
    done
-   K="$TRAFFIC_SIGNAL_API_KEY"
+   K="$REALTIME_TREFFIC_LIGHT_API"
    for cd in 4159000000 4113000000 1100000000; do
      curl -sG "https://apis.data.go.kr/B551982/rti/tl_drct_info" \
        --data-urlencode "serviceKey=$K" -d "stdgCd=$cd" -d "numOfRows=1" -d "pageNo=1" -d "type=json" \

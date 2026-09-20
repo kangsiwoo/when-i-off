@@ -100,8 +100,12 @@
 | 신호등 `rti` | `crsrd_map_info` 교차로 마스터 | `traffic_signals` | 수동 / 일 1회 |
 | | `tl_drct_info` 신호 잔여시간 | `traffic_signal_states` | 출퇴근 시간대 폴링 |
 
-응답 규약(클라이언트가 처리하는 것): GET만, `serviceKey`는 **디코딩된 키를 넣고 정확히 한 번만
-URL 인코딩**(이중 인코딩이 흔한 실패 원인), `type=json`, `numOfRows` 최대 1000 페이지네이션.
+응답 규약(클라이언트가 처리하는 것): GET만, `serviceKey`는 **최종 URL에 정확히 한 번 인코딩된
+상태로** 실린다 — 디코딩 키(base64 문자만, `%` 없음)는 클라이언트가 한 번 인코딩하고, 이미
+퍼센트 인코딩된 키(`%` 포함)는 그대로 보낸다(이중 인코딩이 흔한 실패 원인). 공공데이터포털도
+활용신청 페이지에서 "API 환경/호출 조건에 따라 인증키 적용 방식이 다를 수 있으니 실제로 구동되는
+키를 쓰라"고 안내하므로, 키 형태를 고정하지 않고 값으로 판별하는 쪽이 포털 안내와도 맞는다.
+`type=json`, `numOfRows` 최대 1000 페이지네이션.
 JSON 봉투는 `{"header":{resultCode,resultMsg},"body":{totalCount,pageNo,numOfRows,"items":{"item":[…]}}}`
 (`response` 래퍼 없음, item 필드는 전부 문자열). `resultCode`가 `K0`면 정상, `K3`(NODATA)는
 HTTP 200에 body 없음 → 빈 목록, 그 외 K-코드(`K10` 파라미터, `K22` 일 한도 초과, `K30`/`K31`/`K32`

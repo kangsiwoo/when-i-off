@@ -59,6 +59,20 @@ class KlidHttpClientTest {
     }
 
     @Test
+    fun `an already percent-encoded service key is sent verbatim`() {
+        val preEncoded = WioProperties.Endpoint(server.url("/rte").toString(), "abc%2Bdef%3D")
+        server.enqueue(Fixtures.json("klid/mst_info_ok.json"))
+
+        client.fetchPage(preEncoded, "mst_info", "4159000000", 1, 1000)
+
+        val request = server.takeRequest()
+        assertEquals(
+            "/rte/mst_info?serviceKey=abc%2Bdef%3D&pageNo=1&numOfRows=1000&type=json&stdgCd=4159000000",
+            request.path,
+        )
+    }
+
+    @Test
     fun `blank service key fails fast without calling the gateway`() {
         val unconfigured = WioProperties.Endpoint(server.url("/rte").toString(), "")
 

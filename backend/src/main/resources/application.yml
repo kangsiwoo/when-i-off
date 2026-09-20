@@ -43,10 +43,10 @@ wio:
   klid:
     bus:
       base-url: https://apis.data.go.kr/B551982/rte
-      service-key: ${REALTIME_BUS_API_KEY:}
+      service-key: ${PRECISE_BUS_API:}
     signal:
       base-url: https://apis.data.go.kr/B551982/rti
-      service-key: ${TRAFFIC_SIGNAL_API_KEY:}
+      service-key: ${REALTIME_TREFFIC_LIGHT_API:}
     connect-timeout: 5s
     read-timeout: 20s
     max-retries: 2
