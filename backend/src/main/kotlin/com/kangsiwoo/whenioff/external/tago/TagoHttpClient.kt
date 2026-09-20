@@ -154,6 +154,18 @@ class TagoHttpClient(
                 throw TagoGatewayException(response.status, response.body)
             }
         if (root == null || !root.isObject) throw TagoGatewayException(response.status, response.body)
+        // 인증/등록 오류는 정상 봉투가 아니라 게이트웨이 자체 형식으로 온다 (실 키로 확인한 형태):
+        // {"OpenAPI_ServiceResponse":{"cmmMsgHeader":{errMsg,returnAuthMsg,returnReasonCode}}}
+        // 이걸 따로 읽지 않으면 "등록되지 않은 서비스키"가 그냥 HTTP403으로 뭉개져 원인 파악이 어렵다.
+        val cmmMsgHeader = root.path("OpenAPI_ServiceResponse").path("cmmMsgHeader")
+        if (cmmMsgHeader.isObject) {
+            val errMsg = cmmMsgHeader.path("errMsg").asText("")
+            val authMsg = cmmMsgHeader.path("returnAuthMsg").asText("")
+            throw TagoApiException(
+                cmmMsgHeader.path("returnReasonCode").asText("").ifBlank { "HTTP${response.status}" },
+                listOf(errMsg, authMsg).filter { it.isNotBlank() }.joinToString(" / "),
+            )
+        }
         val envelope = root.path("response").takeIf { it.isObject } ?: root
         val header = envelope.path("header")
         val resultCode = header.path("resultCode").asText("")

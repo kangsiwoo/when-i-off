@@ -91,6 +91,11 @@ TAGO 도착예측 응답은 차량 번호(차대/차량 식별자)를 주지 않
   곳이 하나도 남지 않으므로 **클래스 전체와 `wio.klid.bus`/`PRECISE_BUS_API` 설정까지
   함께 삭제**한다. 죽은 코드를 "나중에 쓸 수도 있으니" 남겨 두지 않는다 — KLID 신호등
   (`KlidSignalApi`, `wio.klid.signal`/`REALTIME_TREFFIC_LIGHT_API`)은 완전히 그대로 둔다
+- 같은 이유로 위치→ETA 전용이던 기하 계산 코드(`transit/application/geo/`의
+  `PolylineProjection`, `EtaCalculator`, `Polyline`)와 그 전용 쿼리
+  `TransitLineStopRepository.findPolyline`도 삭제한다. 노선-정류장 순서 자체는 계속
+  적재하지만, "승차/하차 정류장이 그 노선에 속하는지" 검증은 이미 있는
+  `findAllByLineAndStopIds`로 충분하다
 
 ## 후속 (이 PR 범위 밖)
 - TAGO 실 키 발급(공공데이터포털 활용신청) — 사람이 해야 하는 외부 작업. 키가 없으면

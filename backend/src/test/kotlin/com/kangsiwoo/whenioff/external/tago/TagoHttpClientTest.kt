@@ -120,6 +120,21 @@ class TagoHttpClientTest {
     }
 
     @Test
+    fun `an unregistered service key surfaces the gateway's own reason code and message`() {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(403)
+                .setHeader("Content-Type", "application/json")
+                .setBody(Fixtures.read("tago/service_key_not_registered.json")),
+        )
+
+        val e = assertThrows<TagoApiException> { client.fetchAll(endpoint, "getRouteNoList", routeParams) }
+        assertEquals("30", e.resultCode)
+        assertEquals("SERVICE_KEY_IS_NOT_REGISTERED_ERROR / 등록되지 않은 서비스키", e.resultMsg)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun `429 is retried and the following success is returned`() {
         server.enqueue(MockResponse().setResponseCode(429).setBody("Too Many Requests"))
         server.enqueue(Fixtures.json("tago/getRouteNoList_ok.json"))
