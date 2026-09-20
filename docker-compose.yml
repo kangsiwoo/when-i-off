@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: when-i-off-postgres
+    environment:
+      POSTGRES_DB: when_i_off
+      POSTGRES_USER: wio
+      POSTGRES_PASSWORD: wio
+    ports:
+      - "5432:5432"
+    volumes:
+      - when_i_off_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wio -d when_i_off"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  when_i_off_pgdata:

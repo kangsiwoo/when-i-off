@@ -1,0 +1,42 @@
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Gradle / Kotlin / JVM
+backend/.gradle/
+backend/build/
+backend/out/
+backend/.kotlin/
+**/*.class
+**/hs_err_pid*
+
+# Python (analytics)
+analytics/.venv/
+analytics/__pycache__/
+**/__pycache__/
+**/*.py[cod]
+analytics/.mypy_cache/
+analytics/.ruff_cache/
+analytics/.pytest_cache/
+analytics/dist/
+
+# Node (desktop)
+desktop/node_modules/
+desktop/dist/
+desktop/.vite/
+**/npm-debug.log*
+
+# Xcode (ios)
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/**/DerivedData/
+ios/**/*.xcconfig
+!ios/**/*.example.xcconfig
+ios/**/Pods/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store

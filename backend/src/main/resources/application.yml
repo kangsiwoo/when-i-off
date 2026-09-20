@@ -1,0 +1,83 @@
+spring:
+  application:
+    name: when-i-off-backend
+  datasource:
+    url: ${WIO_DB_URL:jdbc:postgresql://localhost:5432/when_i_off}
+    username: ${WIO_DB_USER:wio}
+    password: ${WIO_DB_PASSWORD:wio}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+wio:
+  api-token: ${WIO_API_TOKEN}
+  klid:
+    bus:
+      base-url: https://apis.data.go.kr/B551982/rte
+      service-key: ${REALTIME_BUS_API_KEY:}
+    signal:
+      base-url: https://apis.data.go.kr/B551982/rti
+      service-key: ${TRAFFIC_SIGNAL_API_KEY:}
+    connect-timeout: 5s
+    read-timeout: 20s
+    max-retries: 2
+    retry-backoff: 500ms
+  polling:
+    enabled: false
+    interval-ms: 60000
+    windows: 06:30-09:30,17:30-20:30
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  jpa:
+    show-sql: false
+logging:
+  level:
+    com.kangsiwoo.whenioff: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  flyway:
+    clean-disabled: false
+wio:
+  api-token: test-token
+  polling:
+    enabled: false
+logging:
+  level:
+    com.kangsiwoo.whenioff: DEBUG

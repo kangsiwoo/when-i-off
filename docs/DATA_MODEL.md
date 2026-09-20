@@ -1,6 +1,11 @@
 # 데이터 모델
 
-전체 DDL은 [db/schema.sql](./db/schema.sql) 참고. 여기서는 엔티티별 의도와 관계를 설명한다.
+DDL의 진실은 Flyway 마이그레이션
+[`backend/src/main/resources/db/migration/V1__init_schema.sql`](../backend/src/main/resources/db/migration/V1__init_schema.sql)이고,
+[db/schema.sql](./db/schema.sql)은 그 스냅샷이다. 여기서는 엔티티별 의도와 관계를 설명한다.
+
+외부 마스터/실시간 데이터는 KLID(한국지역정보개발원) 전국통합데이터 API 두 개에서 온다
+(버스 `rte`, 신호등 `rti`). 연동 방식은 [ARCHITECTURE.md](./ARCHITECTURE.md)의 "외부 데이터 동기화" 참고.
 
 ## ER 다이어그램
 
@@ -10,12 +15,16 @@ erDiagram
     commute_routes ||--o{ route_legs : "구성"
     route_legs }o--o| transit_lines : "TRANSIT 구간의 노선"
     route_legs }o--o| transit_stops : "승차(board) / 하차(alight)"
-    route_legs ||--o{ route_leg_signal_crossings : "WALK 구간의 신호등"
+    route_legs ||--o{ route_leg_signal_crossings : "WALK 구간이 건너는 교차로 (approach_dir, signal_kind)"
     route_leg_signal_crossings }o--|| traffic_signals : ""
-    traffic_signals ||--o{ traffic_signal_cycles : "주기 데이터"
+    traffic_signals ||--o{ traffic_signal_cycles : "주기 모델 (fallback)"
+    traffic_signals ||--o{ traffic_signal_states : "실시간 신호 상태 (KLID tl_drct_info)"
 
+    transit_lines ||--o{ transit_line_stops : "방향별 정류장 순서 (KLID ps_info)"
+    transit_stops ||--o{ transit_line_stops : ""
+    transit_lines ||--o{ bus_position_observations : "차량 위치 원본 (KLID rtm_loc_info)"
     transit_lines ||--o{ transit_schedules : "정적 시간표"
-    transit_lines ||--o{ transit_arrival_observations : "실시간 예측 스냅샷"
+    transit_lines ||--o{ transit_arrival_observations : "도착 예측 스냅샷 (위치→ETA 파생)"
     transit_stops ||--o{ transit_schedules : ""
     transit_stops ||--o{ transit_arrival_observations : ""
 
@@ -43,23 +52,54 @@ erDiagram
 ```
 commute_route (경로 정의, 한 번 등록)
  └─ route_legs[]  WALK → TRANSIT → WALK → TRANSIT → WALK ...
+      └─ (WALK) route_leg_signal_crossings[]  몇 번째로 어느 교차로의 어느 방향 보행신호를 건너는지
 
 commute_trip (그 경로로 실제 이동한 하루 1건)
  ├─ left_home_at / arrived_destination_at
  ├─ boarding_attempts[]  TRANSIT 구간마다: 정류장 도착, 차 출발, 하차, 탔음/놓침
  ├─ walking_segments[]   WALK 구간마다: 실제 걸린 시간/거리 (분석 배치가 파생)
  └─ gps_traces[]         원시 위치
+
+외부 데이터 (Backend 동기화 잡이 채움)
+ ├─ 마스터: transit_lines / transit_stops / transit_line_stops / traffic_signals
+ ├─ 실시간 원본: bus_position_observations / traffic_signal_states
+ └─ 파생: transit_arrival_observations (버스 위치 → 정류장 ETA)
 ```
+
+## 시간 규약
+
+- `TIMESTAMPTZ`는 절대 시각(UTC). KLID가 주는 `totDt`/`gthrDt`(`yyyyMMddHHmmss`, KST)는
+  `Asia/Seoul`로 파싱해 UTC로 저장한다.
+- `TIME` 컬럼(시간표, 시간대)은 KST 기준 하루 중 시각. 반복되는 값이라 절대 시각이 아니다.
+
+## 외부 ID와 지자체 코드 `stdg_cd`
+
+KLID API는 **`stdgCd`(법정동 시도코드 10자리, 예: 서울 `1100000000`, 화성 `4159000000`)가 유일한
+필터**이고, 노선 ID(`rteId`), 정류장 ID(`bstaId`), 교차로 ID(`crsrdId`)는 **그 지자체 안에서만
+유일**하다. 다른 지자체가 같은 숫자 ID를 쓸 수 있으므로 외부 ID만으로 UNIQUE를 걸면 동기화가
+충돌한다. 그래서 마스터 세 테이블은 모두 `(…, stdg_cd, external_id)` 조합으로 UNIQUE를 걸고,
+동기화 잡은 이 키로 upsert한다.
+
+| 테이블 | UNIQUE 키 | 외부 ID 출처 |
+|---|---|---|
+| `transit_lines` | `(mode, stdg_cd, external_id)` | `mst_info.rteId` |
+| `transit_stops` | `(mode, stdg_cd, external_id)` | `ps_info.bstaId` |
+| `traffic_signals` | `(stdg_cd, crsrd_id)` | `crsrd_map_info.crsrdId` |
+
+수동 등록(GTX 역, 공공 데이터가 없는 신호등 등)은 `stdg_cd`/`external_id`를 NULL로 둔다.
+PostgreSQL의 UNIQUE는 NULL을 서로 다른 값으로 취급하므로 수동 행은 몇 개든 들어간다.
 
 ## 엔티티 설명
 
 ### `users`
-사용자. 앱/데스크탑/백엔드가 분리되어 있어 인증 주체가 필요하므로 처음부터 둔다.
+사용자. 앱/데스크탑/백엔드가 분리되어 있어 인증 주체가 필요하므로 처음부터 둔다. 1인 사용
+단계에서는 `V2__seed_default_user.sql`이 넣는 `id=1` 사용자로 모든 요청이 귀속된다.
 
 ### `commute_routes`
 사용자가 등록한 "출퇴근 루틴" 단위. 예: "평일 출근 - 집→광역버스 M4403→GTX→회사".
 `direction`으로 출근/퇴근을 구분한다. 같은 목적지라도 시간대별로 다른 루트를 쓸 수 있으므로
-사용자당 여러 개 가질 수 있다.
+사용자당 여러 개 가질 수 있다. `is_active`인 경로의 노선·교차로가 속한 지자체만 실시간 폴링
+대상이 된다 (호출 한도 때문, ARCHITECTURE.md 참고).
 
 ### `route_legs`
 `commute_route`를 구성하는 개별 구간을 순서(`seq_order`)대로 나열한 것.
@@ -72,18 +112,83 @@ commute_trip (그 경로로 실제 이동한 하루 1건)
 때문이다 (ALGORITHM.md 3절).
 
 ### `transit_lines` / `transit_stops`
-노선과 정류장/역의 마스터 데이터. 외부 공공데이터 API의 ID를 `external_id`에 그대로
-보관해서 동기화 잡이 upsert하기 쉽게 한다. `has_realtime_api=false`인 노선(예: GTX)은
-정적 시간표만 쓴다.
+노선과 정류장/역의 마스터 데이터. KLID `mst_info`(노선)와 `ps_info`(경유 정류장)에서 동기화하며,
+외부 ID와 `stdg_cd`를 그대로 보관해서 upsert 키로 쓴다 (위 표). `has_realtime_api=false`인
+노선(예: GTX)은 정적 시간표만 쓴다. `agency`에는 `lclgvNm`(지자체명) 정도를 넣는다.
+
+### `transit_line_stops`
+노선의 **방향별 정류장 순서**. KLID `ps_info` 한 행 = 이 테이블 한 행이며
+`(transit_line_id, direction_code=drcGbnCd, seq_no=bstaSn)`으로 유일하다.
+
+이 테이블이 필요한 이유는 **KLID에 도착예측 API가 없기 때문**이다. 버스 API가 주는 것은
+차량 위치(`rtm_loc_info`)뿐이라, "이 버스가 내 정류장에 몇 분 뒤 오는가"는 우리가 직접 계산해야
+한다. 차량 위치를 이 순서로 이어 만든 폴리라인에 투영해서 "현재 몇 번째 정류장 사이에 있는지"를
+알아내고, 남은 정류장 간 거리 ÷ 속도로 ETA를 만든다. 방향(`direction_code`)이 다르면 같은 노선도
+정류장 순서가 다르므로 방향별로 나눈다.
+
+### `bus_position_observations`
+KLID `rtm_loc_info`의 차량 위치를 **받은 그대로** 쌓는 원본 테이블. 한 행 = 차량 1대 × 수집시각
+1개. `observed_at`은 `gthrDt`(GPS 수집시각, 없으면 `totDt`)를 UTC로 바꾼 값이고, `speed_kmh`
+(`oprSpd`), `heading_deg`(`oprDrct`), `receive_type`(`evtType`: GNSS/GPS)은 ETA 계산에 쓰는
+필드만 컬럼으로 뽑았다. 나머지(`evtCd` 등)는 `raw` JSONB에 남겨 두어 나중에 필드가 필요해져도
+재수집 없이 꺼낼 수 있게 한다.
+
+원본을 남기는 이유: ETA 파생 로직(투영 방식, 속도 가정)은 바뀔 수 있고, 바뀌면 과거 위치로
+다시 계산해 정확도를 비교해야 한다. 파생값만 남기면 그게 불가능하다. 대량으로 쌓이므로 보관
+기간 정책이 필요하다 (DEVELOPMENT_PLAN Phase 6).
 
 ### `transit_schedules`
 정적 시간표. 실시간 API가 없는 노선의 fallback이자, 실시간 예측이 튈 때 비교 기준.
+`mst_info`의 첫차/막차(`vhclFstTm`/`vhclLstTm`)는 시간표가 아니라 운행 범위이므로 여기 넣지 않는다.
 
 ### `transit_arrival_observations`
-외부 API가 특정 시점에 준 "예상 도착 시각"을 그대로 스냅샷으로 남긴다. 나중에
-`boarding_attempts.vehicle_actual_departure_at`과 비교해서 "이 노선/시간대는 API가
-평균 90초 늦게 예측한다" 같은 보정치를 계산하는 원재료다. 최신값만 덮어쓰지 않고 누적하는
-이유가 이것.
+"이 시점에 시스템이 계산한 정류장 도착 예정 시각"의 스냅샷. 원래 외부 API의 도착예측을 그대로
+받는 용도였지만, KLID에는 도착예측이 없으므로 지금은 **Backend가 `bus_position_observations`를
+`transit_line_stops` 폴리라인에 투영해 파생한 ETA**가 들어간다 (`source='KLID_RTM_LOC_ETA'`,
+`vehicle_no`로 어느 차량의 예측인지 남김). 나중에 TAGO/GBIS처럼 도착예측을 직접 주는 소스로
+바꾸더라도 `source` 값만 다르게 넣으면 되도록 스키마는 소스 중립으로 유지한다.
+
+이 값은 `boarding_attempts.vehicle_actual_departure_at`과 비교해서 "이 노선/시간대는 예측이
+평균 90초 늦다" 같은 보정치를 계산하는 원재료다. 최신값만 덮어쓰지 않고 누적하는 이유가 이것.
+
+### `traffic_signals` — 한 행 = 교차로
+KLID `crsrd_map_info`의 **교차로(intersection)** 하나가 한 행이다. 횡단보도 하나가 아니다.
+좌표(`lat`/`lng`)는 교차로 중심점(`mapCtptIntLat/Lot`)이고 `crsrd_id`+`stdg_cd`가 외부 키다.
+공공 데이터가 없는 곳은 좌표만으로 수동 등록한다(`crsrd_id` NULL).
+
+교차로 단위로 두는 이유: KLID 실시간 신호(`tl_drct_info`)가 교차로 ID 하나에 접근방향 8개 ×
+신호종류 6개의 상태를 한 행으로 주기 때문이다. "어느 횡단보도"는 아래 crossing이 방향/종류로
+지정한다.
+
+### `route_leg_signal_crossings` — 어느 방향의 어떤 신호를 건너는가
+WALK 구간이 몇 번째(`seq_order`)로 어느 교차로(`traffic_signal_id`)를 건너는지에 더해,
+- `approach_dir`: `nt, et, st, wt, ne, se, sw, nw` — 교차로 기준 접근 방향 (북/동/남/서/북동/…)
+- `signal_kind`: `Bs, Bc, Lt, Pd, St, Ut` — 신호 종류. 보행자는 `Pd`(기본값). `St`(직진)/`Lt`(좌회전)
+  등은 보행 신호가 제공되지 않는 교차로에서 대체 지표로 쓸 여지를 남긴 것
+
+두 코드는 KLID `tl_drct_info` 필드명 접두어와 **정확히 같은 문자열**이다
+(`ntPdsgRmndCs` = `nt` + `Pd` + `sgRmndCs`). 그래서 실시간 행을 찾을 때 변환 없이
+`(traffic_signal_id, approach_dir, signal_kind)`로 바로 조인할 수 있다.
+
+### `traffic_signal_states`
+KLID `tl_drct_info`의 실시간 신호 상태를 정규화한 테이블. API 한 행(교차로 1개, 96개 필드)을
+**교차로 × 접근방향 × 신호종류 × 수집시각당 1행**으로 풀어서 넣는다. 값이 빈 문자열인 방향/종류
+조합(그 교차로에 없는 신호)은 행을 만들지 않는다.
+- `status`: SAE J2735 `MovementPhaseState` 문자열(`protected-Movement-Allowed`,
+  `stop-And-Remain`, `permissive-Movement-Allowed`, `protected-clearance`, `unavailable`, `dark`…)을
+  받은 그대로. enum으로 제한하지 않는 이유는 포털 문서에 값 목록이 없고 새 값이 나와도 적재가
+  멈추면 안 되기 때문. 해석(녹색/적색 분류)은 ALGORITHM.md에서 한다.
+- `remaining_ds`: 남은 시간, **데시초**(0.1초). 원본 `36001`은 "알 수 없음"이라 NULL.
+
+이 테이블이 있으면 신호 주기를 추정할 필요 없이 "지금 이 횡단보도는 몇 초 뒤에 바뀐다"를
+그대로 계산에 쓸 수 있다 (ALGORITHM.md 2.1). 커버 지역(2026 기준 서울·울산)이 아닌 곳은
+아래 주기 모델로 돌아간다.
+
+### `traffic_signal_cycles`
+신호 **주기 모델**: 요일유형 × 시간대별 적색 길이/주기 길이. 실시간 상태가 없는 교차로의
+fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 주기 길이를 빌려 쓴다.
+공공 데이터로 채우거나(`PUBLIC_API`), 사용자 관찰값(`USER_OBSERVED`), 기본 가정값
+(`DEFAULT_ASSUMPTION`)을 넣는다.
 
 ### `commute_trips`
 그 경로로 실제 이동한 하루 1건. `left_home_at`(집 geofence 이탈)과
@@ -94,12 +199,14 @@ commute_trip (그 경로로 실제 이동한 하루 1건)
 ### `boarding_attempts` — 핵심 테이블
 한 trip 안에서 TRANSIT 구간마다 "이 차를 타려고 시도했다"는 사실을 기록한다.
 - `arrived_at_stop_at`: 승차 정류장/역 도착 (geofence 진입)
-- `vehicle_scheduled_or_predicted_at`: 그 순간 외부 API/시간표가 알려준 예정 시각
+- `vehicle_scheduled_or_predicted_at`: 그 순간 시스템이 알려준 예정 시각
   (스냅샷 — 나중에 재현 가능하도록 값을 복사해 둔다)
 - `vehicle_actual_departure_at`: 실제로 그 차가 떠난 시각 (탔으면 탑승 시각, 놓쳤으면
   목격한 출발 시각 — 가능한 경우만)
 - `alighted_at`: 하차 정류장/역 도착 (geofence 진입)
 - `result`: `CAUGHT` / `MISSED` / `UNKNOWN`
+
+`(commute_trip_id, route_leg_id)` UNIQUE라 같은 구간의 재전송은 API에서 upsert로 흡수한다.
 
 이 한 테이블에서 세 가지를 동시에 학습한다:
 1. 도착 예측 오차 = `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at`
@@ -110,6 +217,7 @@ commute_trip (그 경로로 실제 이동한 하루 1건)
 
 ### `gps_traces`
 원시 위치 로그. `commute_trip_id`가 있으면 그 이동 중 수집된 것, 없으면 상시 수집분.
+`(user_id, recorded_at)` UNIQUE + `ON CONFLICT DO NOTHING`으로 앱의 오프라인 재전송을 흡수한다.
 대량으로 쌓이므로 일정 기간 후 압축/삭제하는 정책이 필요하다 (개발계획 참고).
 
 ### `walking_segments`
@@ -130,15 +238,11 @@ trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 
 ### `transit_prediction_calibration`
 노선 × 정류장 × 요일유형 × 시간대별 "실제 − 예측"의 평균(`bias_sec`)과
 표준편차(`stddev_sec`). 샘플이 없으면 bias 0, stddev 90초의 보수적 기본값으로 시작한다.
+예측이 우리가 파생한 ETA이므로, 이 보정치는 곧 "우리 투영 로직의 체계적 오차"이기도 하다.
 
 ### `transit_travel_time_calibration`
 노선 × 승차역 × 하차역 × 요일유형 × 시간대별 차내 이동시간의 평균/표준편차. 샘플이 없으면
 `route_legs.planned_travel_sec`을 평균으로, 넉넉한 기본 표준편차로 시작한다.
-
-### `traffic_signals` / `traffic_signal_cycles` / `route_leg_signal_crossings`
-도보 구간 중 건너야 하는 횡단보도를 별도 마스터로 두고, 한 WALK 구간이 몇 번째로 어떤
-신호등을 건너는지(`seq_order`)를 매핑한다. 신호 주기는 공공데이터로 채우거나, 없으면
-사용자 관찰값(`source='USER_OBSERVED'`)이나 기본 가정값을 넣는다.
 
 ### `departure_recommendations`
 Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시각을 맞추려면, OO시 OO분에
@@ -147,9 +251,12 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
 
 ## 왜 "예측"과 "실측"을 분리해서 저장하는가
 
-이 프로젝트의 핵심은 외부 API의 정적/실시간 예측이 실제와 얼마나 다른지를 스스로
+이 프로젝트의 핵심은 외부 데이터에서 만든 정적/실시간 예측이 실제와 얼마나 다른지를 스스로
 캘리브레이션하는 것이다. 그래서 스키마 전반에 "그 순간 시스템이 뭐라고 예측했는가"
 (`transit_schedules`, `transit_arrival_observations`, attempt의 예정 시각 스냅샷)와
 "실제로 무슨 일이 있었는가"(`commute_trips`, `boarding_attempts`, `walking_segments`)를
 별도로 두고, 둘을 노선/구간/시간대 키로 조인해서 오차를 계산하는 구조로 설계했다. 값을
 그 자리에서 덮어써버리면 이 오차 학습이 불가능해진다.
+
+같은 이유로 실시간 원본(`bus_position_observations`, `traffic_signal_states`)도 최신값만
+유지하지 않고 수집시각별로 쌓는다. 파생 로직이 바뀌면 원본으로 다시 계산해 비교해야 한다.
