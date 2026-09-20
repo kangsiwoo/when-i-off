@@ -32,8 +32,9 @@
 | 400 | 검증 실패(`@Valid`), 잘못된 파라미터, 도메인 규칙 위반(예: `alightedAt`가 출발보다 앞) | 검증 실패는 `errors[]`에 필드별 메시지 |
 | 401 | `X-Api-Token` 없음/불일치 | |
 | 404 | 리소스 없음 또는 **다른 사용자 소유** (존재 여부를 숨김) | |
-| 409 | UNIQUE/FK 위반 등 무결성 오류 | `detail`에 DB 메시지 첫 줄 |
-| 502 | 외부 API(KLID)가 오류 코드/비JSON 응답 | `klidResultCode` 확장 필드 (계약) |
+| 409 | UNIQUE/FK 위반 등 무결성 오류, 실측 기록이 붙은 구간을 지우는 구간 교체 | `detail`에 DB 메시지 첫 줄 또는 문제의 구간 id |
+| 502 | 외부 API(KLID)가 오류 코드/비JSON 응답 | `klidResultCode` 확장 필드 (`K22` 같은 결과 코드, 비JSON이면 `HTTP403` 형식) |
+| 503 | KLID 서비스 키 미설정 (`REALTIME_BUS_API_KEY`/`TRAFFIC_SIGNAL_API_KEY`) | 관리 동기화 API에서만 |
 | 500 | 그 외 | `detail`은 항상 `"unexpected error"`, 원인은 서버 로그 |
 
 ## 경로/구간 관리 (데스크탑에서 주로 사용)
@@ -43,7 +44,7 @@
 | ✔ | GET | `/commute-routes` | 내 출퇴근 경로 목록 |
 | ✔ | POST | `/commute-routes` | 경로 생성 (이름, 방향, 출발/도착 좌표) → `201` |
 | ✔ | GET | `/commute-routes/{id}` | 경로 상세 (구간 + 구간별 신호등 crossing 포함) |
-| ✔ | PUT | `/commute-routes/{id}/legs` | 구간 목록 **전체 교체** (순서 재정렬 포함). WALK/TRANSIT 필드 규칙은 DB CHECK와 동일 |
+| ✔ | PUT | `/commute-routes/{id}/legs` | 구간 목록 교체 (순서 재정렬 포함, 아래 "구간 교체의 의미"). WALK/TRANSIT 필드 규칙은 DB CHECK와 동일, 좌표는 WGS84 범위 검증 |
 | ✔ | PUT | `/route-legs/{id}/signal-crossings` | WALK 구간의 교차로 순서 전체 교체. 항목: `trafficSignalId`, `approachDir`(`nt…nw`), `signalKind`(`Bs,Bc,Lt,Pd,St,Ut`, 기본 `Pd`) |
 | ✔ | POST | `/transit-lines` | 노선 수동 등록 (`mode`, `name`, `stdgCd?`, `externalId?`, `hasRealtimeApi`) |
 | ✔ | GET | `/transit-lines/search?mode=BUS&keyword=` | 노선 검색 (구간 등록 시 자동완성용, `mode` 생략 가능) |
@@ -51,6 +52,17 @@
 | ✔ | GET | `/transit-stops/nearby?lat=&lng=&radiusM=&mode=` | 근처 정류장/역 (`radiusM` 기본값은 서버 설정, `mode` 생략 가능) |
 | ✔ | POST | `/traffic-signals` | 교차로 수동 등록 (좌표 + 이름) |
 | ✔ | GET | `/traffic-signals/nearby?lat=&lng=&radiusM=` | 근처 교차로 |
+
+### 구간 교체의 의미
+`PUT /commute-routes/{id}/legs`는 목록을 통째로 보내지만, 기존 구간을 지우고 다시 만드는 것이 아니라
+**제자리에서 맞춰 고친다**. 실측 기록(`boarding_attempts`, `walking_segments`, `user_walking_profile`)과
+신호등 crossing은 `route_leg_id`로 구간에 붙어 있으므로 구간 id가 유지되어야 한다.
+
+- 항목에 `id`가 있으면 그 구간(이 경로의 것이어야 함, 아니면 400)을 수정한다. 재정렬은 `id`와 새 `seqOrder`로 표현한다
+- `id`가 없으면 `seqOrder`와 `legType`이 같은 기존 구간이 있을 때 그것을 수정하고, 없으면 새로 만든다
+- 요청에 없는 기존 구간은 삭제한다. 다만 실측 기록이 있는 구간을 삭제하거나 종류(WALK↔TRANSIT)를 바꾸려 하면
+  `409` — 기록은 지우지 않는 게 원칙이므로 그 구간은 `id`를 붙여 되돌려 보내야 한다
+- 응답은 `GET /commute-routes/{id}`와 같은 상세이며, 유지된 구간은 같은 `id`와 crossing을 그대로 가진다
 
 수동 등록은 KLID 마스터 동기화가 커버하지 않는 곳(GTX 역, 지방 교차로)을 위한 것이다.
 동기화로 들어온 행은 `stdgCd`+`externalId`(교차로는 `crsrdId`)가 채워져 있고, 수동 행은 NULL이다.
@@ -71,7 +83,8 @@
 geofence 이벤트마다, 그리고 오프라인 후 재전송 때 같은 요청을 여러 번 보낼 수 있으므로
 `POST /commute-trips/{id}/boarding-attempts`는 **`routeLegId`를 키로 upsert**한다.
 
-- 없으면 생성 → `201 Created`, 있으면 갱신 → `200 OK`. 본문은 둘 다 attempt 전체
+- 없으면 생성 → `201 Created`, 있으면 갱신 → `200 OK`. 본문은 둘 다 attempt 전체. 같은 (trip, leg)의
+  첫 요청이 동시에 둘 들어와도 진 쪽은 갱신으로 다시 처리되어 `200`을 받는다 (409가 아님)
 - **요청에서 `null`(생략)인 필드는 건드리지 않는다.** 정류장 도착만 보낸 뒤 나중에 하차만 보내도
   앞의 값이 지워지지 않는다. 값을 지우는 API는 없다 (실측 기록은 지우지 않는 게 원칙)
 - `routeLegId`는 그 trip의 경로에 속한 `TRANSIT` 구간이어야 한다. 아니면 400

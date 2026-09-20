@@ -16,7 +16,6 @@ import com.kangsiwoo.whenioff.trip.api.UpdateCommuteTripRequest
 import com.kangsiwoo.whenioff.trip.api.UpsertBoardingAttemptRequest
 import com.kangsiwoo.whenioff.trip.domain.BoardingAttempt
 import com.kangsiwoo.whenioff.trip.domain.BoardingAttemptRepository
-import com.kangsiwoo.whenioff.trip.domain.BoardingResult
 import com.kangsiwoo.whenioff.trip.domain.CommuteTrip
 import com.kangsiwoo.whenioff.trip.domain.CommuteTripRepository
 import com.kangsiwoo.whenioff.user.domain.User
@@ -86,16 +85,8 @@ class CommuteTripService(
         val attempt =
             existing?.apply { applyChanges(request) }
                 ?: boardingAttemptRepository.save(
-                    BoardingAttempt(
-                        commuteTrip = trip,
-                        routeLeg = transitLegOf(trip, request.routeLegId),
-                        arrivedAtStopAt = request.arrivedAtStopAt,
-                        vehicleScheduledOrPredictedAt = request.vehicleScheduledOrPredictedAt,
-                        vehicleActualDepartureAt = request.vehicleActualDepartureAt,
-                        alightedAt = request.alightedAt,
-                        result = request.result ?: BoardingResult.UNKNOWN,
-                        notes = request.notes,
-                    ),
+                    BoardingAttempt(commuteTrip = trip, routeLeg = transitLegOf(trip, request.routeLegId))
+                        .apply { applyChanges(request) },
                 )
         return UpsertResult(BoardingAttemptResponse.from(attempt), created = existing == null)
     }

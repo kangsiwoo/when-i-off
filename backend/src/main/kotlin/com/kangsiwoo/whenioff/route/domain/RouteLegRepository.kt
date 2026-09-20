@@ -20,4 +20,18 @@ interface RouteLegRepository : JpaRepository<RouteLeg, Long> {
     fun findActiveByLegType(
         @Param("legType") legType: LegType,
     ): List<RouteLeg>
+
+    @Query(
+        """
+        select l.id from route_legs l
+        where l.id in (:ids)
+          and (exists (select 1 from boarding_attempts b where b.route_leg_id = l.id)
+            or exists (select 1 from walking_segments w where w.route_leg_id = l.id)
+            or exists (select 1 from user_walking_profile p where p.route_leg_id = l.id))
+        """,
+        nativeQuery = true,
+    )
+    fun findIdsWithMeasurements(
+        @Param("ids") ids: Collection<Long>,
+    ): List<Long>
 }

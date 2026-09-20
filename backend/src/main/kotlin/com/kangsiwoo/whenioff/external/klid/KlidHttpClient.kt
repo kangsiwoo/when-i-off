@@ -53,6 +53,7 @@ class KlidHttpClient(
         pageNo: Int,
         numOfRows: Int,
     ): KlidPage {
+        if (endpoint.serviceKey.isBlank()) throw KlidNotConfiguredException(endpoint.baseUrl)
         val uri = buildUri(endpoint, op, stdgCd, pageNo, numOfRows)
         return parseEnvelope(executeWithRetry(op, uri))
     }

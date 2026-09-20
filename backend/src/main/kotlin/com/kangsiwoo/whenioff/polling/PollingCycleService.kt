@@ -54,22 +54,29 @@ class PollingCycleService(
         val busStdgCds = targets.map { it.stdgCd }.toSet()
 
         snapshotCache.clear()
-        for (stdgCd in busStdgCds) {
+        var legsPredicted = 0
+        var predictions = 0
+        for ((stdgCd, group) in targets.groupBy { it.stdgCd }) {
             try {
                 snapshotCache.refresh(stdgCd)
             } catch (e: KlidException) {
                 log.warn(e) { "rtm_loc_info fetch failed for $stdgCd" }
                 failed += stdgCd
+                continue
             }
-        }
-
-        var legsPredicted = 0
-        var predictions = 0
-        for (target in targets.filter { it.stdgCd !in failed }) {
-            val line = lineRepository.findById(target.lineId).orElse(null) ?: continue
-            val stop = stopRepository.findById(target.boardStopId).orElse(null) ?: continue
-            predictions += predictionProvider.predict(line, stop, target.directionCode).size
-            legsPredicted++
+            // 방금 받은 스냅샷이 TTL을 넘기기 전에 이 지자체의 구간을 바로 예측해, 다른 지자체 수집이 늦어져도 재호출이 없다.
+            for (target in group) {
+                val line = lineRepository.findById(target.lineId).orElse(null) ?: continue
+                val stop = stopRepository.findById(target.boardStopId).orElse(null) ?: continue
+                try {
+                    predictions += predictionProvider.predict(line, stop, target.directionCode).size
+                    legsPredicted++
+                } catch (e: KlidException) {
+                    log.warn(e) { "prediction failed for $stdgCd" }
+                    failed += stdgCd
+                    break
+                }
+            }
         }
 
         val signalStdgCds = collectSignalStdgCds()

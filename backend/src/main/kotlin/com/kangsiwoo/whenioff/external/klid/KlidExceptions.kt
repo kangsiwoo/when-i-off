@@ -13,3 +13,7 @@ class KlidGatewayException(
     val status: Int,
     val body: String,
 ) : KlidException("KLID gateway HTTP $status: ${body.take(200)}")
+
+class KlidNotConfiguredException(
+    baseUrl: String,
+) : KlidException("KLID service key is not configured for $baseUrl")

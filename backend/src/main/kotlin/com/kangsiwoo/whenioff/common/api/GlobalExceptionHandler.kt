@@ -25,6 +25,9 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     @ExceptionHandler(BadRequestException::class, IllegalArgumentException::class)
     fun handleBadRequest(e: RuntimeException): ProblemDetail = problem(HttpStatus.BAD_REQUEST, "Bad Request", e.message)
 
+    @ExceptionHandler(ConflictException::class)
+    fun handleConflict(e: ConflictException): ProblemDetail = problem(HttpStatus.CONFLICT, "Conflict", e.message)
+
     @ExceptionHandler(ConstraintViolationException::class)
     fun handleConstraintViolation(e: ConstraintViolationException): ProblemDetail =
         problem(HttpStatus.BAD_REQUEST, "Bad Request", "validation failed").apply {

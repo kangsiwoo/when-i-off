@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.kangsiwoo.whenioff.common.auth.ApiTokenFilter
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
+import com.kangsiwoo.whenioff.common.config.WioProperties
 import com.kangsiwoo.whenioff.route.domain.CommuteDirection
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import com.kangsiwoo.whenioff.route.domain.CommuteRouteRepository
@@ -30,6 +31,10 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import java.time.Instant
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -42,6 +47,8 @@ class TripApiTest {
     @Autowired lateinit var objectMapper: ObjectMapper
 
     @Autowired lateinit var jdbcTemplate: JdbcTemplate
+
+    @Autowired lateinit var properties: WioProperties
 
     @Autowired lateinit var userRepository: UserRepository
 
@@ -127,7 +134,7 @@ class TripApiTest {
         val history =
             mockMvc
                 .get("/api/v1/commute-trips") {
-                    header(ApiTokenFilter.HEADER, TOKEN)
+                    header(ApiTokenFilter.HEADER, properties.apiToken)
                     param("routeId", route.id.toString())
                     param("from", "2026-09-01")
                     param("to", "2026-09-30")
@@ -151,13 +158,13 @@ class TripApiTest {
             postJson("/api/v1/commute-trips", mapOf("routeId" to route.id, "tripDate" to date))
                 .andExpect { status { isCreated() } }
         }
-        val all = mockMvc.get("/api/v1/commute-trips") { header(ApiTokenFilter.HEADER, TOKEN) }.json()
+        val all = mockMvc.get("/api/v1/commute-trips") { header(ApiTokenFilter.HEADER, properties.apiToken) }.json()
         assertEquals(listOf("2026-09-03", "2026-09-02", "2026-09-01"), all.map { it["tripDate"].asText() })
 
         val ranged =
             mockMvc
                 .get("/api/v1/commute-trips") {
-                    header(ApiTokenFilter.HEADER, TOKEN)
+                    header(ApiTokenFilter.HEADER, properties.apiToken)
                     param("from", "2026-09-02")
                 }.json()
         assertEquals(listOf("2026-09-03", "2026-09-02"), ranged.map { it["tripDate"].asText() })
@@ -186,6 +193,58 @@ class TripApiTest {
             .andExpect { status { isBadRequest() } }
         postJson("/api/v1/commute-trips/$tripId/boarding-attempts", mapOf("routeLegId" to 999_999))
             .andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `boarding attempt creation rejects alightedAt before departure`() {
+        val tripId = createTrip()
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf(
+                "routeLegId" to transitLeg.id,
+                "vehicleActualDepartureAt" to "2026-09-20T22:41:30Z",
+                "alightedAt" to "2026-09-20T22:30:00Z",
+            ),
+        ).andExpect { status { isBadRequest() } }
+        assertEquals(0, jdbcTemplate.queryForObject("SELECT count(*) FROM boarding_attempts", Int::class.java))
+    }
+
+    @Test
+    fun `concurrent first upserts for the same leg produce one row and no 409`() {
+        val tripId = createTrip()
+        val body =
+            objectMapper.writeValueAsString(
+                mapOf("routeLegId" to transitLeg.id, "arrivedAtStopAt" to "2026-09-20T22:36:00Z"),
+            )
+        val workers = 4
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(workers)
+        val statuses =
+            try {
+                val futures =
+                    (1..workers).map {
+                        pool.submit(
+                            Callable {
+                                start.await()
+                                mockMvc
+                                    .post("/api/v1/commute-trips/$tripId/boarding-attempts") {
+                                        header(ApiTokenFilter.HEADER, properties.apiToken)
+                                        contentType = MediaType.APPLICATION_JSON
+                                        content = body
+                                    }.andReturn()
+                                    .response.status
+                            },
+                        )
+                    }
+                start.countDown()
+                futures.map { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+
+        assertEquals(1, statuses.count { it == 201 }, "$statuses")
+        assertEquals(workers - 1, statuses.count { it == 200 }, "$statuses")
+        assertEquals(1, jdbcTemplate.queryForObject("SELECT count(*) FROM boarding_attempts", Int::class.java))
     }
 
     @Test
@@ -314,7 +373,7 @@ class TripApiTest {
         body: Any,
     ): ResultActionsDsl =
         mockMvc.post(path) {
-            header(ApiTokenFilter.HEADER, TOKEN)
+            header(ApiTokenFilter.HEADER, properties.apiToken)
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
         }
@@ -324,7 +383,7 @@ class TripApiTest {
         body: Any,
     ): ResultActionsDsl =
         mockMvc.patch(path) {
-            header(ApiTokenFilter.HEADER, TOKEN)
+            header(ApiTokenFilter.HEADER, properties.apiToken)
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
         }
@@ -336,7 +395,6 @@ class TripApiTest {
     }
 
     private companion object {
-        const val TOKEN = "test-token"
         val BASE: Instant = Instant.parse("2026-09-20T22:30:00Z")
     }
 }

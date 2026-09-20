@@ -32,7 +32,6 @@ jobs:
       WIO_DB_URL: jdbc:postgresql://localhost:5432/when_i_off
       WIO_DB_USER: wio
       WIO_DB_PASSWORD: wio
-      WIO_API_TOKEN: ci-token
     defaults:
       run:
         working-directory: backend

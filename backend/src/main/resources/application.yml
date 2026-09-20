@@ -75,7 +75,7 @@ spring:
   flyway:
     clean-disabled: false
 wio:
-  api-token: ${WIO_API_TOKEN:test-token}
+  api-token: test-token
   polling:
     enabled: false
 logging:

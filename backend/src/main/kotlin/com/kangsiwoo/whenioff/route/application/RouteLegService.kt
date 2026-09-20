@@ -1,13 +1,13 @@
 package com.kangsiwoo.whenioff.route.application
 
 import com.kangsiwoo.whenioff.common.api.BadRequestException
+import com.kangsiwoo.whenioff.common.api.ConflictException
 import com.kangsiwoo.whenioff.common.api.NotFoundException
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
 import com.kangsiwoo.whenioff.route.api.CommuteRouteDetailResponse
 import com.kangsiwoo.whenioff.route.api.RouteLegRequest
 import com.kangsiwoo.whenioff.route.api.RouteLegResponse
 import com.kangsiwoo.whenioff.route.api.SignalCrossingRequest
-import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import com.kangsiwoo.whenioff.route.domain.LegType
 import com.kangsiwoo.whenioff.route.domain.RouteLeg
 import com.kangsiwoo.whenioff.route.domain.RouteLegRepository
@@ -41,18 +41,33 @@ class RouteLegService(
         val ordered = requests.sortedBy { it.seqOrder }
         validateSequence(ordered)
 
+        val existing = routeLegRepository.findByCommuteRouteOrderBySeqOrderAsc(route)
+        val matched = matchExisting(ordered, existing)
+        val kept = matched.values.toSet()
+        val removed = existing.filter { it !in kept }
+        val retyped = ordered.mapNotNull { req -> matched[req.seqOrder]?.takeIf { it.legType != req.legType } }
+        requireNoMeasurements(removed + retyped)
+
+        // 재정렬 중 (commute_route_id, seq_order) UNIQUE와 겹치지 않도록 유지되는 구간을 먼저 음수 seq_order로 비켜 둔다.
+        kept.forEach { it.seqOrder = -it.seqOrder }
+        routeLegRepository.flush()
+        routeLegRepository.deleteAllInBatch(removed)
+
         val lines = mutableMapOf<Long, TransitLine>()
         val stops = mutableMapOf<Long, TransitStop>()
         val legs =
             ordered.map { req ->
+                val leg =
+                    matched[req.seqOrder]
+                        ?: RouteLeg(commuteRoute = route, seqOrder = req.seqOrder, legType = req.legType)
+                leg.seqOrder = req.seqOrder
+                leg.legType = req.legType
                 when (req.legType) {
-                    LegType.WALK -> walkLeg(route, req)
-                    LegType.TRANSIT -> transitLeg(route, req, lines, stops)
+                    LegType.WALK -> applyWalk(leg, req)
+                    LegType.TRANSIT -> applyTransit(leg, req, lines, stops)
                 }
+                leg
             }
-
-        // 기존 구간과 seq_order UNIQUE가 겹치므로 삭제를 먼저 DB에 반영한 뒤 삽입한다.
-        routeLegRepository.deleteAllInBatch(routeLegRepository.findByCommuteRouteOrderBySeqOrderAsc(route))
         routeLegRepository.saveAllAndFlush(legs)
         return commuteRouteService.toDetail(route)
     }
@@ -127,10 +142,46 @@ class RouteLegService(
         }
     }
 
-    private fun walkLeg(
-        route: CommuteRoute,
+    // id가 온 항목은 그 구간을, 없는 항목은 seqOrder·legType이 같은 남은 구간을 제자리에서 고친다.
+    // 그래야 실측 기록이 붙은 route_leg_id가 구간 편집마다 바뀌지 않는다.
+    private fun matchExisting(
+        ordered: List<RouteLegRequest>,
+        existing: List<RouteLeg>,
+    ): Map<Int, RouteLeg> {
+        val byId = existing.associateBy { it.id!! }
+        val matched = mutableMapOf<Int, RouteLeg>()
+        val taken = mutableSetOf<Long>()
+        for (req in ordered) {
+            val id = req.id ?: continue
+            val leg = byId[id] ?: throw BadRequestException("leg ${req.seqOrder}: id $id is not a leg of this route")
+            if (!taken.add(id)) throw BadRequestException("leg id $id appears more than once")
+            matched[req.seqOrder] = leg
+        }
+        for (req in ordered) {
+            if (req.id != null) continue
+            val leg =
+                existing.firstOrNull { it.id !in taken && it.seqOrder == req.seqOrder && it.legType == req.legType }
+                    ?: continue
+            taken += leg.id!!
+            matched[req.seqOrder] = leg
+        }
+        return matched
+    }
+
+    private fun requireNoMeasurements(legs: List<RouteLeg>) {
+        if (legs.isEmpty()) return
+        val measured = routeLegRepository.findIdsWithMeasurements(legs.map { it.id!! }).sorted()
+        if (measured.isNotEmpty()) {
+            throw ConflictException(
+                "legs $measured have recorded trips and cannot be removed or retyped; send them back with their id",
+            )
+        }
+    }
+
+    private fun applyWalk(
+        leg: RouteLeg,
         req: RouteLegRequest,
-    ): RouteLeg {
+    ) {
         val prefix = "leg ${req.seqOrder} (WALK)"
         if (req.startLat == null || req.startLng == null || req.endLat == null || req.endLng == null) {
             throw BadRequestException("$prefix: startLat/startLng/endLat/endLng are required")
@@ -142,24 +193,23 @@ class RouteLegService(
         ) {
             throw BadRequestException("$prefix: transit fields must be empty")
         }
-        return RouteLeg(
-            commuteRoute = route,
-            seqOrder = req.seqOrder,
-            legType = LegType.WALK,
-            startLat = req.startLat,
-            startLng = req.startLng,
-            endLat = req.endLat,
-            endLng = req.endLng,
-            plannedDistanceM = req.plannedDistanceM,
-        )
+        leg.startLat = req.startLat
+        leg.startLng = req.startLng
+        leg.endLat = req.endLat
+        leg.endLng = req.endLng
+        leg.plannedDistanceM = req.plannedDistanceM
+        leg.transitLine = null
+        leg.boardStop = null
+        leg.alightStop = null
+        leg.plannedTravelSec = null
     }
 
-    private fun transitLeg(
-        route: CommuteRoute,
+    private fun applyTransit(
+        leg: RouteLeg,
         req: RouteLegRequest,
         lines: MutableMap<Long, TransitLine>,
         stops: MutableMap<Long, TransitStop>,
-    ): RouteLeg {
+    ) {
         val prefix = "leg ${req.seqOrder} (TRANSIT)"
         if (req.transitLineId == null ||
             req.boardStopId == null ||
@@ -188,15 +238,15 @@ class RouteLegService(
         if (board.mode != line.mode || alight.mode != line.mode) {
             throw BadRequestException("$prefix: stop mode must match the transit line mode ${line.mode}")
         }
-        return RouteLeg(
-            commuteRoute = route,
-            seqOrder = req.seqOrder,
-            legType = LegType.TRANSIT,
-            transitLine = line,
-            boardStop = board,
-            alightStop = alight,
-            plannedTravelSec = req.plannedTravelSec,
-        )
+        leg.transitLine = line
+        leg.boardStop = board
+        leg.alightStop = alight
+        leg.plannedTravelSec = req.plannedTravelSec
+        leg.startLat = null
+        leg.startLng = null
+        leg.endLat = null
+        leg.endLng = null
+        leg.plannedDistanceM = null
     }
 
     private fun stop(

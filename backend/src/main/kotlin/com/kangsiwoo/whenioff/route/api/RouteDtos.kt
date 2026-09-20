@@ -56,12 +56,13 @@ data class CommuteRouteDetailResponse(
 )
 
 data class RouteLegRequest(
+    val id: Long? = null,
     @field:Positive val seqOrder: Int,
     val legType: LegType,
-    val startLat: Double? = null,
-    val startLng: Double? = null,
-    val endLat: Double? = null,
-    val endLng: Double? = null,
+    @field:DecimalMin("-90.0") @field:DecimalMax("90.0") val startLat: Double? = null,
+    @field:DecimalMin("-180.0") @field:DecimalMax("180.0") val startLng: Double? = null,
+    @field:DecimalMin("-90.0") @field:DecimalMax("90.0") val endLat: Double? = null,
+    @field:DecimalMin("-180.0") @field:DecimalMax("180.0") val endLng: Double? = null,
     @field:Positive val plannedDistanceM: Double? = null,
     val transitLineId: Long? = null,
     val boardStopId: Long? = null,

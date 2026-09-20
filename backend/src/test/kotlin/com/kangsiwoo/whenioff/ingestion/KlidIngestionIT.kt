@@ -2,6 +2,7 @@ package com.kangsiwoo.whenioff.ingestion
 
 import com.kangsiwoo.whenioff.common.auth.ApiTokenFilter
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
+import com.kangsiwoo.whenioff.common.config.WioProperties
 import com.kangsiwoo.whenioff.polling.PollingCycleService
 import com.kangsiwoo.whenioff.route.domain.CommuteDirection
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
@@ -13,6 +14,7 @@ import com.kangsiwoo.whenioff.route.domain.RouteLegSignalCrossing
 import com.kangsiwoo.whenioff.route.domain.RouteLegSignalCrossingRepository
 import com.kangsiwoo.whenioff.signal.application.IntersectionSyncService
 import com.kangsiwoo.whenioff.signal.application.SignalStateIngestService
+import com.kangsiwoo.whenioff.signal.domain.TrafficSignal
 import com.kangsiwoo.whenioff.signal.domain.TrafficSignalRepository
 import com.kangsiwoo.whenioff.signal.domain.TrafficSignalStateRepository
 import com.kangsiwoo.whenioff.support.Fixtures
@@ -88,6 +90,8 @@ class KlidIngestionIT {
     @Autowired lateinit var crossingRepository: RouteLegSignalCrossingRepository
 
     @Autowired lateinit var mockMvc: MockMvc
+
+    @Autowired lateinit var properties: WioProperties
 
     @BeforeEach
     fun resetServer() {
@@ -212,7 +216,7 @@ class KlidIngestionIT {
 
         mockMvc
             .post("/api/v1/admin/sync/klid/bus-master") {
-                header(ApiTokenFilter.HEADER, "test-token")
+                header(ApiTokenFilter.HEADER, properties.apiToken)
                 param("stdgCd", HWASEONG)
             }.andExpect {
                 status { isOk() }
@@ -224,7 +228,7 @@ class KlidIngestionIT {
 
         mockMvc
             .post("/api/v1/admin/sync/klid/intersections") {
-                header(ApiTokenFilter.HEADER, "test-token")
+                header(ApiTokenFilter.HEADER, properties.apiToken)
                 param("stdgCd", SEOUL)
             }.andExpect {
                 status { isOk() }
@@ -233,7 +237,7 @@ class KlidIngestionIT {
 
         mockMvc
             .post("/api/v1/admin/sync/klid/intersections") {
-                header(ApiTokenFilter.HEADER, "test-token")
+                header(ApiTokenFilter.HEADER, properties.apiToken)
                 param("stdgCd", "seoul")
             }.andExpect { status { isBadRequest() } }
     }
@@ -250,11 +254,32 @@ class KlidIngestionIT {
 
         mockMvc
             .post("/api/v1/admin/sync/klid/bus-master") {
-                header(ApiTokenFilter.HEADER, "test-token")
+                header(ApiTokenFilter.HEADER, properties.apiToken)
                 param("stdgCd", HWASEONG)
             }.andExpect {
                 status { isBadGateway() }
                 jsonPath("$.detail") { value(org.hamcrest.Matchers.containsString("403")) }
+                jsonPath("$.klidResultCode") { value("HTTP403") }
+            }
+    }
+
+    @Test
+    fun `KLID result codes surface as 502 with klidResultCode`() {
+        dispatcher.responses["crsrd_map_info"] = {
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"header":{"resultCode":"K22","resultMsg":"LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"}}""",
+                )
+        }
+
+        mockMvc
+            .post("/api/v1/admin/sync/klid/intersections") {
+                header(ApiTokenFilter.HEADER, properties.apiToken)
+                param("stdgCd", SEOUL)
+            }.andExpect {
+                status { isBadGateway() }
+                jsonPath("$.klidResultCode") { value("K22") }
             }
     }
 
@@ -266,11 +291,64 @@ class KlidIngestionIT {
         val board = stop("HS-S002")
         val alight = stop("HS-S005")
         val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
-        val user = userRepository.findById(DefaultUser.ID).orElseThrow()
+        seedActiveRoute(line, board, alight, signal)
+        val inactive =
+            routeRepository.save(
+                CommuteRoute(user(), "옛 경로", CommuteDirection.TO_HOME, 0.0, 0.0, 0.0, 0.0, isActive = false),
+            )
+        legRepository.save(
+            RouteLeg(
+                commuteRoute = inactive,
+                seqOrder = 1,
+                legType = LegType.TRANSIT,
+                transitLine = line("HS-999"),
+                boardStop = board,
+                alightStop = alight,
+                plannedTravelSec = 600,
+            ),
+        )
+        val requestsBefore = server.requestCount
 
+        val result = cycleService.runCycle()
+
+        assertEquals(setOf(HWASEONG), result.busStdgCds)
+        assertEquals(1, result.legsPredicted)
+        assertEquals(1, result.predictions)
+        assertEquals(setOf(SEOUL), result.signalStdgCds)
+        assertEquals(6, result.signalStatesInserted)
+        assertEquals(emptySet(), result.failedStdgCds)
+        assertEquals(requestsBefore + 2, server.requestCount)
+        assertTrue(result.klidCallsToday >= 2)
+        assertNotNull(arrivalRepository.findAll().singleOrNull { it.stop.id == board.id })
+    }
+
+    @Test
+    fun `polling cycle marks a failed bus stdgCd and still ingests signals`() {
+        masterSync.syncBusMaster(HWASEONG)
+        intersectionSync.syncIntersections(SEOUL)
+        val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
+        seedActiveRoute(line("HS-101"), stop("HS-S002"), stop("HS-S005"), signal)
+        dispatcher.responses["rtm_loc_info"] = { MockResponse().setResponseCode(500).setBody("Internal Server Error") }
+
+        val result = cycleService.runCycle()
+
+        assertEquals(setOf(HWASEONG), result.failedStdgCds)
+        assertEquals(0, result.legsPredicted)
+        assertEquals(setOf(SEOUL), result.signalStdgCds)
+        assertEquals(6, result.signalStatesInserted)
+    }
+
+    private fun user() = userRepository.findById(DefaultUser.ID).orElseThrow()
+
+    private fun seedActiveRoute(
+        line: TransitLine,
+        board: TransitStop,
+        alight: TransitStop,
+        signal: TrafficSignal,
+    ) {
         val route =
             routeRepository.save(
-                CommuteRoute(user, "출근", CommuteDirection.TO_WORK, 37.2000, 127.0700, 37.5696, 126.9773),
+                CommuteRoute(user(), "출근", CommuteDirection.TO_WORK, 37.2000, 127.0700, 37.5696, 126.9773),
             )
         val walk =
             legRepository.save(
@@ -297,34 +375,6 @@ class KlidIngestionIT {
             ),
         )
         crossingRepository.save(RouteLegSignalCrossing(walk, signal, 1, "nt", "Pd"))
-        val inactive =
-            routeRepository.save(
-                CommuteRoute(user, "옛 경로", CommuteDirection.TO_HOME, 0.0, 0.0, 0.0, 0.0, isActive = false),
-            )
-        legRepository.save(
-            RouteLeg(
-                commuteRoute = inactive,
-                seqOrder = 1,
-                legType = LegType.TRANSIT,
-                transitLine = line("HS-999"),
-                boardStop = board,
-                alightStop = alight,
-                plannedTravelSec = 600,
-            ),
-        )
-        val requestsBefore = server.requestCount
-
-        val result = cycleService.runCycle()
-
-        assertEquals(setOf(HWASEONG), result.busStdgCds)
-        assertEquals(1, result.legsPredicted)
-        assertEquals(1, result.predictions)
-        assertEquals(setOf(SEOUL), result.signalStdgCds)
-        assertEquals(6, result.signalStatesInserted)
-        assertEquals(emptySet(), result.failedStdgCds)
-        assertEquals(requestsBefore + 2, server.requestCount)
-        assertTrue(result.klidCallsToday >= 2)
-        assertNotNull(arrivalRepository.findAll().singleOrNull { it.stop.id == board.id })
     }
 
     private fun line(rteId: String): TransitLine =

@@ -59,6 +59,15 @@ class KlidHttpClientTest {
     }
 
     @Test
+    fun `blank service key fails fast without calling the gateway`() {
+        val unconfigured = WioProperties.Endpoint(server.url("/rte").toString(), "")
+
+        assertThrows<KlidNotConfiguredException> { client.fetchAll(unconfigured, "mst_info", "4159000000") }
+        assertEquals(0, server.requestCount)
+        assertEquals(0, counter.todayCount())
+    }
+
+    @Test
     fun `NODATA K3 without body yields an empty list`() {
         server.enqueue(Fixtures.json("klid/tl_drct_info_nodata.json"))
 

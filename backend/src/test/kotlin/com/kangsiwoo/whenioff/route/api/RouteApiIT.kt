@@ -2,6 +2,7 @@ package com.kangsiwoo.whenioff.route.api
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.kangsiwoo.whenioff.common.config.WioProperties
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -31,8 +32,9 @@ class RouteApiIT
         private val mockMvc: MockMvc,
         private val objectMapper: ObjectMapper,
         private val jdbcTemplate: JdbcTemplate,
+        private val properties: WioProperties,
     ) {
-        private val token = "test-token"
+        private val token get() = properties.apiToken
 
         // 서울시청 근처. 정류장/신호등 좌표는 여기서 동/북으로 조금씩 떨어진 지점을 쓴다.
         private val baseLat = 37.5665
@@ -221,6 +223,113 @@ class RouteApiIT
             assertEquals(1, after["legs"][0]["signalCrossings"].size())
         }
 
+        @Test
+        fun `replacing legs keeps leg ids, crossings and measured history`() {
+            val lineId = createLine("BUS", "1234", "L-3")
+            val boardId = createStop("BUS", "board", baseLat + 0.002, baseLng)
+            val alightId = createStop("BUS", "alight", baseLat + 0.02, baseLng)
+            val signalId = createSignal(baseLat + 0.001, baseLng)
+            val routeId = createRoute()
+            val legs =
+                listOf(
+                    walk(1, baseLat, baseLng, baseLat + 0.002, baseLng),
+                    transit(2, lineId, boardId, alightId),
+                    walk(3, baseLat + 0.02, baseLng, baseLat + 0.021, baseLng),
+                )
+            val ids = putLegs(routeId, legs)["legs"].map { it["id"].asLong() }
+            val crossings =
+                mapOf(
+                    "crossings" to listOf(mapOf("trafficSignalId" to signalId, "seqOrder" to 1, "approachDir" to "nt")),
+                )
+            mockMvc
+                .perform(put("/api/v1/route-legs/${ids[0]}/signal-crossings").json(crossings))
+                .andExpect(status().isOk)
+            val tripId =
+                postJson(
+                    "/api/v1/commute-trips",
+                    mapOf("routeId" to routeId, "tripDate" to "2026-09-21"),
+                )["id"]
+            postJson(
+                "/api/v1/commute-trips/$tripId/boarding-attempts",
+                mapOf("routeLegId" to ids[1], "arrivedAtStopAt" to "2026-09-20T22:36:00Z"),
+            )
+
+            // id 없이 같은 구조를 다시 보내면 seqOrder+legType으로 기존 구간을 제자리에서 고친다.
+            val tweaked = listOf(legs[0], legs[1] + ("plannedTravelSec" to 2500), legs[2])
+            val after = putLegs(routeId, tweaked.reversed())
+            assertEquals(ids, after["legs"].map { it["id"].asLong() })
+            assertEquals(2500, after["legs"][1]["plannedTravelSec"].asInt())
+            assertEquals(1, after["legs"][0]["signalCrossings"].size())
+            assertEquals(1, boardingAttemptCount())
+
+            // id로 재정렬: 양끝 WALK를 서로 바꿔도 UNIQUE 충돌 없이 id와 crossing이 따라간다.
+            val swapped =
+                listOf(
+                    legs[0] + ("id" to ids[2]),
+                    legs[1] + ("id" to ids[1]),
+                    legs[2] + ("id" to ids[0]),
+                )
+            val reordered = putLegs(routeId, swapped)
+            assertEquals(listOf(ids[2], ids[1], ids[0]), reordered["legs"].map { it["id"].asLong() })
+            assertEquals(listOf(1, 2, 3), reordered["legs"].map { it["seqOrder"].asInt() })
+            assertEquals(1, reordered["legs"][2]["signalCrossings"].size())
+            assertEquals(1, boardingAttemptCount())
+
+            // 실측 기록이 붙은 TRANSIT 구간을 빼는 교체는 409, 다른 경로의 구간 id는 400. 어느 쪽도 데이터를 건드리지 않는다.
+            mockMvc
+                .perform(
+                    put(
+                        "/api/v1/commute-routes/$routeId/legs",
+                    ).json(mapOf("legs" to listOf(legs[0] + ("id" to ids[0])))),
+                ).andExpect(status().isConflict)
+                .andExpect(jsonPath("$.detail").value(containsString(ids[1].toString())))
+            val otherRouteId = createRoute()
+            mockMvc
+                .perform(
+                    put("/api/v1/commute-routes/$otherRouteId/legs").json(
+                        mapOf("legs" to listOf(legs[0] + ("id" to ids[0]))),
+                    ),
+                ).andExpect(status().isBadRequest)
+            assertEquals(1, boardingAttemptCount())
+            assertEquals(
+                3,
+                jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM route_legs WHERE commute_route_id = ?",
+                    Int::class.java,
+                    routeId,
+                ),
+            )
+        }
+
+        @Test
+        fun `walk coordinates outside WGS84 are rejected with 400`() {
+            val routeId = createRoute()
+            mockMvc
+                .perform(
+                    put("/api/v1/commute-routes/$routeId/legs").json(
+                        mapOf("legs" to listOf(walk(1, 999.0, baseLng, baseLat, baseLng))),
+                    ),
+                ).andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errors[0]").value(containsString("startLat")))
+        }
+
+        private fun putLegs(
+            routeId: Long,
+            legs: List<Map<String, Any>>,
+        ): JsonNode {
+            val response =
+                mockMvc
+                    .perform(put("/api/v1/commute-routes/$routeId/legs").json(mapOf("legs" to legs)))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            return objectMapper.readTree(response)
+        }
+
+        private fun boardingAttemptCount(): Int =
+            jdbcTemplate.queryForObject("SELECT count(*) FROM boarding_attempts", Int::class.java)!!
+
         private fun MockHttpServletRequestBuilder.authed(): MockHttpServletRequestBuilder = header("X-Api-Token", token)
 
         private fun MockHttpServletRequestBuilder.json(body: Any): MockHttpServletRequestBuilder =
@@ -298,26 +407,28 @@ class RouteApiIT
             startLng: Double,
             endLat: Double,
             endLng: Double,
-        ) = mapOf(
-            "seqOrder" to seq,
-            "legType" to "WALK",
-            "startLat" to startLat,
-            "startLng" to startLng,
-            "endLat" to endLat,
-            "endLng" to endLng,
-        )
+        ): Map<String, Any> =
+            mapOf(
+                "seqOrder" to seq,
+                "legType" to "WALK",
+                "startLat" to startLat,
+                "startLng" to startLng,
+                "endLat" to endLat,
+                "endLng" to endLng,
+            )
 
         private fun transit(
             seq: Int,
             lineId: Long,
             boardId: Long,
             alightId: Long,
-        ) = mapOf(
-            "seqOrder" to seq,
-            "legType" to "TRANSIT",
-            "transitLineId" to lineId,
-            "boardStopId" to boardId,
-            "alightStopId" to alightId,
-            "plannedTravelSec" to 900,
-        )
+        ): Map<String, Any> =
+            mapOf(
+                "seqOrder" to seq,
+                "legType" to "TRANSIT",
+                "transitLineId" to lineId,
+                "boardStopId" to boardId,
+                "alightStopId" to alightId,
+                "plannedTravelSec" to 900,
+            )
     }

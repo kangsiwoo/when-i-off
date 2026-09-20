@@ -53,6 +53,11 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // 통합 테스트는 실제 DB에 붙으므로 빌드 캐시에서 결과를 되살리지 않고, 접속 환경이 바뀌면 다시 돈다.
+    outputs.cacheIf { false }
+    listOf("WIO_DB_URL", "WIO_DB_USER", "WIO_DB_PASSWORD").forEach { name ->
+        inputs.property(name, providers.environmentVariable(name)).optional(true)
+    }
     testLogging {
         events("passed", "skipped", "failed")
     }

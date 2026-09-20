@@ -13,11 +13,27 @@ private val log = KotlinLogging.logger {}
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class KlidExceptionAdvice {
+    @ExceptionHandler(KlidNotConfiguredException::class)
+    fun handleNotConfigured(e: KlidNotConfiguredException): ProblemDetail {
+        log.error { e.message }
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable", e.message)
+    }
+
     @ExceptionHandler(KlidException::class)
     fun handleKlid(e: KlidException): ProblemDetail {
         log.warn(e) { "KLID upstream failure" }
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, e.message ?: "KLID upstream failure").apply {
-            title = "Bad Gateway"
+        return problem(HttpStatus.BAD_GATEWAY, "Bad Gateway", e.message).apply {
+            when (e) {
+                is KlidApiException -> setProperty("klidResultCode", e.resultCode)
+                is KlidGatewayException -> setProperty("klidResultCode", "HTTP${e.status}")
+                is KlidNotConfiguredException -> Unit
+            }
         }
     }
+
+    private fun problem(
+        status: HttpStatus,
+        title: String,
+        detail: String?,
+    ): ProblemDetail = ProblemDetail.forStatusAndDetail(status, detail ?: title).apply { this.title = title }
 }
