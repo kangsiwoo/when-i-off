@@ -13,7 +13,7 @@
 
 ## 설계 문서
 
-아직 코드는 없고 설계 문서/스키마만 있는 단계.
+backend MVP(#10) 진행 중. 실행/테스트 방법은 [backend/README.md](backend/README.md).
 
 - [아키텍처 개요](docs/ARCHITECTURE.md)
 - [데이터 모델](docs/DATA_MODEL.md) / [DB 스키마](docs/db/schema.sql)
