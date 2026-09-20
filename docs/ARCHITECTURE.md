@@ -112,7 +112,9 @@ KLID와 게이트웨이·인증 방식(`serviceKey` 인코딩 규칙 포함, 아
 봉투 구조가 다르다: TAGO는 `{"response":{"header":{resultCode,resultMsg},"body":{totalCount,pageNo,numOfRows,"items":{"item":[…]}}}}`
 로 **`response` 래퍼가 있다** (KLID는 없음). `resultCode`는 `"00"`이 정상이고(KLID의 `K0`과
 다름), 데이터 없음도 에러 없이 `totalCount=0`으로 온다(KLID처럼 별도 NODATA 코드가 없음).
-`numOfRows` 페이지네이션은 동일하게 지원한다.
+`numOfRows` 페이지네이션은 동일하게 지원한다. 응답 포맷 파라미터 이름은 KLID의 `type`이 아니라
+`_type`(`_type=json`)이고, 조회 필터도 `stdgCd` 하나가 아니라 오퍼레이션별로 다르다
+(`cityCode`+`routeNo` / `cityCode`+`routeId` / `cityCode`+`nodeId`+`routeId`).
 
 ### 왜 KLID(신호등)인가
 행정안전부·한국지역정보개발원(KLID)의 **전국통합데이터**가 신호등 실시간 잔여시간을

@@ -137,10 +137,12 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
   그대로 입력한다. 구현된 마스터 동기화 두 개(`bus-route`, `intersections`)는 필수 파라미터가
   있고, 계약 단계인 폴링 1회 실행은 생략 시 활성 경로에서 계산한 대상 전부에 대해 실행
 - 응답(동기, 구현): 잡별 카운트 객체 `{ "fetched", "created", "updated", "skipped" }`를 대상 테이블마다 돌려준다.
-  `bus-route` → `{ "cityCode": "...", "routeId": "...", "lines": {…}, "stops": {…}, "lineStops": {…} }`,
+  `bus-route` → `{ "cityCode": "...", "routeNo": "...", "routeIds": ["..."], "lines": {…}, "stops": {…}, "lineStops": {…} }`,
   `intersections` → `{ "stdgCd": "1100000000", "intersections": {…} }`.
   `bus-route`가 `routeNo`에 매칭되는 TAGO 노선을 못 찾으면(`totalCount=0`) `404`, 여러 개 매칭되면
-  (같은 도시에 같은 번호가 지선/직행 등으로 여러 개인 경우) 전부 등록하고 응답에 각각의 `routeId`를 나열
+  (같은 도시에 같은 번호가 지선/직행 등으로 여러 개인 경우) 전부 등록하고 `routeIds`에 각각의 `routeId`를
+  나열한다 — 이때 카운트는 매칭된 노선 전체의 합계다. `getRouteNoList`는 부분일치도 돌려주므로
+  번호가 정확히 같은 노선만 등록하고, 정확히 같은 것이 하나도 없을 때만 검색 결과를 그대로 쓴다
 - upsert 키: 노선 `(mode, stdgCd, externalId)` = `(BUS, cityCode, routeId)`, 정류장
   `(mode, stdgCd, externalId)` = `(BUS, cityCode, nodeId)`, 교차로 `(stdgCd, crsrdId)` (KLID, 이전과 동일).
   `stdgCd` 컬럼에 버스는 TAGO `cityCode`, 신호등은 KLID 법정동 코드가 들어가므로 값의 코드

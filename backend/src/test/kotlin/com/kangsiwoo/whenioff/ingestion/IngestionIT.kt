@@ -18,12 +18,10 @@ import com.kangsiwoo.whenioff.signal.domain.TrafficSignal
 import com.kangsiwoo.whenioff.signal.domain.TrafficSignalRepository
 import com.kangsiwoo.whenioff.signal.domain.TrafficSignalStateRepository
 import com.kangsiwoo.whenioff.support.Fixtures
-import com.kangsiwoo.whenioff.support.KlidFixtureDispatcher
-import com.kangsiwoo.whenioff.transit.application.BusPositionSnapshotCache
-import com.kangsiwoo.whenioff.transit.application.KlidMasterSyncService
-import com.kangsiwoo.whenioff.transit.application.KlidPositionEtaProvider
+import com.kangsiwoo.whenioff.support.PublicDataFixtureDispatcher
 import com.kangsiwoo.whenioff.transit.application.LegDirectionResolver
-import com.kangsiwoo.whenioff.transit.domain.BusPositionObservationRepository
+import com.kangsiwoo.whenioff.transit.application.TagoArrivalPredictionProvider
+import com.kangsiwoo.whenioff.transit.application.TagoMasterSyncService
 import com.kangsiwoo.whenioff.transit.domain.TransitArrivalObservationRepository
 import com.kangsiwoo.whenioff.transit.domain.TransitLine
 import com.kangsiwoo.whenioff.transit.domain.TransitLineRepository
@@ -50,20 +48,19 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** TAGO(버스) + KLID(신호등) 수집 경로를 MockWebServer fixture로 함께 확인한다. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
-class KlidIngestionIT {
-    @Autowired lateinit var masterSync: KlidMasterSyncService
+class IngestionIT {
+    @Autowired lateinit var masterSync: TagoMasterSyncService
 
     @Autowired lateinit var intersectionSync: IntersectionSyncService
 
     @Autowired lateinit var signalIngest: SignalStateIngestService
 
-    @Autowired lateinit var etaProvider: KlidPositionEtaProvider
-
-    @Autowired lateinit var snapshotCache: BusPositionSnapshotCache
+    @Autowired lateinit var arrivalProvider: TagoArrivalPredictionProvider
 
     @Autowired lateinit var directionResolver: LegDirectionResolver
 
@@ -72,8 +69,6 @@ class KlidIngestionIT {
     @Autowired lateinit var lineRepository: TransitLineRepository
 
     @Autowired lateinit var stopRepository: TransitStopRepository
-
-    @Autowired lateinit var positionRepository: BusPositionObservationRepository
 
     @Autowired lateinit var arrivalRepository: TransitArrivalObservationRepository
 
@@ -96,76 +91,95 @@ class KlidIngestionIT {
     @BeforeEach
     fun resetServer() {
         dispatcher.reset()
-        snapshotCache.clear()
     }
 
     @Test
-    fun `syncBusMaster upserts lines stops and line stops idempotently`() {
-        val first = masterSync.syncBusMaster(HWASEONG)
+    fun `syncBusRoute upserts lines stops and line stops idempotently`() {
+        val first = masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
 
-        assertEquals(2, first.lines.created)
+        // 검색 결과의 1001-1은 번호가 정확히 같지 않아 제외된다.
+        assertEquals(listOf("GGB1001"), first.routeIds)
+        assertEquals(1, first.lines.created)
         assertEquals(6, first.stops.created)
         assertEquals(6, first.lineStops.created)
 
-        val second = masterSync.syncBusMaster(HWASEONG)
+        val second = masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
 
         assertEquals(0, second.lines.created + second.lines.updated)
         assertEquals(0, second.stops.created + second.stops.updated)
         assertEquals(0, second.lineStops.created + second.lineStops.updated)
-        assertEquals(2, lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
+        assertEquals(1, lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
         assertEquals(6, stopRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
     }
 
     @Test
-    fun `predict projects vehicles onto the line polyline and persists observations`() {
-        masterSync.syncBusMaster(HWASEONG)
-        val line = line("HS-101")
-        val boardStop = stop("HS-S004")
-        val requestsBefore = server.requestCount
+    fun `syncBusRoute registers every route sharing the same route number`() {
+        dispatcher.responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_multi.json") }
 
-        val predictions = etaProvider.predict(line, boardStop, "0")
+        val result = masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
 
-        assertEquals(1, predictions.size)
-        val prediction = predictions.single()
-        assertEquals("경기70아1001", prediction.vehicleNo)
-        val positionAt = Instant.parse("2026-09-19T23:15:30Z")
-        assertTrue(
-            prediction.predictedArrivalAt in positionAt.plusSeconds(100)..positionAt.plusSeconds(108),
-            "${prediction.predictedArrivalAt}",
-        )
-        assertEquals(requestsBefore + 1, server.requestCount)
-
-        val positions = positionRepository.findAll().filter { it.transitLine.id == line.id }
-        assertEquals(setOf("경기70아1001", "경기70아1002"), positions.map { it.vehicleNo }.toSet())
-        assertEquals(30.0, positions.first { it.vehicleNo == "경기70아1001" }.speedKmh)
-        assertTrue(positions.first().raw.contains("\"gthrDt\""))
-        val arrivals = arrivalRepository.findAll().filter { it.transitLine.id == line.id }
-        assertEquals(1, arrivals.size)
-        assertEquals(KlidPositionEtaProvider.SOURCE, arrivals.single().source)
-        assertEquals(boardStop.id, arrivals.single().stop.id)
-
-        etaProvider.predict(line, boardStop, "0")
-
-        assertEquals(requestsBefore + 1, server.requestCount)
-        assertEquals(2, positionRepository.findAll().count { it.transitLine.id == line.id })
-        assertEquals(2, arrivalRepository.findAll().count { it.transitLine.id == line.id })
+        assertEquals(listOf("GGB1001", "GGB1001B"), result.routeIds.sorted())
+        assertEquals(2, result.lines.created)
+        assertEquals(6, result.stops.created)
+        assertEquals(12, result.lineStops.created)
     }
 
     @Test
-    fun `predict returns nothing when the board stop is not on the requested direction`() {
-        masterSync.syncBusMaster(HWASEONG)
+    fun `syncBusRoute returns no routeIds when the number matches nothing`() {
+        dispatcher.responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_empty.json") }
 
-        assertEquals(emptyList(), etaProvider.predict(line("HS-101"), stop("HS-S004"), "1"))
+        val result = masterSync.syncBusRoute(HWASEONG, "9999")
+
+        assertEquals(emptyList(), result.routeIds)
+        assertEquals(0, result.lines.created)
+    }
+
+    @Test
+    fun `predict turns arrtime into a predicted arrival and stores an observation without a vehicle number`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
+        val line = line("GGB1001")
+        val boardStop = stop("GGB-S002")
+        val requestsBefore = server.requestCount
+
+        val predictions = arrivalProvider.predict(line, boardStop, "0")
+
+        assertEquals(2, predictions.size)
+        assertEquals(listOf(null, null), predictions.map { it.vehicleNo })
+        val observedAt = predictions.first().observedAt
+        assertEquals(
+            listOf(observedAt.plusSeconds(180), observedAt.plusSeconds(620)),
+            predictions.map { it.predictedArrivalAt },
+        )
+        assertEquals(requestsBefore + 1, server.requestCount)
+
+        val arrivals = arrivalRepository.findAll().filter { it.transitLine.id == line.id }
+        assertEquals(2, arrivals.size)
+        assertEquals(setOf(TagoArrivalPredictionProvider.SOURCE), arrivals.map { it.source }.toSet())
+        assertEquals(setOf(boardStop.id), arrivals.map { it.stop.id }.toSet())
+        assertTrue(arrivals.all { it.vehicleNo == null })
+    }
+
+    @Test
+    fun `predict returns nothing when the line or stop has no TAGO id`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
+        val line = line("GGB1001")
+        val boardStop = stop("GGB-S002")
+        val requestsBefore = server.requestCount
+        line.externalId = null
+
+        assertEquals(emptyList(), arrivalProvider.predict(line, boardStop, "0"))
+        assertEquals(requestsBefore, server.requestCount)
     }
 
     @Test
     fun `direction resolver picks the direction where the alight stop follows the board stop`() {
-        masterSync.syncBusMaster(HWASEONG)
-        val line = line("HS-101")
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
+        val line = line("GGB1001")
 
-        assertEquals("0", directionResolver.resolve(line.id!!, stop("HS-S002").id!!, stop("HS-S005").id))
-        assertEquals("0", directionResolver.resolve(line.id!!, stop("HS-S002").id!!, null))
-        assertNull(directionResolver.resolve(line("HS-999").id!!, stop("HS-S002").id!!, null))
+        assertEquals("0", directionResolver.resolve(line.id!!, stop("GGB-S002").id!!, stop("GGB-S005").id))
+        assertEquals("0", directionResolver.resolve(line.id!!, stop("GGB-S002").id!!, null))
+        // 경유 정류소가 등록되지 않은 노선이면 방향을 못 고른다.
+        assertNull(directionResolver.resolve(UNKNOWN_LINE_ID, stop("GGB-S002").id!!, null))
     }
 
     @Test
@@ -209,19 +223,21 @@ class KlidIngestionIT {
     @Test
     fun `admin sync endpoints are token protected and return counts`() {
         mockMvc
-            .post(
-                "/api/v1/admin/sync/klid/bus-master",
-            ) { param("stdgCd", HWASEONG) }
-            .andExpect { status { isUnauthorized() } }
+            .post("/api/v1/admin/sync/tago/bus-route") {
+                param("cityCode", HWASEONG)
+                param("routeNo", ROUTE_NO)
+            }.andExpect { status { isUnauthorized() } }
 
         mockMvc
-            .post("/api/v1/admin/sync/klid/bus-master") {
+            .post("/api/v1/admin/sync/tago/bus-route") {
                 header(ApiTokenFilter.HEADER, properties.apiToken)
-                param("stdgCd", HWASEONG)
+                param("cityCode", HWASEONG)
+                param("routeNo", ROUTE_NO)
             }.andExpect {
                 status { isOk() }
-                jsonPath("$.stdgCd") { value(HWASEONG) }
-                jsonPath("$.lines.created") { value(2) }
+                jsonPath("$.cityCode") { value(HWASEONG) }
+                jsonPath("$.routeIds[0]") { value("GGB1001") }
+                jsonPath("$.lines.created") { value(1) }
                 jsonPath("$.stops.created") { value(6) }
                 jsonPath("$.lineStops.created") { value(6) }
             }
@@ -243,23 +259,36 @@ class KlidIngestionIT {
     }
 
     @Test
-    fun `gateway errors surface as 502 problem details`() {
-        dispatcher.responses["mst_info"] = {
+    fun `bus-route answers 404 when TAGO has no route with that number`() {
+        dispatcher.responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_empty.json") }
+
+        mockMvc
+            .post("/api/v1/admin/sync/tago/bus-route") {
+                header(ApiTokenFilter.HEADER, properties.apiToken)
+                param("cityCode", HWASEONG)
+                param("routeNo", "9999")
+            }.andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `TAGO gateway errors surface as 502 with tagoResultCode`() {
+        dispatcher.responses["getRouteNoList"] = {
             MockResponse()
                 .setResponseCode(
                     403,
                 ).setHeader("Content-Type", "text/plain")
-                .setBody(Fixtures.read("klid/gateway_forbidden.txt"))
+                .setBody(Fixtures.read("tago/gateway_forbidden.txt"))
         }
 
         mockMvc
-            .post("/api/v1/admin/sync/klid/bus-master") {
+            .post("/api/v1/admin/sync/tago/bus-route") {
                 header(ApiTokenFilter.HEADER, properties.apiToken)
-                param("stdgCd", HWASEONG)
+                param("cityCode", HWASEONG)
+                param("routeNo", ROUTE_NO)
             }.andExpect {
                 status { isBadGateway() }
                 jsonPath("$.detail") { value(org.hamcrest.Matchers.containsString("403")) }
-                jsonPath("$.klidResultCode") { value("HTTP403") }
+                jsonPath("$.tagoResultCode") { value("HTTP403") }
             }
     }
 
@@ -284,12 +313,12 @@ class KlidIngestionIT {
     }
 
     @Test
-    fun `polling cycle fetches each stdgCd once and covers active routes only`() {
-        masterSync.syncBusMaster(HWASEONG)
+    fun `polling cycle covers active routes only and calls TAGO once per leg`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
         intersectionSync.syncIntersections(SEOUL)
-        val line = line("HS-101")
-        val board = stop("HS-S002")
-        val alight = stop("HS-S005")
+        val line = line("GGB1001")
+        val board = stop("GGB-S002")
+        val alight = stop("GGB-S005")
         val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
         seedActiveRoute(line, board, alight, signal)
         val inactive =
@@ -301,7 +330,7 @@ class KlidIngestionIT {
                 commuteRoute = inactive,
                 seqOrder = 1,
                 legType = LegType.TRANSIT,
-                transitLine = line("HS-999"),
+                transitLine = line,
                 boardStop = board,
                 alightStop = alight,
                 plannedTravelSec = 600,
@@ -311,28 +340,31 @@ class KlidIngestionIT {
 
         val result = cycleService.runCycle()
 
-        assertEquals(setOf(HWASEONG), result.busStdgCds)
+        assertEquals(setOf(HWASEONG), result.busCityCodes)
         assertEquals(1, result.legsPredicted)
-        assertEquals(1, result.predictions)
+        assertEquals(2, result.predictions)
         assertEquals(setOf(SEOUL), result.signalStdgCds)
         assertEquals(6, result.signalStatesInserted)
-        assertEquals(emptySet(), result.failedStdgCds)
+        assertEquals(emptySet(), result.failedCodes)
         assertEquals(requestsBefore + 2, server.requestCount)
-        assertTrue(result.klidCallsToday >= 2)
-        assertNotNull(arrivalRepository.findAll().singleOrNull { it.stop.id == board.id })
+        assertTrue(result.tagoCallsToday >= 1)
+        assertTrue(result.klidCallsToday >= 1)
+        assertNotNull(arrivalRepository.findAll().firstOrNull { it.stop.id == board.id })
     }
 
     @Test
-    fun `polling cycle marks a failed bus stdgCd and still ingests signals`() {
-        masterSync.syncBusMaster(HWASEONG)
+    fun `polling cycle marks a failed bus cityCode and still ingests signals`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
         intersectionSync.syncIntersections(SEOUL)
         val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
-        seedActiveRoute(line("HS-101"), stop("HS-S002"), stop("HS-S005"), signal)
-        dispatcher.responses["rtm_loc_info"] = { MockResponse().setResponseCode(500).setBody("Internal Server Error") }
+        seedActiveRoute(line("GGB1001"), stop("GGB-S002"), stop("GGB-S005"), signal)
+        dispatcher.responses["getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList"] = {
+            MockResponse().setResponseCode(500).setBody("Internal Server Error")
+        }
 
         val result = cycleService.runCycle()
 
-        assertEquals(setOf(HWASEONG), result.failedStdgCds)
+        assertEquals(setOf(HWASEONG), result.failedCodes)
         assertEquals(0, result.legsPredicted)
         assertEquals(setOf(SEOUL), result.signalStdgCds)
         assertEquals(6, result.signalStatesInserted)
@@ -377,17 +409,20 @@ class KlidIngestionIT {
         crossingRepository.save(RouteLegSignalCrossing(walk, signal, 1, "nt", "Pd"))
     }
 
-    private fun line(rteId: String): TransitLine =
-        lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).single { it.externalId == rteId }
+    private fun line(routeId: String): TransitLine =
+        lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).single { it.externalId == routeId }
 
-    private fun stop(bstaId: String): TransitStop =
-        stopRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).single { it.externalId == bstaId }
+    private fun stop(nodeId: String): TransitStop =
+        stopRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).single { it.externalId == nodeId }
 
     companion object {
-        const val HWASEONG = "4159000000"
+        /** TAGO cityCode (KLID stdgCd와 코드 체계가 다르다 — fixture 값). */
+        const val HWASEONG = "31240"
+        const val ROUTE_NO = "1001"
         const val SEOUL = "1100000000"
+        const val UNKNOWN_LINE_ID = -1L
 
-        val dispatcher = KlidFixtureDispatcher()
+        val dispatcher = PublicDataFixtureDispatcher()
         val server: MockWebServer =
             MockWebServer().apply {
                 dispatcher = this@Companion.dispatcher
@@ -396,10 +431,17 @@ class KlidIngestionIT {
 
         @JvmStatic
         @DynamicPropertySource
-        fun klidProperties(registry: DynamicPropertyRegistry) {
-            registry.add("wio.klid.bus.base-url") { server.url("/rte").toString().trimEnd('/') }
+        fun externalApiProperties(registry: DynamicPropertyRegistry) {
+            registry.add("wio.tago.route-info-base-url") {
+                server.url("/BusRouteInfoInqireService").toString().trimEnd('/')
+            }
+            registry.add("wio.tago.arrival-info-base-url") {
+                server.url("/ArvlInfoInqireService").toString().trimEnd('/')
+            }
+            registry.add("wio.tago.service-key") { "test+key/=" }
+            registry.add("wio.tago.max-retries") { "1" }
+            registry.add("wio.tago.retry-backoff") { "1ms" }
             registry.add("wio.klid.signal.base-url") { server.url("/rti").toString().trimEnd('/') }
-            registry.add("wio.klid.bus.service-key") { "test+key/=" }
             registry.add("wio.klid.signal.service-key") { "test+key/=" }
             registry.add("wio.klid.max-retries") { "1" }
             registry.add("wio.klid.retry-backoff") { "1ms" }

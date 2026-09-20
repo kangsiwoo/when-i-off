@@ -64,7 +64,13 @@ class TagoMasterSyncService(
         cityCode: String,
         routeNo: String,
     ): List<TagoRoute> {
-        val routes = routeApi.getRouteNoList(cityCode, routeNo).filter { it.routeId.isNotBlank() }.distinctBy { it.routeId }
+        val routes =
+            routeApi
+                .getRouteNoList(
+                    cityCode,
+                    routeNo,
+                ).filter { it.routeId.isNotBlank() }
+                .distinctBy { it.routeId }
         val exact = routes.filter { it.routeNo.trim() == routeNo.trim() }
         return exact.ifEmpty { routes }
     }
