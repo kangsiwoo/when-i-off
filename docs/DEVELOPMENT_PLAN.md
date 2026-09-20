@@ -1,5 +1,9 @@
 # 개발 계획
 
+각 Phase는 GitHub 이슈 #2~#8로 등록되어 있다. 작업 흐름(이슈 → 브랜치 → PR → 리뷰 → 머지)은
+[CONVENTIONS.md](./CONVENTIONS.md)를 따른다. Phase 이슈는 상위 이슈로 두고, 실제 작업은
+PR 하나 크기의 하위 이슈로 쪼개서 진행한다.
+
 ## 원칙
 
 - **수집이 먼저다.** 이 프로젝트는 기록이 쌓여야 가치가 나온다. 캘리브레이션에 필요한
@@ -23,7 +27,7 @@ when-i-off/
 
 ## 단계별 계획
 
-### Phase 0 — 기반 (반나절~1일)
+### Phase 0 — 기반 (반나절~1일) · 이슈 #2
 
 - 모노레포 폴더 구조, `docker-compose.yml`로 로컬 Postgres
 - backend 스캐폴딩: Spring Boot + Kotlin, Flyway. `docs/db/schema.sql` →
@@ -32,7 +36,7 @@ when-i-off/
   있음 (TAGO 버스도착정보, 서울 지하철 실시간 도착정보, 특일정보)
 - 완료 기준: `./gradlew bootRun` 시 마이그레이션 적용, health check 통과
 
-### Phase 1 — Backend 최소 API (2~3일)
+### Phase 1 — Backend 최소 API (2~3일) · 이슈 #3
 
 - 엔티티/리포지토리: `users`, `commute_routes`, `route_legs`, `transit_lines`,
   `transit_stops`, `traffic_signals`, `route_leg_signal_crossings`
@@ -42,7 +46,7 @@ when-i-off/
 - 인증: 1인 사용이므로 고정 API 토큰(헤더)으로 시작. JWT는 필요해지면
 - 완료 기준: curl로 경로 등록 → trip 시작 → attempt 기록 → 이력 조회까지 됨
 
-### Phase 2 — iOS 앱: 데이터 수집 MVP (1~2주)
+### Phase 2 — iOS 앱: 데이터 수집 MVP (1~2주) · 이슈 #4
 
 - SwiftUI + CoreLocation. "항상 허용" 위치 권한
 - 활성 경로의 집/승차·하차 정류장/목적지에 geofence(`CLCircularRegion`) 등록.
@@ -58,7 +62,7 @@ when-i-off/
 - 이동 중 GPS 포인트를 로컬 큐에 쌓고 배치 업로드 (오프라인/지하 구간 대비)
 - 완료 기준: 실제 출근 1회로 trip + attempts + traces가 DB에 정상 적재
 
-### Phase 3 — 외부 데이터 동기화 (3~5일)
+### Phase 3 — 외부 데이터 동기화 (3~5일) · 이슈 #5
 
 - TAGO 버스도착정보 → `transit_arrival_observations`. **폴링 범위를 사용자 경로에 있는
   노선×정류장, 출퇴근 시간대(경로 목표 시각 ±90분)로 제한**해서 일일 호출 한도 안에서
@@ -71,7 +75,7 @@ when-i-off/
 - 완료 기준: 출근 시간대에 observations가 30초~1분 간격으로 쌓이고, attempt에 예측
   스냅샷이 자동으로 들어감
 
-### Phase 4 — Analytics v1 (1주)
+### Phase 4 — Analytics v1 (1주) · 이슈 #6
 
 - CLI 서브커맨드: `derive-walking-segments`, `calibrate`, `recommend`
 - `derive-walking-segments`: DATA_MODEL.md 규칙으로 trip → `walking_segments` 파생
@@ -85,7 +89,7 @@ when-i-off/
 - 완료 기준: 실제 기록 5일치로 추천이 나오고, 기록이 늘수록 `buffer_seconds`가 줄어드는
   것을 확인
 
-### Phase 5 — 데스크탑 웹 (1주)
+### Phase 5 — 데스크탑 웹 (1주) · 이슈 #7
 
 - 지도(Leaflet + OSM) 위에서 경로/구간/정류장/신호등 편집
 - 히스토리: trip별 타임라인 (집 출발 → 정류장 → 탑승 → 하차 → 도착)
@@ -93,7 +97,7 @@ when-i-off/
 - 추천 vs 실제 비교 차트 (`departure_recommendations` ↔ `commute_trips`)
 - 완료 기준: 앱 없이 경로 등록·수정, 쌓인 데이터 검증 가능
 
-### Phase 6 — 피드백 루프 & 운영 (지속)
+### Phase 6 — 피드백 루프 & 운영 (지속) · 이슈 #8
 
 - 앱 알림: 추천 시각에 "지금 나가세요" (로컬 알림으로 시작, 필요하면 APNs)
 - 추천 대비 실제 결과 자동 평가 → `model_version`별 성공률 추적

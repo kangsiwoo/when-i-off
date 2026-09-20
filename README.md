@@ -19,4 +19,5 @@
 - [데이터 모델](docs/DATA_MODEL.md) / [DB 스키마](docs/db/schema.sql)
 - [최적 출발 시각 계산 알고리즘](docs/ALGORITHM.md)
 - [API 설계](docs/API.md)
-- [개발 계획](docs/DEVELOPMENT_PLAN.md)
+- [개발 계획](docs/DEVELOPMENT_PLAN.md) — Phase별 이슈: [#2](../../issues/2) [#3](../../issues/3) [#4](../../issues/4) [#5](../../issues/5) [#6](../../issues/6) [#7](../../issues/7) [#8](../../issues/8)
+- [개발 컨벤션](docs/CONVENTIONS.md) — 이슈 → 브랜치 → PR → 리뷰 → Squash merge
