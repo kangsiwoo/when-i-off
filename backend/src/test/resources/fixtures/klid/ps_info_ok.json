@@ -1,0 +1,93 @@
+{
+  "header": {
+    "resultCode": "K0",
+    "resultMsg": "NORMAL_SERVICE"
+  },
+  "body": {
+    "totalCount": 6,
+    "pageNo": 1,
+    "numOfRows": 1000,
+    "items": {
+      "item": [
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "bstaId": "HS-S001",
+          "bstaNm": "동탄역",
+          "bstaNo": "20001",
+          "bstaSn": "1",
+          "bstaLat": "37.200000",
+          "bstaLot": "127.070000",
+          "drcGbnCd": "0",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "bstaId": "HS-S002",
+          "bstaNm": "동탄중앙공원",
+          "bstaNo": "20002",
+          "bstaSn": "2",
+          "bstaLat": "37.203000",
+          "bstaLot": "127.070000",
+          "drcGbnCd": "0",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "bstaId": "HS-S003",
+          "bstaNm": "반송동주민센터",
+          "bstaNo": "20003",
+          "bstaSn": "3",
+          "bstaLat": "37.206000",
+          "bstaLot": "127.071000",
+          "drcGbnCd": "0",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "bstaId": "HS-S004",
+          "bstaNm": "동탄시범단지",
+          "bstaNo": "20004",
+          "bstaSn": "4",
+          "bstaLat": "37.206000",
+          "bstaLot": "127.075000",
+          "drcGbnCd": "0",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "bstaId": "HS-S005",
+          "bstaNm": "능동마을",
+          "bstaNo": "20005",
+          "bstaSn": "5",
+          "bstaLat": "37.209000",
+          "bstaLot": "127.076000",
+          "drcGbnCd": "0",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "bstaId": "HS-S006",
+          "bstaNm": "병점역",
+          "bstaNo": "20006",
+          "bstaSn": "6",
+          "bstaLat": "37.212000",
+          "bstaLot": "127.076000",
+          "drcGbnCd": "0",
+          "totDt": "20260920040000"
+        }
+      ]
+    }
+  }
+}

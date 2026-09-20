@@ -1,0 +1,60 @@
+{
+  "header": {
+    "resultCode": "K0",
+    "resultMsg": "NORMAL_SERVICE"
+  },
+  "body": {
+    "totalCount": 3,
+    "pageNo": 1,
+    "numOfRows": 1000,
+    "items": {
+      "item": [
+        {
+          "stdgCd": "1100000000",
+          "lclgvNm": "서울특별시",
+          "crsrdId": "1850",
+          "crsrdNm": "세종대로사거리",
+          "mapCtptIntLat": "37.569600",
+          "mapCtptIntLot": "126.977300",
+          "laneWdth": "3.5",
+          "lmtSpdTypeNm": "일반",
+          "lmtSpd": "50",
+          "crsrdEngNm": "Sejong-daero Jct",
+          "regId": "KLID",
+          "regDt": "20260901000000",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "1100000000",
+          "lclgvNm": "서울특별시",
+          "crsrdId": "1851",
+          "crsrdNm": "광화문삼거리",
+          "mapCtptIntLat": "37.575900",
+          "mapCtptIntLot": "126.976900",
+          "laneWdth": "3.5",
+          "lmtSpdTypeNm": "일반",
+          "lmtSpd": "50",
+          "crsrdEngNm": "Gwanghwamun Jct",
+          "regId": "KLID",
+          "regDt": "20260901000000",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "1100000000",
+          "lclgvNm": "서울특별시",
+          "crsrdId": "1852",
+          "crsrdNm": "시청앞사거리",
+          "mapCtptIntLat": "37.565800",
+          "mapCtptIntLot": "126.977200",
+          "laneWdth": "3.25",
+          "lmtSpdTypeNm": "일반",
+          "lmtSpd": "50",
+          "crsrdEngNm": "City Hall Jct",
+          "regId": "KLID",
+          "regDt": "20260901000000",
+          "totDt": "20260920040000"
+        }
+      ]
+    }
+  }
+}
