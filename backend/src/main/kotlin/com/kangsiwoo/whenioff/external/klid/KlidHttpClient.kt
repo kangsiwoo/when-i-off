@@ -60,6 +60,14 @@ class KlidHttpClient(
 
     // data.go.kr keys contain '+', '/', '=': Spring's UriBuilder leaves '+' and '/' raw, which the gateway
     // then decodes as a space, so every value is percent-encoded here exactly once with URLEncoder.
+    //
+    // The portal issues each key in two forms and the serviceKey may hold either one:
+    //  - "Decoding" (raw): base64 alphabet only (A-Za-z0-9+/=), never a literal '%'. Encoded here once.
+    //  - "Encoding": already percent-encoded, so it contains '%'. Encoding it again turns "%2B" into
+    //    "%252B" and the gateway answers 403 SERVICE_KEY_IS_NOT_REGISTERED_ERROR, so it is passed
+    //    through verbatim.
+    // A '%' therefore tells the two apart safely. Only serviceKey is special-cased; the remaining
+    // values are always encoded.
     private fun buildUri(
         endpoint: WioProperties.Endpoint,
         op: String,
@@ -69,14 +77,19 @@ class KlidHttpClient(
     ): URI {
         val query =
             listOf(
-                "serviceKey" to endpoint.serviceKey,
-                "pageNo" to pageNo.toString(),
-                "numOfRows" to numOfRows.toString(),
-                "type" to "json",
-                "stdgCd" to stdgCd,
-            ).joinToString("&") { (k, v) -> "$k=${URLEncoder.encode(v, StandardCharsets.UTF_8)}" }
+                "serviceKey" to encodeServiceKey(endpoint.serviceKey),
+                "pageNo" to encode(pageNo.toString()),
+                "numOfRows" to encode(numOfRows.toString()),
+                "type" to encode("json"),
+                "stdgCd" to encode(stdgCd),
+            ).joinToString("&") { (k, v) -> "$k=$v" }
         return URI.create("${endpoint.baseUrl.trimEnd('/')}/$op?$query")
     }
+
+    private fun encodeServiceKey(serviceKey: String): String =
+        if (serviceKey.contains('%')) serviceKey else encode(serviceKey)
+
+    private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
 
     private fun executeWithRetry(
         op: String,

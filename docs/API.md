@@ -34,7 +34,7 @@
 | 404 | 리소스 없음 또는 **다른 사용자 소유** (존재 여부를 숨김) | |
 | 409 | UNIQUE/FK 위반 등 무결성 오류, 실측 기록이 붙은 구간을 지우는 구간 교체 | `detail`에 DB 메시지 첫 줄 또는 문제의 구간 id |
 | 502 | 외부 API(KLID)가 오류 코드/비JSON 응답 | `klidResultCode` 확장 필드 (`K22` 같은 결과 코드, 비JSON이면 `HTTP403` 형식) |
-| 503 | KLID 서비스 키 미설정 (`REALTIME_BUS_API_KEY`/`TRAFFIC_SIGNAL_API_KEY`) | 관리 동기화 API에서만 |
+| 503 | KLID 서비스 키 미설정 (`PRECISE_BUS_API`/`REALTIME_TREFFIC_LIGHT_API`) | 관리 동기화 API에서만 |
 | 500 | 그 외 | `detail`은 항상 `"unexpected error"`, 원인은 서버 로그 |
 
 ## 경로/구간 관리 (데스크탑에서 주로 사용)
@@ -138,7 +138,7 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
   메모리 필터가 필수인 것을 확인하는 지표)
 - upsert 키: 노선 `(mode, stdgCd, rteId)`, 정류장 `(mode, stdgCd, bstaId)`, 교차로 `(stdgCd, crsrdId)`,
   노선-정류장 `(line, drcGbnCd, bstaSn)`. 같은 데이터를 두 번 돌려도 결과가 같다
-- 키가 비어 있으면(`REALTIME_BUS_API_KEY`/`TRAFFIC_SIGNAL_API_KEY`) `503`, KLID가 `K`-오류 코드나
+- 키가 비어 있으면(`PRECISE_BUS_API`/`REALTIME_TREFFIC_LIGHT_API`) `503`, KLID가 `K`-오류 코드나
   비JSON을 주면 `502` + `klidResultCode`
 - 실시간 폴링 스케줄러는 `wio.polling.enabled=true`일 때만 돌고, 위 두 `*-positions`/`*-states`
   잡을 창(`wio.polling.windows`) 안에서 `interval-ms`마다 활성 지자체에 대해 실행하는 것과 같다
