@@ -15,7 +15,7 @@ Analytics(Python) 모듈이 주기적으로 수행하는 계산을 정의한다.
 
 - WALK: `user_walking_profile`의 도보 속도 분포 + 구간에 포함된 신호등 대기 분포
   (실시간 신호 상태가 있으면 그 잔여시간, 없으면 주기 모델)
-- TRANSIT: 그 차량이 승차역에 실제로 도착하는 시각의 분포 (차량 위치에서 파생한 ETA 또는
+- TRANSIT: 그 차량이 승차역에 실제로 도착하는 시각의 분포 (외부 API의 실시간 도착예측 또는
   시간표 + 보정된 오차)와 차내 이동시간 분포
 
 v1에서는 모든 분포를 정규분포로 근사하고 구간끼리 독립이라고 가정한다. 그러면 합의 평균은
@@ -114,13 +114,13 @@ Var[W] = 0     -- t_arr가 주어지면 확정값. t_arr의 불확실성은 σ_w
 V_board ~ N( predicted_at + bias ,  σ_pred² )
 ```
 
-- `predicted_at`: 계산 시점의 실시간 예측(`transit_arrival_observations` 최신값). KLID에는
-  도착예측 API가 없어 Backend가 차량 위치(`bus_position_observations`)를 노선 정류장 순서
-  (`transit_line_stops`) 폴리라인에 투영해 만든 ETA(`source='KLID_RTM_LOC_ETA'`)가 들어 있다.
-  `has_realtime_api=false`이거나 예측이 없으면 `transit_schedules`의 시간표값.
+- `predicted_at`: 계산 시점의 실시간 예측(`transit_arrival_observations` 최신값). 버스는
+  TAGO 버스도착정보가 정류장 단위 도착예정시간을 직접 주므로 그 값이 그대로 들어 있다
+  (`source='TAGO_ARVL'`, [ADR 0001](./adr/0001-tago-bus-arrival-prediction.md)).
+  `has_realtime_api=false`(예: GTX)이거나 예측이 없으면 `transit_schedules`의 시간표값.
 - `bias`, `σ_pred`: `transit_prediction_calibration`에서 노선×정류장×요일유형×시간대로
-  조회. 샘플 부족 시 노선 단위로 롤업, 그것도 없으면 `bias=0, σ=90초`. 예측이 우리가 파생한
-  ETA이므로 이 값은 투영 로직의 체계적 오차를 흡수하는 역할도 한다.
+  조회. 샘플 부족 시 노선 단위로 롤업, 그것도 없으면 `bias=0, σ=90초`. 외부 예측이 실제보다
+  이르거나 늦은 체계적 경향을 이 값이 흡수한다.
 
 **차내 이동시간 `D`**
 
@@ -137,8 +137,10 @@ D ~ N( mean_sec , σ_travel² )      -- transit_travel_time_calibration
 V_alight = V_board + D ~ N( predicted_at + bias + mean_sec ,  σ_pred² + σ_travel² )
 ```
 
-**후보 차량 목록**: 실시간 위치가 있으면 현재 승차역 상류에서 접근 중인 차량(`vehicle_no`별
-최신 ETA) N대, 없으면 해당 `day_type` 시간표에서 목표 시각 근처 N대.
+**후보 차량 목록**: 실시간 도착예측이 있으면 승차역에 곧 도착할 예정인 차량(도착 예정 시각
+순으로 최신 스냅샷) N대, 없으면 해당 `day_type` 시간표에서 목표 시각 근처 N대. TAGO는 차량
+식별자를 주지 않아 `vehicle_no`가 비어 있으므로, 후보는 차량이 아니라 **예측 스냅샷 단위**로
+구분한다 (같은 `observed_at`의 서로 다른 `predicted_arrival_at`이 각각 다음 차·그 다음 차).
 
 ## 3. 경로 전체를 뒤에서부터 역산
 

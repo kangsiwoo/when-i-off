@@ -1,0 +1,37 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "totalCount": 2,
+      "pageNo": 1,
+      "numOfRows": 1000,
+      "items": {
+        "item": [
+          {
+            "nodeid": "GGB-S002",
+            "nodenm": "동탄중앙공원",
+            "routeid": "GGB1001",
+            "routeno": "1001",
+            "routetp": "직행좌석버스",
+            "arrprevstationcnt": "2",
+            "vehicletp": "일반차량",
+            "arrtime": "180"
+          },
+          {
+            "nodeid": "GGB-S002",
+            "nodenm": "동탄중앙공원",
+            "routeid": "GGB1001",
+            "routeno": "1001",
+            "routetp": "직행좌석버스",
+            "arrprevstationcnt": "9",
+            "vehicletp": "저상버스",
+            "arrtime": "620"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -20,11 +20,11 @@ erDiagram
     traffic_signals ||--o{ traffic_signal_cycles : "주기 모델 (fallback)"
     traffic_signals ||--o{ traffic_signal_states : "실시간 신호 상태 (KLID tl_drct_info)"
 
-    transit_lines ||--o{ transit_line_stops : "방향별 정류장 순서 (KLID ps_info)"
+    transit_lines ||--o{ transit_line_stops : "방향별 정류장 순서 (TAGO 경유정류소)"
     transit_stops ||--o{ transit_line_stops : ""
-    transit_lines ||--o{ bus_position_observations : "차량 위치 원본 (KLID rtm_loc_info)"
+    transit_lines ||--o{ bus_position_observations : "차량 위치 원본 (더 이상 안 씀, ADR 0001)"
     transit_lines ||--o{ transit_schedules : "정적 시간표"
-    transit_lines ||--o{ transit_arrival_observations : "도착 예측 스냅샷 (위치→ETA 파생)"
+    transit_lines ||--o{ transit_arrival_observations : "도착 예측 스냅샷 (TAGO 직접 제공)"
     transit_stops ||--o{ transit_schedules : ""
     transit_stops ||--o{ transit_arrival_observations : ""
 
@@ -62,8 +62,8 @@ commute_trip (그 경로로 실제 이동한 하루 1건)
 
 외부 데이터 (Backend 동기화 잡이 채움)
  ├─ 마스터: transit_lines / transit_stops / transit_line_stops / traffic_signals
- ├─ 실시간 원본: bus_position_observations / traffic_signal_states
- └─ 파생: transit_arrival_observations (버스 위치 → 정류장 ETA)
+ ├─ 실시간 원본: traffic_signal_states (bus_position_observations는 더 이상 안 씀, ADR 0001)
+ └─ 도착 예측: transit_arrival_observations (버스는 TAGO가 직접 제공)
 ```
 
 ## 시간 규약
@@ -72,19 +72,28 @@ commute_trip (그 경로로 실제 이동한 하루 1건)
   `Asia/Seoul`로 파싱해 UTC로 저장한다.
 - `TIME` 컬럼(시간표, 시간대)은 KST 기준 하루 중 시각. 반복되는 값이라 절대 시각이 아니다.
 
-## 외부 ID와 지자체 코드 `stdg_cd`
+## 외부 ID와 지자체/도시 코드 `stdg_cd`
 
-KLID API는 **`stdgCd`(법정동 시도코드 10자리, 예: 서울 `1100000000`, 화성 `4159000000`)가 유일한
-필터**이고, 노선 ID(`rteId`), 정류장 ID(`bstaId`), 교차로 ID(`crsrdId`)는 **그 지자체 안에서만
-유일**하다. 다른 지자체가 같은 숫자 ID를 쓸 수 있으므로 외부 ID만으로 UNIQUE를 걸면 동기화가
-충돌한다. 그래서 마스터 세 테이블은 모두 `(…, stdg_cd, external_id)` 조합으로 UNIQUE를 걸고,
-동기화 잡은 이 키로 upsert한다.
+`stdg_cd`/`external_id`는 컬럼명이 KLID 초기 설계에서 왔지만 값의 의미는 **`mode`별로 다른
+소스를 가리킨다** ([ADR 0001](./adr/0001-tago-bus-arrival-prediction.md)):
+
+- `mode=BUS`: TAGO 기준. `stdg_cd`에는 TAGO `cityCode`, `external_id`에는 노선은
+  `routeId`, 정류장은 `nodeId`가 들어간다. TAGO도 "그 도시 안에서만 ID가 유일"한 것은
+  KLID와 같은 제약이라 같은 upsert 전략을 그대로 쓴다
+- 신호등(`traffic_signals`): KLID 기준 그대로. `stdg_cd`는 **법정동 시도코드 10자리**
+  (예: 서울 `1100000000`, 화성 `4159000000`), `crsrd_id`는 `crsrd_map_info.crsrdId`
+
+두 코드 체계는 서로 다른 값 공간이지만 테이블이 분리(`transit_*` vs `traffic_signals`)돼
+있어 섞이지 않는다. 어느 쪽이든 노선/정류장/교차로 ID는 **그 도시/지자체 안에서만 유일**하고
+다른 지역이 같은 숫자 ID를 쓸 수 있으므로, 외부 ID만으로 UNIQUE를 걸면 동기화가 충돌한다.
+그래서 마스터 세 테이블은 모두 `(…, stdg_cd, external_id)` 조합으로 UNIQUE를 걸고, 동기화
+잡은 이 키로 upsert한다.
 
 | 테이블 | UNIQUE 키 | 외부 ID 출처 |
 |---|---|---|
-| `transit_lines` | `(mode, stdg_cd, external_id)` | `mst_info.rteId` |
-| `transit_stops` | `(mode, stdg_cd, external_id)` | `ps_info.bstaId` |
-| `traffic_signals` | `(stdg_cd, crsrd_id)` | `crsrd_map_info.crsrdId` |
+| `transit_lines` | `(mode, stdg_cd, external_id)` | TAGO `getRouteNoList`/`getRouteAcctoThrghSttnList`의 `routeid` |
+| `transit_stops` | `(mode, stdg_cd, external_id)` | TAGO `getRouteAcctoThrghSttnList`의 `nodeid` |
+| `traffic_signals` | `(stdg_cd, crsrd_id)` | KLID `crsrd_map_info.crsrdId` |
 
 수동 등록(GTX 역, 공공 데이터가 없는 신호등 등)은 `stdg_cd`/`external_id`를 NULL로 둔다.
 PostgreSQL의 UNIQUE는 NULL을 서로 다른 값으로 취급하므로 수동 행은 몇 개든 들어간다.
@@ -112,41 +121,39 @@ PostgreSQL의 UNIQUE는 NULL을 서로 다른 값으로 취급하므로 수동 �
 때문이다 (ALGORITHM.md 3절).
 
 ### `transit_lines` / `transit_stops`
-노선과 정류장/역의 마스터 데이터. KLID `mst_info`(노선)와 `ps_info`(경유 정류장)에서 동기화하며,
-외부 ID와 `stdg_cd`를 그대로 보관해서 upsert 키로 쓴다 (위 표). `has_realtime_api=false`인
-노선(예: GTX)은 정적 시간표만 쓴다. `agency`에는 `lclgvNm`(지자체명) 정도를 넣는다.
+노선과 정류장/역의 마스터 데이터. 버스는 TAGO `getRouteNoList`(노선 검색)와
+`getRouteAcctoThrghSttnList`(경유 정류장)에서 동기화하며, 외부 ID와 `stdg_cd`(TAGO
+`cityCode`)를 그대로 보관해서 upsert 키로 쓴다 (위 표). `has_realtime_api=false`인
+노선(예: GTX)은 정적 시간표만 쓴다. `agency`에는 노선 유형/운수사 정도를 넣는다.
 
 ### `transit_line_stops`
-노선의 **방향별 정류장 순서**. KLID `ps_info` 한 행 = 이 테이블 한 행이며
-`(transit_line_id, direction_code=drcGbnCd, seq_no=bstaSn)`으로 유일하다.
+노선의 **방향별 정류장 순서**. TAGO `getRouteAcctoThrghSttnList` 한 행 = 이 테이블 한 행이며
+`(transit_line_id, direction_code, seq_no=nodeord)`으로 유일하다.
 
-이 테이블이 필요한 이유는 **KLID에 도착예측 API가 없기 때문**이다. 버스 API가 주는 것은
-차량 위치(`rtm_loc_info`)뿐이라, "이 버스가 내 정류장에 몇 분 뒤 오는가"는 우리가 직접 계산해야
-한다. 차량 위치를 이 순서로 이어 만든 폴리라인에 투영해서 "현재 몇 번째 정류장 사이에 있는지"를
-알아내고, 남은 정류장 간 거리 ÷ 속도로 ETA를 만든다. 방향(`direction_code`)이 다르면 같은 노선도
-정류장 순서가 다르므로 방향별로 나눈다.
+TAGO는 정류장 단위 도착예측을 직접 주므로 이 순서를 ETA 계산(폴리라인 투영)에 쓰지는 않는다.
+그래도 노선-정류장 관계 자체(구간 등록 시 "이 노선이 지나가는 정류장" 검색/표시, 승차·하차
+정류장이 실제로 그 노선 위에 있는지 검증)에 필요해서 계속 채운다. `direction_code`가 다르면
+같은 노선도 정류장 순서가 다르므로 방향별로 나눈다.
 
 ### `bus_position_observations`
-KLID `rtm_loc_info`의 차량 위치를 **받은 그대로** 쌓는 원본 테이블. 한 행 = 차량 1대 × 수집시각
-1개. `observed_at`은 `gthrDt`(GPS 수집시각, 없으면 `totDt`)를 UTC로 바꾼 값이고, `speed_kmh`
-(`oprSpd`), `heading_deg`(`oprDrct`), `receive_type`(`evtType`: GNSS/GPS)은 ETA 계산에 쓰는
-필드만 컬럼으로 뽑았다. 나머지(`evtCd` 등)는 `raw` JSONB에 남겨 두어 나중에 필드가 필요해져도
-재수집 없이 꺼낼 수 있게 한다.
-
-원본을 남기는 이유: ETA 파생 로직(투영 방식, 속도 가정)은 바뀔 수 있고, 바뀌면 과거 위치로
-다시 계산해 정확도를 비교해야 한다. 파생값만 남기면 그게 불가능하다. 대량으로 쌓이므로 보관
-기간 정책이 필요하다 (DEVELOPMENT_PLAN Phase 6).
+과거 KLID 버스 위치 기반 설계(위치→ETA 기하 계산, [ADR 0001](./adr/0001-tago-bus-arrival-prediction.md))의
+산물이다. TAGO는 위치가 아니라 도착예측을 직접 주므로 이 테이블은 **더 이상 적재되지 않는다**.
+이미 머지된 마이그레이션은 손대지 않는 컨벤션에 따라 테이블 자체는 남아 있지만 코드에서 쓰지
+않는다. (한 행 = 차량 1대 × 수집시각 1개였고, `raw` JSONB에 원본 필드를 남겨 두는 구조였다 —
+과거 이력 참고용으로만 기록해 둔다.)
 
 ### `transit_schedules`
 정적 시간표. 실시간 API가 없는 노선의 fallback이자, 실시간 예측이 튈 때 비교 기준.
-`mst_info`의 첫차/막차(`vhclFstTm`/`vhclLstTm`)는 시간표가 아니라 운행 범위이므로 여기 넣지 않는다.
+TAGO 노선 정보의 첫차/막차는 시간표가 아니라 운행 범위이므로 여기 넣지 않는다.
 
 ### `transit_arrival_observations`
-"이 시점에 시스템이 계산한 정류장 도착 예정 시각"의 스냅샷. 원래 외부 API의 도착예측을 그대로
-받는 용도였지만, KLID에는 도착예측이 없으므로 지금은 **Backend가 `bus_position_observations`를
-`transit_line_stops` 폴리라인에 투영해 파생한 ETA**가 들어간다 (`source='KLID_RTM_LOC_ETA'`,
-`vehicle_no`로 어느 차량의 예측인지 남김). 나중에 TAGO/GBIS처럼 도착예측을 직접 주는 소스로
-바꾸더라도 `source` 값만 다르게 넣으면 되도록 스키마는 소스 중립으로 유지한다.
+"이 시점에 시스템이 받은 정류장 도착 예정 시각"의 스냅샷. 버스는 **TAGO가 정류장 단위로
+직접 주는 도착예측**(`getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList`의 `arrtime`)을 그대로
+받아 적재한다 (`source='TAGO_ARVL'`). TAGO는 차량 식별자를 주지 않으므로 `vehicle_no`는
+보통 NULL이다(컬럼 자체는 nullable). 이전 KLID 버스 위치 기반 설계 때는 Backend가
+`bus_position_observations`를 `transit_line_stops` 폴리라인에 투영해 파생한 ETA였다
+(`source='KLID_RTM_LOC_ETA'`, 지금은 쓰지 않음). 스키마는 처음부터 소스 중립으로 설계돼
+있어서(`source` 컬럼) 이 교체에 마이그레이션이 필요 없었다.
 
 이 값은 `boarding_attempts.vehicle_actual_departure_at`과 비교해서 "이 노선/시간대는 예측이
 평균 90초 늦다" 같은 보정치를 계산하는 원재료다. 최신값만 덮어쓰지 않고 누적하는 이유가 이것.

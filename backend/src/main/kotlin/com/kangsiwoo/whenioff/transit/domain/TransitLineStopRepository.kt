@@ -9,18 +9,6 @@ interface TransitLineStopRepository : JpaRepository<TransitLineStop, Long> {
 
     @Query(
         """
-        select ls from TransitLineStop ls join fetch ls.stop
-        where ls.transitLine.id = :lineId and ls.directionCode = :directionCode
-        order by ls.seqNo
-        """,
-    )
-    fun findPolyline(
-        @Param("lineId") lineId: Long,
-        @Param("directionCode") directionCode: String,
-    ): List<TransitLineStop>
-
-    @Query(
-        """
         select ls from TransitLineStop ls
         where ls.transitLine.id = :lineId and ls.stop.id in :stopIds
         """,

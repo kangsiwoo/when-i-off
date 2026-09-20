@@ -56,11 +56,12 @@
 
 ### Backend (Kotlin + Spring)
 - 도메인 모델의 단일 진실 소스(source of truth), REST API 제공 ([API.md](./API.md))
-- KLID 두 API를 동기화한다 (아래 "외부 데이터 동기화"). 마스터(노선·정류장·교차로)는
-  upsert, 실시간(차량 위치·신호 상태)은 수집시각별로 누적
-- KLID에는 도착예측 API가 없으므로 **차량 위치를 노선 폴리라인에 투영해 정류장 ETA를 직접
-  파생**하고 `transit_arrival_observations`에 스냅샷으로 남긴다. 이 파생은 통계가 아니라
-  기하 계산이라 Backend가 맡는다
+- TAGO(버스)와 KLID(신호등) 두 소스를 동기화한다 (아래 "외부 데이터 동기화"). 마스터
+  (노선·정류장·교차로)는 upsert, 실시간(도착예측·신호 상태)은 수집시각별로 누적
+- TAGO 버스도착정보는 정류장 단위 도착예측을 직접 주므로 받은 값을 그대로
+  `transit_arrival_observations`에 스냅샷으로 남긴다 (예전 KLID 버스 위치 기반 설계는
+  위치→ETA를 Backend가 기하 계산으로 직접 파생해야 했지만, TAGO로 바꾸면서 이 계산은
+  없어졌다 — [ADR 0001](./adr/0001-tago-bus-arrival-prediction.md))
 - GTX처럼 실시간 API가 없거나 커버리지가 낮은 노선은 정적 시간표 + 사용자 실측 기록으로
   대체(fallback)
 - 분석 결과(도보 프로필, 추천 출발 시각)는 Analytics가 채운 테이블을 그대로 읽어서
@@ -84,78 +85,85 @@
 - 조회·관리 중심 (경로/정류장/신호등 등록, 기록 히스토리, 캘리브레이션 상태 확인)
 - 실시간 GPS 수집은 하지 않음 (그건 앱의 역할)
 
-## 외부 데이터 동기화 (KLID)
+## 외부 데이터 동기화
 
-### 왜 KLID인가
-처음 설계는 TAGO(국가교통정보센터) 버스도착정보를 가정했지만, 구현 시점에 조사한 결과
-행정안전부·한국지역정보개발원(KLID)의 **전국통합데이터**가 버스와 신호등을 한 게이트웨이
-(`https://apis.data.go.kr/B551982`)에서, 같은 인증 방식과 같은 응답 포맷으로 제공해서 이쪽을
-1차 소스로 잡았다. 클라이언트 하나로 두 도메인을 덮을 수 있고, 신호등 실시간은 다른 곳에 없다.
+버스는 TAGO, 신호등은 KLID — 서로 다른 두 공공데이터 소스를 쓴다 (아래 "왜 버스는 TAGO인가"
+참고, 배경은 [ADR 0001](./adr/0001-tago-bus-arrival-prediction.md)).
 
 | 서비스 | 오퍼레이션 | 적재 대상 | 주기 |
 |---|---|---|---|
-| 버스 `rte` | `mst_info` 노선 마스터 | `transit_lines` | 수동 / 일 1회 |
-| | `ps_info` 노선 경유 정류장(방향·순번) | `transit_stops`, `transit_line_stops` | 수동 / 일 1회 |
-| | `rtm_loc_info` 차량 실시간 위치 | `bus_position_observations` → ETA 파생 → `transit_arrival_observations` | 출퇴근 시간대 폴링 |
-| 신호등 `rti` | `crsrd_map_info` 교차로 마스터 | `traffic_signals` | 수동 / 일 1회 |
+| TAGO 버스노선정보 | `getRouteNoList` 노선번호 검색 → `routeId` | (조회만, 저장 안 함) | 수동, 노선 등록 시 |
+| | `getRouteAcctoThrghSttnList` 노선 경유 정류소 순서 | `transit_lines`, `transit_stops`, `transit_line_stops` | 수동, 노선 등록 시 |
+| TAGO 버스도착정보 | `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList` 정류소별 특정노선 도착예정 | `transit_arrival_observations` (`source='TAGO_ARVL'`) | 출퇴근 시간대 폴링 |
+| KLID 신호등 `rti` | `crsrd_map_info` 교차로 마스터 | `traffic_signals` | 수동 / 일 1회 |
 | | `tl_drct_info` 신호 잔여시간 | `traffic_signal_states` | 출퇴근 시간대 폴링 |
 
-응답 규약(클라이언트가 처리하는 것): GET만, `serviceKey`는 **최종 URL에 정확히 한 번 인코딩된
-상태로** 실린다 — 디코딩 키(base64 문자만, `%` 없음)는 클라이언트가 한 번 인코딩하고, 이미
-퍼센트 인코딩된 키(`%` 포함)는 그대로 보낸다(이중 인코딩이 흔한 실패 원인). 공공데이터포털도
-활용신청 페이지에서 "API 환경/호출 조건에 따라 인증키 적용 방식이 다를 수 있으니 실제로 구동되는
-키를 쓰라"고 안내하므로, 키 형태를 고정하지 않고 값으로 판별하는 쪽이 포털 안내와도 맞는다.
-`type=json`, `numOfRows` 최대 1000 페이지네이션.
+### 왜 버스는 TAGO인가
+KLID 초정밀버스 위치(`rte`)로 대상 지자체(화성·성남·서울) 커버리지를 실 키로 확인한 결과
+세 곳 모두 `K3`(NODATA)/0건이라 위치→ETA 파생 경로 자체가 성립하지 않았다. 대체 후보인
+TAGO 버스도착정보(`15098530`)와 경기 GBIS 중, GBIS는 경기도 버스만 커버해 서울을 못 덮으므로
+전국 단일 게이트웨이인 TAGO를 골랐다. TAGO는 KLID와 달리 **정류장 단위로 도착예측(초)을
+직접** 주므로 차량 위치를 폴리라인에 투영하는 기하 계산이 필요 없다 — 그래서 `bus_position_observations`/
+`KlidPositionEtaProvider`(위치→ETA 파생)는 더 이상 쓰지 않는다. 신호등(`rti`)은 서울
+`K0`/`totalCount=2779`로 커버되어 KLID를 그대로 쓴다. 상세 결정 과정은 ADR 0001.
+
+### TAGO 응답 규약
+KLID와 게이트웨이·인증 방식(`serviceKey` 인코딩 규칙 포함, 아래 참고)은 비슷하지만 JSON
+봉투 구조가 다르다: TAGO는 `{"response":{"header":{resultCode,resultMsg},"body":{totalCount,pageNo,numOfRows,"items":{"item":[…]}}}}`
+로 **`response` 래퍼가 있다** (KLID는 없음). `resultCode`는 `"00"`이 정상이고(KLID의 `K0`과
+다름), 데이터 없음도 에러 없이 `totalCount=0`으로 온다(KLID처럼 별도 NODATA 코드가 없음).
+`numOfRows` 페이지네이션은 동일하게 지원한다. 응답 포맷 파라미터 이름은 KLID의 `type`이 아니라
+`_type`(`_type=json`)이고, 조회 필터도 `stdgCd` 하나가 아니라 오퍼레이션별로 다르다
+(`cityCode`+`routeNo` / `cityCode`+`routeId` / `cityCode`+`nodeId`+`routeId`).
+
+### 왜 KLID(신호등)인가
+행정안전부·한국지역정보개발원(KLID)의 **전국통합데이터**가 신호등 실시간 잔여시간을
+제공하는 유일한 소스라 1차로 잡았다. 원래는 버스도 같은 게이트웨이
+(`https://apis.data.go.kr/B551982`)로 함께 덮을 계획이었지만 위 커버리지 확인으로 버스만
+TAGO로 옮겼다.
+
+KLID 응답 규약(신호등, 클라이언트가 처리하는 것): GET만, `serviceKey`는 **최종 URL에 정확히
+한 번 인코딩된 상태로** 실린다 — 디코딩 키(base64 문자만, `%` 없음)는 클라이언트가 한 번
+인코딩하고, 이미 퍼센트 인코딩된 키(`%` 포함)는 그대로 보낸다(이중 인코딩이 흔한 실패 원인).
+공공데이터포털도 활용신청 페이지에서 "API 환경/호출 조건에 따라 인증키 적용 방식이 다를 수
+있으니 실제로 구동되는 키를 쓰라"고 안내하므로, 키 형태를 고정하지 않고 값으로 판별하는 쪽이
+포털 안내와도 맞는다. `type=json`, `numOfRows` 최대 1000 페이지네이션.
 JSON 봉투는 `{"header":{resultCode,resultMsg},"body":{totalCount,pageNo,numOfRows,"items":{"item":[…]}}}`
 (`response` 래퍼 없음, item 필드는 전부 문자열). `resultCode`가 `K0`면 정상, `K3`(NODATA)는
 HTTP 200에 body 없음 → 빈 목록, 그 외 K-코드(`K10` 파라미터, `K22` 일 한도 초과, `K30`/`K31`/`K32`
 키 문제)는 타입이 있는 예외로 올린다. 게이트웨이가 401/403/500을 **평문**("Unauthorized",
 "API not found")으로 줄 수 있어 JSON이 아니면 그 자체를 예외로 취급하고, 429는 백오프 후
-최대 2회 재시도한다. 타임아웃/재시도 값은 `application.yml`의 `wio.klid.*`.
+최대 2회 재시도한다. 타임아웃/재시도 값은 `application.yml`의 `wio.klid.*`. TAGO도 같은
+재시도/타임아웃 정책을 쓰되 설정은 `wio.tago.*`로 분리한다 (키/한도가 서로 다른 서비스라서).
 
-### 필터가 `stdgCd`뿐이라는 제약과 호출 한도
-모든 오퍼레이션의 유일한 필터는 **`stdgCd`(법정동 시도코드 10자리)**다. 노선/정류장/교차로
-단위로는 조회할 수 없으므로 **지자체 전체를 받아서 메모리에서 우리 경로에 있는 것만 골라낸다**.
-따라서 호출 수는 "노선 수"가 아니라 "지자체 수 × 페이지 수"로 결정된다.
+### KLID: 필터가 `stdgCd`뿐이라는 제약과 호출 한도 (신호등)
+`crsrd_map_info`/`tl_drct_info`의 유일한 필터는 **`stdgCd`(법정동 시도코드 10자리)**다.
+교차로 단위로는 조회할 수 없으므로 **지자체 전체를 받아서 메모리에서 우리 경로에 있는 것만
+골라낸다**. 호출 수는 "교차로 수"가 아니라 "지자체 수 × 페이지 수"로 결정된다.
 
 개발계정 한도는 서비스별 일 5,000회 수준이다. 그래서:
-- 폴링 대상 지자체 = **`is_active` 경로의 TRANSIT 구간 노선과 WALK 구간 교차로가 속한
-  `stdg_cd`의 집합**만. 경로가 없는 지자체는 호출하지 않는다
+- 폴링 대상 지자체 = **`is_active` 경로의 WALK 구간 교차로가 속한 `stdg_cd`의 집합**만.
+  경로가 없는 지자체는 호출하지 않는다
 - 폴링 시간 = `wio.polling.windows`(기본 06:30–09:30, 17:30–20:30 KST) 안에서만,
   `wio.polling.interval-ms`(기본 60초) 간격. 창 밖에서는 스케줄러가 아무것도 하지 않는다
-- 예산 감: 창 합계 6시간 × 60초 간격 = 360회/일/지자체/오퍼레이션. 지자체 두 곳을
-  버스·신호 모두 폴링해도 약 1,440회로 한도 안이다. 지자체의 차량/교차로 수가 1,000을 넘으면
-  페이지 수만큼 곱해지므로 첫 동기화 때 `totalCount`를 확인해 둔다
-- 마스터 동기화(`mst_info`, `ps_info`, `crsrd_map_info`)는 스케줄러가 아니라 관리 API
+- 마스터 동기화(`crsrd_map_info`)는 스케줄러가 아니라 관리 API
   (`POST /api/v1/admin/sync/...`)로 필요할 때만 실행한다
 - `wio.polling.enabled=false`가 기본이다. 키가 없는 환경(CI, 테스트)에서 스케줄러가 돌지 않게
 
-### 커버리지 caveat와 fallback
-2026-07 시점 개발자 보고에 따르면 **버스 위치는 중소도시 위주로 제공되고 서울·경기는 비어
-있을 수 있으며, 실시간 신호는 서울·울산만** 들어온다. 이 프로젝트의 주 사용 경로(경기 광역버스
-→ 서울)가 정확히 그 빈 구간일 수 있다.
-
-그래서 실제 키를 받은 첫 세션의 첫 작업은 대상 지자체의 `totalCount` 확인이다
-(화성 `4159000000`, 성남 `4113000000`, 서울 `1100000000` — 절차는
-[backend/README.md](../backend/README.md)). 버스 위치가 비어 있으면:
-
-- 도착예측 공급자를 `ArrivalPredictionProvider` 인터페이스 뒤에서 교체한다. 후보는
-  TAGO 버스도착정보(`15098530`)와 경기 GBIS 버스도착정보. 둘 다 정류장 단위로 **도착예측을
-  직접** 주므로 이 경우엔 위치→ETA 파생이 필요 없고 `transit_arrival_observations`에
-  `source`만 다르게 적재된다
-- `bus_position_observations`/`transit_line_stops`는 그대로 두고 커버되는 지자체에서만 쓴다
-- 신호는 커버 지역 밖이면 자동으로 주기 모델(`traffic_signal_cycles`) fallback이라 코드
-  변경이 없다
-
-즉 "KLID 우선, 안 되면 TAGO/GBIS"이며 스키마와 알고리즘은 어느 쪽이든 동일하다.
+### TAGO: 필터가 노선/정류소 단위라는 것과 호출 한도 (버스)
+KLID와 반대로 TAGO 도착예측은 **지자체 전체 덤프가 없고 `cityCode`+`nodeId`+`routeId`로
+정확히 우리가 등록한 정류장 하나·노선 하나만 조회**한다. 그래서 호출 수는 "지자체 수"가
+아니라 "활성 경로의 TRANSIT(BUS) 구간 수"로 결정되고, 지자체가 커도 호출이 늘지 않는다
+(반대로 등록한 구간이 많아지면 선형으로 늘어난다). 폴링 시간대(`wio.polling.windows`)와
+간격(`wio.polling.interval-ms`)은 신호등과 동일한 스케줄러를 공유한다.
 
 ## 데이터 흐름 요약
 
 1. 사용자가 데스크탑에서 출퇴근 경로(도보 → 버스 → 도보 → 지하철 → 도보 등)를 등록.
-   노선/정류장/교차로는 KLID 마스터 동기화로 받아 두거나 수동 등록
+   노선/정류장은 TAGO 노선 검색으로 받아 두고, 교차로는 KLID 마스터 동기화 또는 수동 등록
 2. 앱이 매일 그 경로를 따라 이동하며 GPS를 수집하고 탑승 시도를 기록
-3. Backend가 출퇴근 시간대에 활성 경로의 지자체만 KLID에서 차량 위치·신호 상태를 폴링하고,
-   차량 위치는 정류장 ETA로 파생해 스냅샷으로 남김
+3. Backend가 출퇴근 시간대에 활성 경로의 TRANSIT 구간은 TAGO에서 도착예측을, WALK 구간이
+   속한 지자체는 KLID에서 신호 상태를 폴링해 스냅샷으로 남김
 4. Analytics가 주기적으로 (a) 도보 속도, (b) 교통수단 예측 오차, (c) 신호 대기를
    보정하고, 목표 시각(예: 회사 도착 목표 시각)에 맞는 "언제 나가야 하는지"를 계산
 5. 앱/웹이 그 추천을 사용자에게 보여줌 → 사용자가 그대로 따르거나 벗어난 결과가

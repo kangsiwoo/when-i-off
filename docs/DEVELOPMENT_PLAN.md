@@ -74,17 +74,22 @@ when-i-off/
 
 ### Phase 3 — 외부 데이터 동기화 (3~5일) · 이슈 #5
 
-- KLID 버스 `rtm_loc_info`(차량 위치) → `bus_position_observations` → 노선 폴리라인 투영으로
-  ETA 파생 → `transit_arrival_observations`. KLID엔 도착예측 API가 없어서 이 파생이 필요하다.
-  마스터(`mst_info`, `ps_info`) → `transit_lines`/`transit_stops`/`transit_line_stops`
+- ~~KLID 버스 `rtm_loc_info`(차량 위치) → `bus_position_observations` → 노선 폴리라인 투영으로
+  ETA 파생~~ — KLID 버스 실시간 위치가 화성·성남·서울 세 곳 모두 0건으로 확인되어(#10, #12)
+  폐기. TAGO 버스도착정보(`15098530`)가 정류장 단위 도착예측을 직접 주므로 이 경로 자체가
+  필요 없어졌다 ([ADR 0001](./adr/0001-tago-bus-arrival-prediction.md), #13). TAGO
+  `getRouteNoList`/`getRouteAcctoThrghSttnList`(노선 검색 + 경유 정류장) →
+  `transit_lines`/`transit_stops`/`transit_line_stops`, `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList`
+  (도착예측) → `transit_arrival_observations`
 - KLID 신호등 `tl_drct_info` → `traffic_signal_states` (서울·울산 커버). 마스터
   `crsrd_map_info` → `traffic_signals`
-- **필터가 `stdgCd`(지자체)뿐이므로 폴링 범위를 활성 경로의 지자체 집합 × 출퇴근 창
-  (`wio.polling.windows`)으로 제한**해서 일일 호출 한도(개발계정 일 5,000회 수준) 안에서
-  운영. 상세는 ARCHITECTURE.md "외부 데이터 동기화"
-- **실제 키를 받은 첫 세션**: 화성/성남/서울 `totalCount` 확인
-  ([backend/README.md](../backend/README.md) 체크리스트). 버스 위치가 비어 있으면
-  `ArrivalPredictionProvider` 구현체를 TAGO 버스도착정보(15098530) / 경기 GBIS로 교체
+- KLID 신호등은 **필터가 `stdgCd`(지자체)뿐이므로 폴링 범위를 활성 경로의 지자체 집합 ×
+  출퇴근 창(`wio.polling.windows`)으로 제한**해서 일일 호출 한도(개발계정 일 5,000회 수준)
+  안에서 운영. TAGO 버스는 노선/정류장 단위로 정확히 조회하므로 지자체 크기와 무관하게
+  활성 구간 수만큼만 호출한다. 상세는 ARCHITECTURE.md "외부 데이터 동기화"
+- **TAGO 실 키를 받는 첫 세션**: fixture가 포털 Swagger 샘플로만 만들어졌으므로 실 응답으로
+  필드/커버리지를 재확인한다 ([backend/README.md](../backend/README.md) 체크리스트).
+  화성/동탄 권역 커버리지가 비어 있으면 경기 GBIS 병행을 다시 검토 (ADR 0001 "후속")
 - 지하철 실시간 도착정보 → 같은 `ArrivalPredictionProvider`로 추가
 - 정적 시간표 import: GTX 등 실시간 없는 노선은 CSV로 수동 입력 → `transit_schedules`
 - 공휴일 캘린더(특일정보 API 또는 연 1회 수동) → `date → day_type` 매핑
@@ -133,7 +138,7 @@ when-i-off/
 | 리스크 | 대응 |
 |---|---|
 | 공공 API 키 승인 지연, 일일 호출 한도 | Phase 0에서 즉시 신청. 폴링 범위를 활성 경로의 지자체·시간대로 한정 (`stdgCd`가 유일한 필터라 노선 단위로 줄일 수 없음) |
-| KLID 커버리지 부족 (버스 위치는 중소도시 위주, 서울·경기 비어 있을 수 있음; 신호는 서울·울산만) | 키 받은 첫 세션에 화성/성남/서울 `totalCount` 확인. **TAGO 버스도착정보(15098530)와 경기 GBIS 키를 Phase 3 시작 전에 미리 신청**해 두고, 비어 있으면 `ArrivalPredictionProvider` 구현체만 교체. 신호는 주기 모델 fallback이 이미 있음 |
+| KLID 버스 커버리지 부족 (화성·성남·서울 실측 0건, #10) | 버스는 TAGO 버스도착정보(15098530)로 교체 완료(ADR 0001, #13). TAGO 실 키로 화성/동탄 권역 재확인 필요 — 비어 있으면 경기 GBIS 병행 검토. 신호는 서울 `crsrd_map_info` K0/2779건 커버 확인됨(#10), 커버 밖이면 주기 모델 fallback이 이미 있음 |
 | iOS 백그라운드 위치 제약 (geofence 20개, 정확도 저하) | 활성 경로 1개 지점만 등록. 지하 역사에서 GPS 유실 시 `alighted_at`이 지상에서 늦게 잡힐 수 있음 → 이동시간 보정에 노이즈, 사용자가 수정 가능하게 |
 | GTX 실시간 API 부재 | 시간표 + 실측 보정만으로 시작 (`has_realtime_api=false`) |
 | 콜드스타트 | 처음 1~2주는 추천이 보수적(일찍 나가라)임을 UI에 명시 |

@@ -15,7 +15,8 @@ object Fixtures {
         MockResponse().setHeader("Content-Type", "application/json").setBody(read(name))
 }
 
-class KlidFixtureDispatcher : Dispatcher() {
+/** TAGO(버스)와 KLID(신호등) 응답을 오퍼레이션 이름으로 구분해 돌려주는 공용 디스패처. */
+class PublicDataFixtureDispatcher : Dispatcher() {
     val responses = ConcurrentHashMap<String, () -> MockResponse>()
 
     init {
@@ -24,9 +25,11 @@ class KlidFixtureDispatcher : Dispatcher() {
 
     fun reset() {
         responses.clear()
-        responses["mst_info"] = { Fixtures.json("klid/mst_info_ok.json") }
-        responses["ps_info"] = { Fixtures.json("klid/ps_info_ok.json") }
-        responses["rtm_loc_info"] = { Fixtures.json("klid/rtm_loc_info_ok.json") }
+        responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_ok.json") }
+        responses["getRouteAcctoThrghSttnList"] = { Fixtures.json("tago/getRouteAcctoThrghSttnList_ok.json") }
+        responses["getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList"] = {
+            Fixtures.json("tago/getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList_ok.json")
+        }
         responses["crsrd_map_info"] = { Fixtures.json("klid/crsrd_map_info_ok.json") }
         responses["tl_drct_info"] = { Fixtures.json("klid/tl_drct_info_ok.json") }
     }

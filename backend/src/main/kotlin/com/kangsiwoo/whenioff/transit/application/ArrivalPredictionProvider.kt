@@ -5,7 +5,8 @@ import com.kangsiwoo.whenioff.transit.domain.TransitStop
 import java.time.Instant
 
 data class Prediction(
-    val vehicleNo: String,
+    /** 차량 식별자. 소스가 주지 않으면 null (TAGO는 차량유형만 주고 차량 번호를 주지 않는다). */
+    val vehicleNo: String?,
     val predictedArrivalAt: Instant,
     val observedAt: Instant,
 )
