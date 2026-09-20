@@ -2,7 +2,6 @@ package com.kangsiwoo.whenioff.external.klid
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
-import com.kangsiwoo.whenioff.external.klid.bus.KlidBusApi
 import com.kangsiwoo.whenioff.external.klid.signal.KlidSignalApi
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder
@@ -35,12 +34,6 @@ class KlidConfig {
                 .build()
         return KlidHttpClient(restClient, objectMapper, callCounter, klid.maxRetries, klid.retryBackoff)
     }
-
-    @Bean
-    fun klidBusApi(
-        properties: WioProperties,
-        client: KlidHttpClient,
-    ): KlidBusApi = KlidBusApi(client, properties.klid.bus)
 
     @Bean
     fun klidSignalApi(

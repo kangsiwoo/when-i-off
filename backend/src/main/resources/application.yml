@@ -40,10 +40,15 @@ springdoc:
 
 wio:
   api-token: ${WIO_API_TOKEN}
+  tago:
+    service-key: ${TAGO_BUS_API:}
+    route-info-base-url: https://apis.data.go.kr/1613000/BusRouteInfoInqireService
+    arrival-info-base-url: https://apis.data.go.kr/1613000/ArvlInfoInqireService
+    connect-timeout: 5s
+    read-timeout: 20s
+    max-retries: 2
+    retry-backoff: 500ms
   klid:
-    bus:
-      base-url: https://apis.data.go.kr/B551982/rte
-      service-key: ${PRECISE_BUS_API:}
     signal:
       base-url: https://apis.data.go.kr/B551982/rti
       service-key: ${REALTIME_TREFFIC_LIGHT_API:}

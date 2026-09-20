@@ -6,11 +6,28 @@ import java.time.Duration
 @ConfigurationProperties(prefix = "wio")
 data class WioProperties(
     val apiToken: String,
+    val tago: Tago = Tago(),
     val klid: Klid = Klid(),
     val polling: Polling = Polling(),
 ) {
+    /**
+     * TAGO(버스). 버스노선정보/버스도착정보는 서로 다른 서비스 URL이지만 포털 계정 서비스 키 하나를
+     * 같이 쓰므로 키는 하나만 두고 URL만 나눈다.
+     */
+    data class Tago(
+        val serviceKey: String = "",
+        val routeInfoBaseUrl: String = "https://apis.data.go.kr/1613000/BusRouteInfoInqireService",
+        val arrivalInfoBaseUrl: String = "https://apis.data.go.kr/1613000/ArvlInfoInqireService",
+        val connectTimeout: Duration = Duration.ofSeconds(5),
+        val readTimeout: Duration = Duration.ofSeconds(20),
+        val maxRetries: Int = 2,
+        val retryBackoff: Duration = Duration.ofMillis(500),
+    ) {
+        val routeInfo: Endpoint get() = Endpoint(routeInfoBaseUrl, serviceKey)
+        val arrivalInfo: Endpoint get() = Endpoint(arrivalInfoBaseUrl, serviceKey)
+    }
+
     data class Klid(
-        val bus: Endpoint = Endpoint("https://apis.data.go.kr/B551982/rte", ""),
         val signal: Endpoint = Endpoint("https://apis.data.go.kr/B551982/rti", ""),
         val connectTimeout: Duration = Duration.ofSeconds(5),
         val readTimeout: Duration = Duration.ofSeconds(20),

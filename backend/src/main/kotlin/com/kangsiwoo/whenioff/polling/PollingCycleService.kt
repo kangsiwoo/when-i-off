@@ -5,9 +5,10 @@ import com.kangsiwoo.whenioff.external.klid.KlidException
 import com.kangsiwoo.whenioff.route.domain.LegType
 import com.kangsiwoo.whenioff.route.domain.RouteLegRepository
 import com.kangsiwoo.whenioff.route.domain.RouteLegSignalCrossingRepository
+import com.kangsiwoo.whenioff.external.tago.TagoCallCounter
+import com.kangsiwoo.whenioff.external.tago.TagoException
 import com.kangsiwoo.whenioff.signal.application.SignalStateIngestService
 import com.kangsiwoo.whenioff.transit.application.ArrivalPredictionProvider
-import com.kangsiwoo.whenioff.transit.application.BusPositionSnapshotCache
 import com.kangsiwoo.whenioff.transit.application.LegDirectionResolver
 import com.kangsiwoo.whenioff.transit.domain.TransitLineRepository
 import com.kangsiwoo.whenioff.transit.domain.TransitMode
@@ -19,12 +20,14 @@ import org.springframework.transaction.support.TransactionTemplate
 private val log = KotlinLogging.logger {}
 
 data class PollingCycleResult(
-    val busStdgCds: Set<String>,
+    /** 버스는 TAGO cityCode, 신호는 KLID 법정동 코드 — 코드 체계가 다르다 (ADR 0001). */
+    val busCityCodes: Set<String>,
     val legsPredicted: Int,
     val predictions: Int,
     val signalStdgCds: Set<String>,
     val signalStatesInserted: Int,
-    val failedStdgCds: Set<String>,
+    val failedCodes: Set<String>,
+    val tagoCallsToday: Long,
     val klidCallsToday: Long,
 )
 
@@ -35,14 +38,14 @@ class PollingCycleService(
     private val lineRepository: TransitLineRepository,
     private val stopRepository: TransitStopRepository,
     private val directionResolver: LegDirectionResolver,
-    private val snapshotCache: BusPositionSnapshotCache,
     private val predictionProvider: ArrivalPredictionProvider,
     private val signalIngestService: SignalStateIngestService,
-    private val callCounter: KlidCallCounter,
+    private val tagoCallCounter: TagoCallCounter,
+    private val klidCallCounter: KlidCallCounter,
     private val transactionTemplate: TransactionTemplate,
 ) {
     private data class BusLegTarget(
-        val stdgCd: String,
+        val cityCode: String,
         val lineId: Long,
         val boardStopId: Long,
         val directionCode: String,
@@ -51,29 +54,22 @@ class PollingCycleService(
     fun runCycle(): PollingCycleResult {
         val failed = mutableSetOf<String>()
         val targets = collectBusTargets()
-        val busStdgCds = targets.map { it.stdgCd }.toSet()
+        val busCityCodes = targets.map { it.cityCode }.toSet()
 
-        snapshotCache.clear()
+        // TAGO 도착예측은 (정류장, 노선)마다 직접 조회하므로 미리 받아 둘 지자체 스냅샷이 없다.
         var legsPredicted = 0
         var predictions = 0
-        for ((stdgCd, group) in targets.groupBy { it.stdgCd }) {
-            try {
-                snapshotCache.refresh(stdgCd)
-            } catch (e: KlidException) {
-                log.warn(e) { "rtm_loc_info fetch failed for $stdgCd" }
-                failed += stdgCd
-                continue
-            }
-            // 방금 받은 스냅샷이 TTL을 넘기기 전에 이 지자체의 구간을 바로 예측해, 다른 지자체 수집이 늦어져도 재호출이 없다.
+        for ((cityCode, group) in targets.groupBy { it.cityCode }) {
             for (target in group) {
                 val line = lineRepository.findById(target.lineId).orElse(null) ?: continue
                 val stop = stopRepository.findById(target.boardStopId).orElse(null) ?: continue
                 try {
                     predictions += predictionProvider.predict(line, stop, target.directionCode).size
                     legsPredicted++
-                } catch (e: KlidException) {
-                    log.warn(e) { "prediction failed for $stdgCd" }
-                    failed += stdgCd
+                } catch (e: TagoException) {
+                    // 키/한도 문제면 같은 도시의 나머지 구간도 같은 이유로 실패하므로 호출을 더 쓰지 않는다.
+                    log.warn(e) { "prediction failed for $cityCode" }
+                    failed += cityCode
                     break
                 }
             }
@@ -92,13 +88,14 @@ class PollingCycleService(
 
         val result =
             PollingCycleResult(
-                busStdgCds = busStdgCds,
+                busCityCodes = busCityCodes,
                 legsPredicted = legsPredicted,
                 predictions = predictions,
                 signalStdgCds = signalStdgCds,
                 signalStatesInserted = statesInserted,
-                failedStdgCds = failed,
-                klidCallsToday = callCounter.todayCount(),
+                failedCodes = failed,
+                tagoCallsToday = tagoCallCounter.todayCount(),
+                klidCallsToday = klidCallCounter.todayCount(),
             )
         log.info { "polling cycle: $result" }
         return result
@@ -109,13 +106,13 @@ class PollingCycleService(
             routeLegRepository.findActiveByLegType(LegType.TRANSIT).mapNotNull { leg ->
                 val line = leg.transitLine ?: return@mapNotNull null
                 val board = leg.boardStop ?: return@mapNotNull null
-                val stdgCd = line.stdgCd
-                if (line.mode != TransitMode.BUS || !line.hasRealtimeApi || stdgCd == null || line.externalId == null) {
-                    return@mapNotNull null
-                }
+                val cityCode = line.stdgCd
+                if (line.mode != TransitMode.BUS || !line.hasRealtimeApi || cityCode == null) return@mapNotNull null
+                // TAGO 조회에는 노선(routeId)과 정류장(nodeId)의 외부 ID가 둘 다 필요하다.
+                if (line.externalId == null || board.externalId == null) return@mapNotNull null
                 val direction =
                     directionResolver.resolve(line.id!!, board.id!!, leg.alightStop?.id) ?: return@mapNotNull null
-                BusLegTarget(stdgCd, line.id!!, board.id!!, direction)
+                BusLegTarget(cityCode, line.id!!, board.id!!, direction)
             }
         }!!
 
