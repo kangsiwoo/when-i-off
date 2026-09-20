@@ -68,6 +68,10 @@ class KlidHttpClient(
     //    through verbatim.
     // A '%' therefore tells the two apart safely. Only serviceKey is special-cased; the remaining
     // values are always encoded.
+    //
+    // data.go.kr's own portal notice confirms this varies by API/call condition and says to use
+    // whichever of the two forms actually works, rather than mandating one — see 공공데이터포털
+    // 활용신청 참고사항 1 on the KLID API pages.
     private fun buildUri(
         endpoint: WioProperties.Endpoint,
         op: String,
