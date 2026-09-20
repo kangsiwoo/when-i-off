@@ -17,4 +17,9 @@ interface TransitStopRepository : JpaRepository<TransitStop, Long> {
         minLng: Double,
         maxLng: Double,
     ): List<TransitStop>
+
+    fun findAllByModeAndStdgCd(
+        mode: TransitMode,
+        stdgCd: String,
+    ): List<TransitStop>
 }

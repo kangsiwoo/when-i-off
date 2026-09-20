@@ -1,0 +1,39 @@
+{
+  "header": {
+    "resultCode": "K0",
+    "resultMsg": "NORMAL_SERVICE"
+  },
+  "body": {
+    "totalCount": 2,
+    "pageNo": 1,
+    "numOfRows": 1000,
+    "items": {
+      "item": [
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-101",
+          "rteNo": "1001",
+          "rteType": "일반",
+          "stpnt": "동탄역",
+          "edpnt": "병점역",
+          "vhclFstTm": "0500",
+          "vhclLstTm": "2300",
+          "totDt": "20260920040000"
+        },
+        {
+          "stdgCd": "4159000000",
+          "lclgvNm": "화성시",
+          "rteId": "HS-999",
+          "rteNo": "999",
+          "rteType": "마을",
+          "stpnt": "능동",
+          "edpnt": "오산역",
+          "vhclFstTm": "0530",
+          "vhclLstTm": "2230",
+          "totDt": "20260920040000"
+        }
+      ]
+    }
+  }
+}

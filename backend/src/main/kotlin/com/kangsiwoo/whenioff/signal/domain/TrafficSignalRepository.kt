@@ -9,4 +9,6 @@ interface TrafficSignalRepository : JpaRepository<TrafficSignal, Long> {
         minLng: Double,
         maxLng: Double,
     ): List<TrafficSignal>
+
+    fun findAllByStdgCd(stdgCd: String): List<TrafficSignal>
 }

@@ -32,4 +32,9 @@ interface TransitLineRepository : JpaRepository<TransitLine, Long> {
         keyword: String,
         pageable: Pageable,
     ): List<TransitLine>
+
+    fun findAllByModeAndStdgCd(
+        mode: TransitMode,
+        stdgCd: String,
+    ): List<TransitLine>
 }
