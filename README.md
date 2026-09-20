@@ -13,7 +13,15 @@
 
 ## 설계 문서
 
-backend MVP(#10) 진행 중. 실행/테스트 방법은 [backend/README.md](backend/README.md).
+backend MVP(#10) 진행 중. 상세한 실행/테스트 방법은 [backend/README.md](backend/README.md).
+
+```bash
+cp .env.example .env      # WIO_API_TOKEN은 아무 문자열이면 된다
+docker compose up -d --build
+curl -s -H "X-Api-Token: $WIO_API_TOKEN" localhost:8080/api/v1/commute-routes
+```
+
+Swagger UI는 `localhost:8080/swagger-ui.html`, health는 `localhost:8080/actuator/health`(인증 없음).
 
 - [아키텍처 개요](docs/ARCHITECTURE.md)
 - [데이터 모델](docs/DATA_MODEL.md) / [DB 스키마](docs/db/schema.sql)
