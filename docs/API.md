@@ -33,8 +33,8 @@
 | 401 | `X-Api-Token` 없음/불일치 | |
 | 404 | 리소스 없음 또는 **다른 사용자 소유** (존재 여부를 숨김) | |
 | 409 | UNIQUE/FK 위반 등 무결성 오류, 실측 기록이 붙은 구간을 지우는 구간 교체 | `detail`에 DB 메시지 첫 줄 또는 문제의 구간 id |
-| 502 | 외부 API(KLID)가 오류 코드/비JSON 응답 | `klidResultCode` 확장 필드 (`K22` 같은 결과 코드, 비JSON이면 `HTTP403` 형식) |
-| 503 | KLID 서비스 키 미설정 (`PRECISE_BUS_API`/`REALTIME_TREFFIC_LIGHT_API`) | 관리 동기화 API에서만 |
+| 502 | 외부 API(KLID/TAGO)가 오류 코드/비JSON 응답 | KLID는 `klidResultCode`(`K22` 같은 결과 코드, 비JSON이면 `HTTP403` 형식), TAGO는 `tagoResultCode`(`resultCode`가 `"00"`이 아닌 경우) 확장 필드 |
+| 503 | 서비스 키 미설정 (`TAGO_BUS_API` 또는 KLID `REALTIME_TREFFIC_LIGHT_API`) | 관리 동기화 API에서만 |
 | 500 | 그 외 | `detail`은 항상 `"unexpected error"`, 원인은 서버 로그 |
 
 ## 경로/구간 관리 (데스크탑에서 주로 사용)
@@ -64,8 +64,9 @@
   `409` — 기록은 지우지 않는 게 원칙이므로 그 구간은 `id`를 붙여 되돌려 보내야 한다
 - 응답은 `GET /commute-routes/{id}`와 같은 상세이며, 유지된 구간은 같은 `id`와 crossing을 그대로 가진다
 
-수동 등록은 KLID 마스터 동기화가 커버하지 않는 곳(GTX 역, 지방 교차로)을 위한 것이다.
-동기화로 들어온 행은 `stdgCd`+`externalId`(교차로는 `crsrdId`)가 채워져 있고, 수동 행은 NULL이다.
+수동 등록은 TAGO/KLID 마스터 동기화가 커버하지 않는 곳(GTX 역, TAGO에 없는 노선, 지방 교차로)을
+위한 것이다. 동기화로 들어온 행은 `stdgCd`+`externalId`(교차로는 `crsrdId`)가 채워져 있고,
+수동 행은 NULL이다.
 
 ## 이동 기록 (앱에서 주로 사용)
 
@@ -115,33 +116,40 @@ geofence 이벤트마다, 그리고 오프라인 후 재전송 때 같은 요청
 Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 두 방식을 열어둔다.
 초기 구현은 "배치로 미리 계산 + 캐시 조회"만으로 충분하다.
 
-## 외부 데이터 동기화 (KLID) — 관리 API
+## 외부 데이터 동기화 (TAGO/KLID) — 관리 API
 
 동기화 자체는 Backend 내부 스케줄러가 하지만, 마스터 동기화와 폴링 1회 실행을 손으로 시킬 수
 있게 **관리 엔드포인트**를 둔다. 같은 `X-Api-Token`으로 보호되며 앱/데스크탑 일반 화면에서는
-호출하지 않는다. 배경과 호출 한도 정책은 [ARCHITECTURE.md](./ARCHITECTURE.md) "외부 데이터 동기화".
+호출하지 않는다. 버스는 TAGO, 신호등은 KLID를 쓴다 — 배경은
+[ADR 0001](./adr/0001-tago-bus-arrival-prediction.md), 호출 한도 정책은
+[ARCHITECTURE.md](./ARCHITECTURE.md) "외부 데이터 동기화".
 
 | 상태 | Method | Path | 설명 |
 |---|---|---|---|
-| ✔ | POST | `/admin/sync/klid/bus-master?stdgCd=` | `mst_info` + `ps_info` → `transit_lines`, `transit_stops`, `transit_line_stops` upsert |
+| ✔ | POST | `/admin/sync/tago/bus-route?cityCode=&routeNo=` | `getRouteNoList`로 `routeId` 검색 + `getRouteAcctoThrghSttnList` → `transit_lines`, `transit_stops`, `transit_line_stops` upsert (노선 하나 단위) |
 | ✔ | POST | `/admin/sync/klid/intersections?stdgCd=` | `crsrd_map_info` → `traffic_signals` upsert |
-| 계약 | POST | `/admin/sync/klid/bus-positions?stdgCd=` | `rtm_loc_info` 1회 수집 → `bus_position_observations` (+ 우리 경로 노선의 ETA → `transit_arrival_observations`) |
+| 계약 | POST | `/admin/sync/tago/bus-arrivals` | 활성 경로의 TRANSIT(BUS) 구간마다 `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList` 1회 수집 → `transit_arrival_observations` (`source='TAGO_ARVL'`) |
 | 계약 | POST | `/admin/sync/klid/signal-states?stdgCd=` | `tl_drct_info` 1회 수집 → `traffic_signal_states` |
-| 계약 | GET | `/admin/sync/status` | 잡별 마지막 실행 시각/결과, 폴링 활성 여부와 현재 대상 `stdgCd` 집합 |
+| 계약 | GET | `/admin/sync/status` | 잡별 마지막 실행 시각/결과, 폴링 활성 여부와 현재 대상 범위 |
 
-- `stdgCd`는 10자리 숫자 문자열(아니면 `400`). 구현된 마스터 동기화 두 개는 필수이고,
-  계약 단계인 폴링 1회 실행은 생략 시 활성 경로에서 계산한 지자체 집합 전부에 대해 실행
+- `stdgCd`는 10자리 숫자 문자열(아니면 `400`, KLID 전용). `cityCode`/`routeNo`는 TAGO
+  값 그대로(문자열) — 도시코드는 `getCtyCodeList`로, 노선번호는 사용자가 아는 버스 번호
+  그대로 입력한다. 구현된 마스터 동기화 두 개(`bus-route`, `intersections`)는 필수 파라미터가
+  있고, 계약 단계인 폴링 1회 실행은 생략 시 활성 경로에서 계산한 대상 전부에 대해 실행
 - 응답(동기, 구현): 잡별 카운트 객체 `{ "fetched", "created", "updated", "skipped" }`를 대상 테이블마다 돌려준다.
-  `bus-master` → `{ "stdgCd": "4159000000", "lines": {…}, "stops": {…}, "lineStops": {…} }`,
+  `bus-route` → `{ "cityCode": "...", "routeId": "...", "lines": {…}, "stops": {…}, "lineStops": {…} }`,
   `intersections` → `{ "stdgCd": "1100000000", "intersections": {…} }`.
-  `skipped`는 지자체 전체를 받았지만 키/좌표가 비어 있어 버린 수, 변경 없는 행은 어느 카운트에도 들지 않는다 (`stdgCd`만 필터할 수 있어
-  메모리 필터가 필수인 것을 확인하는 지표)
-- upsert 키: 노선 `(mode, stdgCd, rteId)`, 정류장 `(mode, stdgCd, bstaId)`, 교차로 `(stdgCd, crsrdId)`,
-  노선-정류장 `(line, drcGbnCd, bstaSn)`. 같은 데이터를 두 번 돌려도 결과가 같다
-- 키가 비어 있으면(`PRECISE_BUS_API`/`REALTIME_TREFFIC_LIGHT_API`) `503`, KLID가 `K`-오류 코드나
-  비JSON을 주면 `502` + `klidResultCode`
-- 실시간 폴링 스케줄러는 `wio.polling.enabled=true`일 때만 돌고, 위 두 `*-positions`/`*-states`
-  잡을 창(`wio.polling.windows`) 안에서 `interval-ms`마다 활성 지자체에 대해 실행하는 것과 같다
+  `bus-route`가 `routeNo`에 매칭되는 TAGO 노선을 못 찾으면(`totalCount=0`) `404`, 여러 개 매칭되면
+  (같은 도시에 같은 번호가 지선/직행 등으로 여러 개인 경우) 전부 등록하고 응답에 각각의 `routeId`를 나열
+- upsert 키: 노선 `(mode, stdgCd, externalId)` = `(BUS, cityCode, routeId)`, 정류장
+  `(mode, stdgCd, externalId)` = `(BUS, cityCode, nodeId)`, 교차로 `(stdgCd, crsrdId)` (KLID, 이전과 동일).
+  `stdgCd` 컬럼에 버스는 TAGO `cityCode`, 신호등은 KLID 법정동 코드가 들어가므로 값의 코드
+  체계가 다르다는 점에 주의(둘 다 `mode`/도메인이 다르므로 섞이지 않는다). 같은 데이터를 두 번
+  돌려도 결과가 같다
+- 키가 비어 있으면(TAGO `TAGO_BUS_API`, KLID `REALTIME_TREFFIC_LIGHT_API`) `503`, TAGO가
+  `resultCode != "00"`이거나 KLID가 `K`-오류 코드나 비JSON을 주면 `502` + `tagoResultCode`/`klidResultCode`
+- 실시간 폴링 스케줄러는 `wio.polling.enabled=true`일 때만 돌고, 위 `bus-arrivals`/`signal-states`
+  잡을 창(`wio.polling.windows`) 안에서 `interval-ms`마다 활성 구간/지자체에 대해 실행하는 것과 같다
 
 정적 시간표(GTX 등 실시간 없는 노선)는 API가 아니라 CSV 수동 import로 `transit_schedules`에 넣는다.
 
