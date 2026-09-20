@@ -1,0 +1,71 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "totalCount": 6,
+      "pageNo": 1,
+      "numOfRows": 1000,
+      "items": {
+        "item": [
+          {
+            "nodeid": "GGB-S001",
+            "nodenm": "동탄역",
+            "nodeno": "20001",
+            "nodeord": "1",
+            "gpslati": "37.200000",
+            "gpslong": "127.070000",
+            "updowncd": "0"
+          },
+          {
+            "nodeid": "GGB-S002",
+            "nodenm": "동탄중앙공원",
+            "nodeno": "20002",
+            "nodeord": "2",
+            "gpslati": "37.203000",
+            "gpslong": "127.070000",
+            "updowncd": "0"
+          },
+          {
+            "nodeid": "GGB-S003",
+            "nodenm": "반송동주민센터",
+            "nodeno": "20003",
+            "nodeord": "3",
+            "gpslati": "37.206000",
+            "gpslong": "127.071000",
+            "updowncd": "0"
+          },
+          {
+            "nodeid": "GGB-S004",
+            "nodenm": "동탄시범단지",
+            "nodeno": "20004",
+            "nodeord": "4",
+            "gpslati": "37.206000",
+            "gpslong": "127.075000",
+            "updowncd": "0"
+          },
+          {
+            "nodeid": "GGB-S005",
+            "nodenm": "능동마을",
+            "nodeno": "20005",
+            "nodeord": "5",
+            "gpslati": "37.209000",
+            "gpslong": "127.076000",
+            "updowncd": "0"
+          },
+          {
+            "nodeid": "GGB-S006",
+            "nodenm": "병점역",
+            "nodeno": "20006",
+            "nodeord": "6",
+            "gpslati": "37.212000",
+            "gpslong": "127.076000",
+            "updowncd": "0"
+          }
+        ]
+      }
+    }
+  }
+}

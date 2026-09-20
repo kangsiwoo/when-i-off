@@ -1,0 +1,31 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "totalCount": 2,
+      "pageNo": 1,
+      "numOfRows": 1000,
+      "items": {
+        "item": [
+          {
+            "routeid": "GGB1001",
+            "routeno": "1001",
+            "routetp": "직행좌석버스",
+            "startnodenm": "동탄역",
+            "endnodenm": "병점역"
+          },
+          {
+            "routeid": "GGB1001A",
+            "routeno": "1001-1",
+            "routetp": "일반버스",
+            "startnodenm": "동탄역",
+            "endnodenm": "오산역"
+          }
+        ]
+      }
+    }
+  }
+}

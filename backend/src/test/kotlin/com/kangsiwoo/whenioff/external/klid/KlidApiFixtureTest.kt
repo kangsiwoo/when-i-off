@@ -2,7 +2,6 @@ package com.kangsiwoo.whenioff.external.klid
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
-import com.kangsiwoo.whenioff.external.klid.bus.KlidBusApi
 import com.kangsiwoo.whenioff.external.klid.signal.KlidSignalApi
 import com.kangsiwoo.whenioff.support.Fixtures
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -18,7 +17,6 @@ import kotlin.test.assertNull
 
 class KlidApiFixtureTest {
     private lateinit var server: MockWebServer
-    private lateinit var busApi: KlidBusApi
     private lateinit var signalApi: KlidSignalApi
 
     @BeforeEach
@@ -33,53 +31,12 @@ class KlidApiFixtureTest {
                 0,
                 Duration.ZERO,
             )
-        busApi = KlidBusApi(client, WioProperties.Endpoint(server.url("/rte").toString(), "k"))
         signalApi = KlidSignalApi(client, WioProperties.Endpoint(server.url("/rti").toString(), "k"))
     }
 
     @AfterEach
     fun tearDown() {
         server.shutdown()
-    }
-
-    @Test
-    fun `rtm_loc_info items expose parsed position speed heading and KST timestamp`() {
-        server.enqueue(Fixtures.json("klid/rtm_loc_info_ok.json"))
-
-        val vehicles = busApi.rtmLocInfo("4159000000")
-
-        assertEquals(3, vehicles.size)
-        val v1 = vehicles[0]
-        assertEquals("경기70아1001", v1.vhclNo)
-        assertEquals(37.2015, v1.latitude)
-        assertEquals(127.07, v1.longitude)
-        assertEquals(30.0, v1.speedKmh)
-        assertEquals(0.0, v1.headingDeg)
-        assertEquals(Instant.parse("2026-09-19T23:15:30Z"), v1.observedAt)
-        assertEquals("GNSS", v1.evtType)
-        assertEquals("20260920081530", v1.raw["gthrDt"])
-    }
-
-    @Test
-    fun `ps_info items expose seq and coordinates`() {
-        server.enqueue(Fixtures.json("klid/ps_info_ok.json"))
-
-        val stops = busApi.psInfo("4159000000")
-
-        assertEquals((1..6).toList(), stops.map { it.seqNo })
-        assertEquals(37.2, stops.first().lat)
-        assertEquals(listOf("0"), stops.map { it.drcGbnCd }.distinct())
-    }
-
-    @Test
-    fun `mst_info items map route master fields`() {
-        server.enqueue(Fixtures.json("klid/mst_info_ok.json"))
-
-        val routes = busApi.mstInfo("4159000000")
-
-        assertEquals("HS-101", routes[0].rteId)
-        assertEquals("1001", routes[0].rteNo)
-        assertEquals("0500", routes[0].vhclFstTm)
     }
 
     @Test

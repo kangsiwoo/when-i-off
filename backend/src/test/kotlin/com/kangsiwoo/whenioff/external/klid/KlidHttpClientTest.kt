@@ -25,7 +25,7 @@ class KlidHttpClientTest {
     fun setUp() {
         server = MockWebServer()
         server.start()
-        endpoint = WioProperties.Endpoint(server.url("/rte").toString(), "dec+oded/key=")
+        endpoint = WioProperties.Endpoint(server.url("/rti").toString(), "dec+oded/key=")
         counter = KlidCallCounter(SimpleMeterRegistry())
         client =
             KlidHttpClient(
@@ -44,15 +44,15 @@ class KlidHttpClientTest {
 
     @Test
     fun `parses a normal envelope and encodes the service key exactly once`() {
-        server.enqueue(Fixtures.json("klid/mst_info_ok.json"))
+        server.enqueue(Fixtures.json("klid/crsrd_map_info_ok.json"))
 
-        val page = client.fetchPage(endpoint, "mst_info", "4159000000", 1, 1000)
+        val page = client.fetchPage(endpoint, "crsrd_map_info", "1100000000", 1, 1000)
 
-        assertEquals(2, page.totalCount)
-        assertEquals(listOf("HS-101", "HS-999"), page.items.map { it["rteId"] })
+        assertEquals(3, page.totalCount)
+        assertEquals(listOf("1850", "1851", "1852"), page.items.map { it["crsrdId"] })
         val request = server.takeRequest()
         assertEquals(
-            "/rte/mst_info?serviceKey=dec%2Boded%2Fkey%3D&pageNo=1&numOfRows=1000&type=json&stdgCd=4159000000",
+            "/rti/crsrd_map_info?serviceKey=dec%2Boded%2Fkey%3D&pageNo=1&numOfRows=1000&type=json&stdgCd=1100000000",
             request.path,
         )
         assertEquals(1, counter.todayCount())
@@ -60,23 +60,23 @@ class KlidHttpClientTest {
 
     @Test
     fun `an already percent-encoded service key is sent verbatim`() {
-        val preEncoded = WioProperties.Endpoint(server.url("/rte").toString(), "abc%2Bdef%3D")
-        server.enqueue(Fixtures.json("klid/mst_info_ok.json"))
+        val preEncoded = WioProperties.Endpoint(server.url("/rti").toString(), "abc%2Bdef%3D")
+        server.enqueue(Fixtures.json("klid/crsrd_map_info_ok.json"))
 
-        client.fetchPage(preEncoded, "mst_info", "4159000000", 1, 1000)
+        client.fetchPage(preEncoded, "crsrd_map_info", "1100000000", 1, 1000)
 
         val request = server.takeRequest()
         assertEquals(
-            "/rte/mst_info?serviceKey=abc%2Bdef%3D&pageNo=1&numOfRows=1000&type=json&stdgCd=4159000000",
+            "/rti/crsrd_map_info?serviceKey=abc%2Bdef%3D&pageNo=1&numOfRows=1000&type=json&stdgCd=1100000000",
             request.path,
         )
     }
 
     @Test
     fun `blank service key fails fast without calling the gateway`() {
-        val unconfigured = WioProperties.Endpoint(server.url("/rte").toString(), "")
+        val unconfigured = WioProperties.Endpoint(server.url("/rti").toString(), "")
 
-        assertThrows<KlidNotConfiguredException> { client.fetchAll(unconfigured, "mst_info", "4159000000") }
+        assertThrows<KlidNotConfiguredException> { client.fetchAll(unconfigured, "crsrd_map_info", "1100000000") }
         assertEquals(0, server.requestCount)
         assertEquals(0, counter.todayCount())
     }
@@ -98,7 +98,7 @@ class KlidHttpClientTest {
                 ),
         )
 
-        val e = assertThrows<KlidApiException> { client.fetchAll(endpoint, "mst_info", "4159000000") }
+        val e = assertThrows<KlidApiException> { client.fetchAll(endpoint, "crsrd_map_info", "1100000000") }
         assertEquals("K22", e.resultCode)
         assertEquals("LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR", e.resultMsg)
     }
@@ -113,7 +113,7 @@ class KlidHttpClientTest {
                 .setBody(Fixtures.read("klid/gateway_forbidden.txt")),
         )
 
-        val e = assertThrows<KlidGatewayException> { client.fetchAll(endpoint, "mst_info", "4159000000") }
+        val e = assertThrows<KlidGatewayException> { client.fetchAll(endpoint, "crsrd_map_info", "1100000000") }
         assertEquals(403, e.status)
         assertEquals("Forbidden", e.body)
         assertEquals(1, server.requestCount)
@@ -122,11 +122,11 @@ class KlidHttpClientTest {
     @Test
     fun `429 is retried and the following success is returned`() {
         server.enqueue(MockResponse().setResponseCode(429).setBody("Too Many Requests"))
-        server.enqueue(Fixtures.json("klid/mst_info_ok.json"))
+        server.enqueue(Fixtures.json("klid/crsrd_map_info_ok.json"))
 
-        val items = client.fetchAll(endpoint, "mst_info", "4159000000")
+        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000")
 
-        assertEquals(2, items.size)
+        assertEquals(3, items.size)
         assertEquals(2, server.requestCount)
     }
 
@@ -134,7 +134,7 @@ class KlidHttpClientTest {
     fun `5xx exhausts max retries then raises KlidGatewayException`() {
         repeat(3) { server.enqueue(MockResponse().setResponseCode(500).setBody("Internal Server Error")) }
 
-        val e = assertThrows<KlidGatewayException> { client.fetchAll(endpoint, "mst_info", "4159000000") }
+        val e = assertThrows<KlidGatewayException> { client.fetchAll(endpoint, "crsrd_map_info", "1100000000") }
         assertEquals(500, e.status)
         assertEquals(3, server.requestCount)
     }
@@ -144,11 +144,11 @@ class KlidHttpClientTest {
         server.enqueue(pageOf(totalCount = 1500, pageNo = 1, count = 1000))
         server.enqueue(pageOf(totalCount = 1500, pageNo = 2, count = 500))
 
-        val items = client.fetchAll(endpoint, "ps_info", "4159000000")
+        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000")
 
         assertEquals(1500, items.size)
-        assertEquals("p1-0", items.first()["bstaId"])
-        assertEquals("p2-499", items.last()["bstaId"])
+        assertEquals("p1-0", items.first()["crsrdId"])
+        assertEquals("p2-499", items.last()["crsrdId"])
         assertTrue(server.takeRequest().path!!.contains("pageNo=1&numOfRows=1000"))
         assertTrue(server.takeRequest().path!!.contains("pageNo=2&numOfRows=1000"))
         assertEquals(2, server.requestCount)
@@ -161,13 +161,13 @@ class KlidHttpClientTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody(
                     """{"header":{"resultCode":"K0","resultMsg":"NORMAL_SERVICE"},
-                       "body":{"totalCount":1,"pageNo":1,"numOfRows":1000,"items":{"item":{"rteId":"X","lat":null}}}}""",
+                       "body":{"totalCount":1,"pageNo":1,"numOfRows":1000,"items":{"item":{"crsrdId":"X","lat":null}}}}""",
                 ),
         )
 
-        val items = client.fetchAll(endpoint, "mst_info", "4159000000")
+        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000")
 
-        assertEquals(listOf(mapOf("rteId" to "X", "lat" to "")), items)
+        assertEquals(listOf(mapOf("crsrdId" to "X", "lat" to "")), items)
     }
 
     private fun pageOf(
@@ -175,7 +175,7 @@ class KlidHttpClientTest {
         pageNo: Int,
         count: Int,
     ): MockResponse {
-        val items = (0 until count).joinToString(",") { """{"bstaId":"p$pageNo-$it","bstaSn":"$it"}""" }
+        val items = (0 until count).joinToString(",") { """{"crsrdId":"p$pageNo-$it","lmtSpd":"$it"}""" }
         return MockResponse()
             .setHeader("Content-Type", "application/json")
             .setBody(
