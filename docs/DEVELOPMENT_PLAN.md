@@ -91,8 +91,11 @@ when-i-off/
   필드/커버리지를 재확인한다 ([backend/README.md](../backend/README.md) 체크리스트).
   화성/동탄 권역 커버리지가 비어 있으면 경기 GBIS 병행을 다시 검토 (ADR 0001 "후속")
 - 지하철 실시간 도착정보 → 같은 `ArrivalPredictionProvider`로 추가
-- 정적 시간표 import: GTX 등 실시간 없는 노선은 CSV로 수동 입력 → `transit_schedules`
-- 공휴일 캘린더(특일정보 API 또는 연 1회 수동) → `date → day_type` 매핑
+- ✔ 정적 시간표 import: GTX 등 실시간 없는 노선은 CSV를 `POST /admin/schedules/import`로 올려
+  `transit_schedules`에 적재(조합 단위 교체로 멱등), `GET /transit-lines/{id}/schedules/next`로
+  자정을 넘겨 다음 N대를 절대 시각으로 조회. 추천 계산에 fallback으로 꽂는 것은 다음 작업
+- ✔ 공휴일 캘린더: 특일정보 API 대신 리소스 파일(`calendar/kr-holidays.txt`) **연 1회 수동** +
+  `DayTypeResolver`로 `date → day_type` 매핑
 - 신호 주기: 공공 데이터가 있으면 연동, 없으면 desktop에서 수동 입력(`USER_OBSERVED`)
 - 앱의 attempt 생성 시 예측 스냅샷을 최신 observation에서 채우도록 backend 연결
 - 완료 기준: 출근 시간대에 observations가 30초~1분 간격으로 쌓이고, attempt에 예측

@@ -50,6 +50,7 @@
 | ✔ | GET | `/transit-lines/search?mode=BUS&keyword=` | 노선 검색 (구간 등록 시 자동완성용, `mode` 생략 가능) |
 | ✔ | POST | `/transit-stops` | 정류장/역 수동 등록 |
 | ✔ | GET | `/transit-stops/nearby?lat=&lng=&radiusM=&mode=` | 근처 정류장/역 (`radiusM` 기본값은 서버 설정, `mode` 생략 가능) |
+| ✔ | GET | `/transit-lines/{id}/schedules/next?stopId=&at=&limit=` | 정적 시간표 기준 다음 출발 N대 (아래 "정적 시간표") |
 | ✔ | POST | `/traffic-signals` | 교차로 수동 등록 (좌표 + 이름) |
 | ✔ | GET | `/traffic-signals/nearby?lat=&lng=&radiusM=` | 근처 교차로 |
 
@@ -130,6 +131,7 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 | ✔ | POST | `/admin/sync/klid/intersections?stdgCd=` | `crsrd_map_info` → `traffic_signals` upsert |
 | 계약 | POST | `/admin/sync/tago/bus-arrivals` | 활성 경로의 TRANSIT(BUS) 구간마다 `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList` 1회 수집 → `transit_arrival_observations` (`source='TAGO_ARVL'`) |
 | 계약 | POST | `/admin/sync/klid/signal-states?stdgCd=` | `tl_drct_info` 1회 수집 → `traffic_signal_states` |
+| ✔ | POST | `/admin/schedules/import` | 정적 시간표 CSV 업로드 (multipart, 파트명 `file`) → `transit_schedules` 교체 (아래 "정적 시간표") |
 | 계약 | GET | `/admin/sync/status` | 잡별 마지막 실행 시각/결과, 폴링 활성 여부와 현재 대상 범위 |
 
 - `stdgCd`는 10자리 숫자 문자열(아니면 `400`, KLID 전용). `cityCode`/`routeNo`는 TAGO
@@ -153,7 +155,54 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 - 실시간 폴링 스케줄러는 `wio.polling.enabled=true`일 때만 돌고, 위 `bus-arrivals`/`signal-states`
   잡을 창(`wio.polling.windows`) 안에서 `interval-ms`마다 활성 구간/지자체에 대해 실행하는 것과 같다
 
-정적 시간표(GTX 등 실시간 없는 노선)는 API가 아니라 CSV 수동 import로 `transit_schedules`에 넣는다.
+## 정적 시간표
+
+GTX처럼 실시간 API가 없는 노선(`has_realtime_api=false`)은 `transit_schedules`의 정적 시간표가
+유일한 근거다 ([ALGORITHM.md](./ALGORITHM.md) 2.2). 예전에는 "API가 아니라 CSV 수동 import"로
+적어 뒀지만, 배포된 서버에 셸 없이 넣을 수 있어야 실용적이라 **관리 엔드포인트(multipart CSV)**로 바꿨다.
+
+### `POST /admin/schedules/import`
+파트명 `file`, UTF-8 CSV. 컬럼은 `transit_line_id, transit_stop_id, day_type, scheduled_time`이고
+헤더 행이 있으면 건너뛴다.
+
+```csv
+transit_line_id,transit_stop_id,day_type,scheduled_time
+12,45,WEEKDAY,23:30
+12,45,SATURDAY,05:30
+```
+
+- 식별자는 **내부 id**다. 수동 등록 행은 `external_id`가 NULL이라 외부 ID로는 지정할 수 없고,
+  주 대상인 GTX가 바로 그 경우다. id는 노선/정류장 등록 응답과 `/transit-lines/search`로 얻는다
+- `day_type`은 `WEEKDAY|SATURDAY|SUNDAY_HOLIDAY`, `scheduled_time`은 `HH:mm` 또는 `HH:mm:ss`이며 **KST 벽시계**다
+- 멱등성은 **(노선, 정류장, day_type) 단위 교체**다. 파일에 나오는 조합의 기존 행을 지우고 파일 내용을
+  넣는다. 같은 파일을 두 번 넣으면 행 수가 같고, 개정으로 없어진 차편은 사라진다. 파일에 없는 조합은
+  건드리지 않는다
+- 응답은 다른 동기화 API와 같은 `{ "fetched", "created", "updated", "skipped" }` — `fetched`는 데이터 행 수,
+  `updated`는 이미 같은 시각으로 있던 차편, `skipped`는 파일 안 중복 행
+- 검증 실패는 `400`이고 `detail`에 **파일 행 번호**가 들어간다 (`row 3: unknown transit_stop_id 999999`).
+  한 행이라도 틀리면 전체가 들어가지 않는다
+
+### `GET /transit-lines/{id}/schedules/next?stopId=&at=&limit=`
+`at`은 ISO-8601 절대 시각(생략 시 현재), `limit`은 기본 5 · 최대 50(범위 밖이면 `400`).
+노선/정류장이 없으면 `404`.
+
+```json
+{
+  "transitLineId": 12, "stopId": 45,
+  "departures": [
+    { "serviceDate": "2026-05-01", "dayType": "WEEKDAY", "scheduledTime": "23:30:00", "departureAt": "2026-05-01T14:30:00Z" },
+    { "serviceDate": "2026-05-02", "dayType": "SATURDAY", "scheduledTime": "05:30:00", "departureAt": "2026-05-01T20:30:00Z" }
+  ]
+}
+```
+
+- 저장된 시간표는 KST 하루 중 시각이라, 서버가 **운행일을 붙여 절대 시각(`departureAt`, UTC)으로 바꿔**
+  돌려준다. `serviceDate`/`scheduledTime`은 확인용 KST 값이다
+- **자정 넘김**: 오늘 남은 차편이 `limit`보다 적으면 다음 날 00:00부터 이어서 채운다. 다음 날은
+  `day_type`이 다를 수 있으므로(금→토, 일→월, 공휴일 전날) 날짜별로 다시 판정한다
+- `day_type` 판정은 KST 날짜 기준이고, 공휴일은 리소스 파일(`calendar/kr-holidays.txt`)의 수동 목록이다
+  (연 1회 갱신). 일요·공휴일 → `SUNDAY_HOLIDAY`, 토요 → `SATURDAY`, 나머지 → `WEEKDAY`
+- 이 조회는 적재 확인과 소비자용 원재료다. 추천 계산의 `predicted_at` fallback 배선은 별도 작업이다 (ALGORITHM.md 2.2)
 
 ## 캘리브레이션 상태 조회 (데스크탑, 디버깅/신뢰도 확인용)
 
