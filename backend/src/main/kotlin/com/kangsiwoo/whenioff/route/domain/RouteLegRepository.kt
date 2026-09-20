@@ -2,4 +2,6 @@ package com.kangsiwoo.whenioff.route.domain
 
 import org.springframework.data.jpa.repository.JpaRepository
 
-interface RouteLegRepository : JpaRepository<RouteLeg, Long>
+interface RouteLegRepository : JpaRepository<RouteLeg, Long> {
+    fun findByCommuteRouteOrderBySeqOrderAsc(commuteRoute: CommuteRoute): List<RouteLeg>
+}

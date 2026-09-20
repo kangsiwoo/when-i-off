@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.context.request.WebRequest
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler
+import java.sql.SQLException
 
 private val log = KotlinLogging.logger {}
 
@@ -31,14 +32,16 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
         }
 
     @ExceptionHandler(DataIntegrityViolationException::class)
-    fun handleIntegrity(e: DataIntegrityViolationException): ProblemDetail =
-        problem(
-            HttpStatus.CONFLICT,
-            "Conflict",
-            e.mostSpecificCause.message
-                ?.lineSequence()
-                ?.firstOrNull(),
-        )
+    fun handleIntegrity(e: DataIntegrityViolationException): ProblemDetail {
+        val cause = e.mostSpecificCause
+        val detail = cause.message?.lineSequence()?.firstOrNull()
+        // 23514(check_violation)은 요청 값이 도메인 제약을 어긴 것이므로 충돌(409)이 아니라 잘못된 요청(400)이다.
+        return if ((cause as? SQLException)?.sqlState == "23514") {
+            problem(HttpStatus.BAD_REQUEST, "Bad Request", detail)
+        } else {
+            problem(HttpStatus.CONFLICT, "Conflict", detail)
+        }
+    }
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(e: Exception): ProblemDetail {
