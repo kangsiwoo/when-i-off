@@ -117,6 +117,10 @@ geofence 이벤트마다, 그리고 오프라인 후 재전송 때 같은 요청
 Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 두 방식을 열어둔다.
 초기 구현은 "배치로 미리 계산 + 캐시 조회"만으로 충분하다.
 
+적재하는 쪽은 #22에서 구현됐다 — `uv run wio-analytics recommend --route-id … --target-arrival-at …`
+(콜드스타트 기본값, `model_version=v1`, [analytics/README.md](../analytics/README.md)). 위 세
+엔드포인트는 아직 `계약` 그대로이고, 값이 쌓인 뒤에 붙인다.
+
 ## 외부 데이터 동기화 (TAGO/KLID) — 관리 API
 
 동기화 자체는 Backend 내부 스케줄러가 하지만, 마스터 동기화와 폴링 1회 실행을 손으로 시킬 수
