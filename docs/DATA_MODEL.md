@@ -82,6 +82,10 @@ commute_trip (그 경로로 실제 이동한 하루 1건)
 - `mode=BUS`: TAGO 기준. `stdg_cd`에는 TAGO `cityCode`, `external_id`에는 노선은
   `routeId`, 정류장은 `nodeId`가 들어간다. TAGO도 "그 도시 안에서만 ID가 유일"한 것은
   KLID와 같은 제약이라 같은 upsert 전략을 그대로 쓴다
+- `mode=GTX`: 실시간 API가 없어 동기화 잡은 없지만, 시드(`db/seed/R__seed_gtx_a.sql`)가
+  **멱등하려면 UNIQUE가 걸릴 키가 필요**하다. 그래서 `stdg_cd`에 노선 계열명(`GTX-A`),
+  `external_id`에 GTX-A 공식 사이트가 쓰는 코드(노선 `L09`, 역 `X111` 동탄 / `X108` 수서)를
+  넣는다. 지자체 코드가 아니라 "이 ID가 유일한 범위"를 가리키는 네임스페이스로 쓰는 것이다
 - 신호등(`traffic_signals`): KLID 기준 그대로. `stdg_cd`는 **법정동 시도코드 10자리**
   (예: 서울 `1100000000`, 화성 `4159000000`), `crsrd_id`는 `crsrd_map_info.crsrdId`
 
