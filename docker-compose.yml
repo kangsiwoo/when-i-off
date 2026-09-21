@@ -10,11 +10,41 @@ services:
       - "5432:5432"
     volumes:
       - when_i_off_pgdata:/var/lib/postgresql/data
+      # 최초 기동 시에만 실행된다 (테스트 전용 DB 생성).
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wio -d when_i_off"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: when-i-off-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # 컨테이너 사이에서는 호스트가 localhost가 아니라 서비스 이름이다.
+      WIO_DB_URL: jdbc:postgresql://postgres:5432/when_i_off
+      WIO_DB_USER: wio
+      WIO_DB_PASSWORD: wio
+      # 없으면 compose가 바로 실패한다 — 앱이 뜬 뒤 401로 헤매는 것보다 낫다.
+      WIO_API_TOKEN: ${WIO_API_TOKEN:?.env에 WIO_API_TOKEN을 설정해야 한다 (.env.example 참고)}
+      # 외부 API 키는 없어도 뜬다. 관리 동기화 API만 503이 된다.
+      TAGO_BUS_API: ${TAGO_BUS_API:-}
+      REALTIME_TREFFIC_LIGHT_API: ${REALTIME_TREFFIC_LIGHT_API:-}
+      WIO_POLLING_ENABLED: ${WIO_POLLING_ENABLED:-false}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
 
 volumes:
   when_i_off_pgdata:

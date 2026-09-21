@@ -16,6 +16,10 @@ java {
     }
 }
 
+// 실행 가능한 bootJar만 만든다. 라이브러리가 아니라 앱이라 plain jar는 쓰이지 않고,
+// build/libs에 jar가 둘이면 Dockerfile의 COPY 글롭이 모호해진다.
+tasks.named<Jar>("jar") { enabled = false }
+
 repositories {
     mavenCentral()
 }

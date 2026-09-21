@@ -5,18 +5,35 @@ Kotlin + Spring Boot 3.5, JDK 21, PostgreSQL 16, Flyway. 설계는 [`docs/`](../
 
 ## 로컬 실행
 
+두 가지 방법이 있다. **그냥 돌려보고 싶으면 A**, 코드를 고쳐가며 개발하려면 B.
+
+### A. compose로 통째로 (Postgres + backend)
+
 ```bash
-# 1. Postgres (레포 루트의 docker-compose.yml, DB when_i_off / wio / wio)
-docker compose up -d
-
-# 2. 환경변수. 루트의 .env.example을 복사해서 채운다
+# 1. 환경변수. 루트의 .env.example을 복사해서 채운다
 cp .env.example .env          # WIO_API_TOKEN은 아무 문자열, TAGO/KLID 키는 있으면 그대로 넣는다
-set -a; . ./.env; set +a      # 또는 IDE 실행 설정에 넣는다
 
-# 3. 실행 (부팅 시 Flyway가 V1 스키마 + V2 기본 사용자를 적용)
+# 2. 빌드 + 기동 (Flyway가 V1 스키마 + V2 기본 사용자를 적용)
+docker compose up -d --build
+
+docker compose ps             # backend가 healthy가 될 때까지 기다린다 (첫 빌드는 몇 분)
+docker compose logs -f backend
+```
+
+`WIO_API_TOKEN`이 비어 있으면 compose가 바로 실패한다 (앱이 뜬 뒤 401로 헤매지 않게).
+TAGO/KLID 키는 없어도 뜨고, 관리 동기화 API만 `503`이 된다.
+
+### B. DB만 컨테이너로, 앱은 로컬에서 (개발용)
+
+```bash
+docker compose up -d postgres
+cp .env.example .env
+set -a; . ./.env; set +a      # 또는 IDE 실행 설정에 넣는다
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
+
+정지는 `docker compose down`, 데이터까지 지우려면 `docker compose down -v`.
 
 - Health: `http://localhost:8080/actuator/health` (인증 없음)
 - Swagger UI: `http://localhost:8080/swagger-ui.html` (OpenAPI JSON `/v3/api-docs`)
@@ -50,7 +67,8 @@ Docker가 없는 환경에서도 돌게). 테스트는 Flyway `clean` 후 마이
 **개발용 DB와 다른 DB 이름**을 쓴다.
 
 ```bash
-# Docker가 있으면 compose의 Postgres에 테스트용 DB만 하나 더 만든다
+# compose를 쓰면 when_i_off_test는 최초 기동 때 자동으로 만들어진다
+# (docker/postgres-init/01-create-test-db.sql). 이미 볼륨이 있던 환경이라 없다면 직접:
 docker compose exec postgres psql -U wio -d when_i_off -c "CREATE DATABASE when_i_off_test OWNER wio;"
 
 # Docker가 없으면 (예: 리눅스에 postgresql 패키지 설치)

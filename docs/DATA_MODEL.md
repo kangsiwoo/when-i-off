@@ -4,8 +4,10 @@ DDL의 진실은 Flyway 마이그레이션
 [`backend/src/main/resources/db/migration/V1__init_schema.sql`](../backend/src/main/resources/db/migration/V1__init_schema.sql)이고,
 [db/schema.sql](./db/schema.sql)은 그 스냅샷이다. 여기서는 엔티티별 의도와 관계를 설명한다.
 
-외부 마스터/실시간 데이터는 KLID(한국지역정보개발원) 전국통합데이터 API 두 개에서 온다
-(버스 `rte`, 신호등 `rti`). 연동 방식은 [ARCHITECTURE.md](./ARCHITECTURE.md)의 "외부 데이터 동기화" 참고.
+외부 마스터/실시간 데이터는 **버스는 TAGO**(국토교통부 전국버스), **신호등은 KLID**(한국지역정보개발원
+전국통합데이터 `rti`)에서 온다 ([ADR 0001](./adr/0001-tago-bus-arrival-prediction.md)). 실시간 API가
+없는 노선(GTX 등)은 `transit_schedules`의 정적 시간표를 쓴다. 연동 방식은
+[ARCHITECTURE.md](./ARCHITECTURE.md)의 "외부 데이터 동기화" 참고.
 
 ## ER 다이어그램
 
@@ -145,6 +147,14 @@ TAGO는 정류장 단위 도착예측을 직접 주므로 이 순서를 ETA 계�
 ### `transit_schedules`
 정적 시간표. 실시간 API가 없는 노선의 fallback이자, 실시간 예측이 튈 때 비교 기준.
 TAGO 노선 정보의 첫차/막차는 시간표가 아니라 운행 범위이므로 여기 넣지 않는다.
+
+적재는 `POST /admin/schedules/import`(multipart CSV, [API.md](./API.md) "정적 시간표"),
+조회는 `GET /transit-lines/{id}/schedules/next`. `scheduled_time`은 KST 벽시계라 조회할 때
+운행일을 붙여 UTC 절대 시각으로 바꿔 내보낸다. 어느 시간표를 볼지는 KST 날짜 → `day_type`
+매핑(`DayTypeResolver`, 공휴일은 `calendar/kr-holidays.txt` 수동 목록)으로 정한다.
+
+UNIQUE 제약이 없는 것은 의도다. import는 (노선, 정류장, `day_type`) 조합 단위로 기존 행을 지우고
+다시 넣어 멱등성을 얻는데, UNIQUE 기반 upsert로는 개정으로 없어진 차편이 남는다.
 
 ### `transit_arrival_observations`
 "이 시점에 시스템이 받은 정류장 도착 예정 시각"의 스냅샷. 버스는 **TAGO가 정류장 단위로
