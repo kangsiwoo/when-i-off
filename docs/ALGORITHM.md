@@ -56,6 +56,10 @@ Var[W] = E[W²] − E[W]²
 `C`, `R`은 `traffic_signal_cycles`에서 요일유형×시간대로 조회한다. 행이 없는 교차로는
 `DEFAULT_ASSUMPTION` 행(예: C=120초, R=90초 → 평균 약 34초)으로 채워 두고 사용한다.
 
+시간대를 고르려면 "그 횡단보도에 언제 서는가"가 필요한데 그 시각은 역산이 끝나야 나온다. v1은
+목표 도착 시각의 시간대로 경로 전체를 한 번에 고른다 — 통근 한 번은 대체로 시간대 하나에 들어가고,
+어긋나도 기대 대기 수십 초 수준의 차이다.
+
 #### (b) 실시간 신호 상태 — KLID `tl_drct_info` 커버 교차로
 
 계산 시각 `t_0`에 그 crossing의 `(traffic_signal_id, approach_dir, signal_kind)`와 일치하는
@@ -183,7 +187,10 @@ def recommend_departure(route, target_arrival_at, p=0.95):
 `departure_recommendations`에 기록한다.
 
 - `recommended_leave_home_at` = 위의 최종 `needed_at`
-- `catch_probability` = 선택된 각 TRANSIT 구간의 실제 계산된 성공확률의 곱
+- `catch_probability` = 선택된 각 TRANSIT 구간의 실제 계산된 성공확률의 곱. 한 구간의 성공은
+  "그 차를 탄다"(`P(V_board ≥ needed_at)`, 설계상 정확히 `p`)와 "제때 내린다"
+  (`P(V_alight ≤ needed_at)`, 보통 `p`보다 크다) 둘 다이므로 v1은 이 둘을 곱한다. 두 사건은
+  실제로는 양의 상관이 있어 곱은 약간 보수적인 값이다
 - `buffer_seconds` = `Σ(분위수 − 평균)`, 즉 평균 소요시간 대비 얹은 여유의 총합
   (사용자가 "왜 이렇게 일찍 나가라는지" 이해하는 데 참고)
 - `model_version` = 보정 로직 버전 (바뀔 때 과거 추천과 비교 가능하게)

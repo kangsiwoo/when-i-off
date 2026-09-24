@@ -1,0 +1,49 @@
+[project]
+name = "whenioff-analytics"
+version = "0.1.0"
+description = "when-i-off analytics batches (walking segments, calibration, departure recommendation)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.5",
+    "typer>=0.12",
+]
+
+[project.scripts]
+wio-analytics = "whenioff_analytics.cli:app"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/whenioff_analytics"]
+
+[tool.ruff]
+line-length = 110
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF", "ANN"]
+# 주석과 문서화 문자열이 한국어라 전각/유니코드 기호를 "혼동된다"고 잡는 규칙은 끈다.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# DB 행은 본질적으로 동적이라 io 계층 경계에서만 Any를 허용한다.
+"src/whenioff_analytics/io/*" = ["ANN401"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

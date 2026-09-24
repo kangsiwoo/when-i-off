@@ -1,9 +1,8 @@
-# 대한민국 공휴일 (KST). DayTypeResolver가 읽어 SUNDAY_HOLIDAY로 매핑한다.
+# 대한민국 공휴일 (KST). whenioff_analytics.daytype이 읽어 SUNDAY_HOLIDAY로 매핑한다.
+# backend/src/main/resources/calendar/kr-holidays.txt의 복사본이다. 원본은 backend 쪽이고,
+# 여기서만 고치지 말 것 — 두 목록이 어긋나면 tests/test_holiday_list.py가 깨진다 (#22).
 # 특일정보 API 대신 수동 목록을 쓰므로(#16 결정 4) 매년 말 다음 해 날짜를 손으로 추가해야 한다.
 # 목록에 없는 해의 공휴일은 평일(또는 토요일)로 취급된다.
-# analytics도 같은 목록을 패키지 안에 복사해 갖고 있다
-# (analytics/src/whenioff_analytics/resources/calendar/kr-holidays.txt).
-# 한쪽만 고치면 analytics CI의 test_holiday_list가 깨진다 (#22).
 # 형식: yyyy-MM-dd (한 줄에 하나, '#' 뒤는 주석)
 
 # 2026

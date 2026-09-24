@@ -1,0 +1,38 @@
+name: analytics-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "analytics/**"
+      - ".github/workflows/analytics-ci.yml"
+      # 공휴일 목록이 backend에서만 바뀌면 analytics 복사본과 어긋난다 (test_holiday_list).
+      - "backend/src/main/resources/calendar/kr-holidays.txt"
+  pull_request:
+    paths:
+      - "analytics/**"
+      - ".github/workflows/analytics-ci.yml"
+      - "backend/src/main/resources/calendar/kr-holidays.txt"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: analytics
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: analytics/uv.lock
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format
+        run: uv run ruff format --check .
+      - name: Types
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest -q
