@@ -8,6 +8,8 @@ import java.time.LocalTime
 data class NextDeparturesResponse(
     val transitLineId: Long,
     val stopId: Long,
+    /** 요청한 방향(`transit_line_stops.direction_code`와 같은 어휘). 응답은 이 방향 차편만 담는다. */
+    val directionCode: String,
     val departures: List<ScheduledDepartureResponse>,
 )
 

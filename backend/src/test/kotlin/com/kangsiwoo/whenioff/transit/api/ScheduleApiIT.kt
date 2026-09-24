@@ -68,7 +68,7 @@ class ScheduleApiIT
             assertEquals(5, scheduleRepository.count())
 
             // 개정으로 평일 차편이 하나로 줄면 그 조합만 줄고, 파일에 없는 조합은 남는다.
-            assertEquals(listOf(1, 0, 1, 0), import(csv("$lineId,$stopId,WEEKDAY,23:30")))
+            assertEquals(listOf(1, 0, 1, 0), import(csv("$lineId,$stopId,WEEKDAY,$UP,23:30")))
             assertEquals(1, weekdayRows())
             assertEquals(4, scheduleRepository.count())
         }
@@ -115,23 +115,106 @@ class ScheduleApiIT
 
         @Test
         fun `rejects unknown ids and malformed rows with the row number`() {
-            importRequest(csv("$lineId,$stopId,WEEKDAY,23:30", "$lineId,999999,WEEKDAY,23:40"))
+            importRequest(csv("$lineId,$stopId,WEEKDAY,$UP,23:30", "$lineId,999999,WEEKDAY,$UP,23:40"))
                 .andExpect(status().isBadRequest)
                 .andExpect(jsonPath("$.detail").value(containsString("row 3: unknown transit_stop_id 999999")))
 
-            importRequest(csv("$lineId,$stopId,HOLIDAY,23:30"))
+            importRequest(csv("$lineId,$stopId,HOLIDAY,$UP,23:30"))
                 .andExpect(status().isBadRequest)
                 .andExpect(jsonPath("$.detail").value(containsString("row 2: unknown day_type 'HOLIDAY'")))
 
-            importRequest(csv("$lineId,$stopId,WEEKDAY,25:99"))
+            importRequest(csv("$lineId,$stopId,WEEKDAY,$UP,25:99"))
                 .andExpect(status().isBadRequest)
                 .andExpect(jsonPath("$.detail").value(containsString("row 2: scheduled_time '25:99'")))
 
+            importRequest(csv("$lineId,$stopId,WEEKDAY,,23:30"))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.detail").value(containsString("row 2: direction_code must not be blank")))
+
             importRequest(csv("$lineId,$stopId,WEEKDAY"))
                 .andExpect(status().isBadRequest)
-                .andExpect(jsonPath("$.detail").value(containsString("row 2: expected 4 columns")))
+                .andExpect(jsonPath("$.detail").value(containsString("row 2: expected 5 columns")))
 
             assertEquals(0, scheduleRepository.count())
+        }
+
+        /** 방향 없는 구 4컬럼 CSV는 방향을 추측해서 넣지 않고 거부한다 (#26). */
+        @Test
+        fun `a legacy four column csv without a direction is rejected`() {
+            mockMvc
+                .perform(
+                    multipart("/api/v1/admin/schedules/import")
+                        .file(
+                            MockMultipartFile(
+                                "file",
+                                "legacy.csv",
+                                "text/csv",
+                                (
+                                    "transit_line_id,transit_stop_id,day_type,scheduled_time\n" +
+                                        "$lineId,$stopId,WEEKDAY,23:30"
+                                ).toByteArray(),
+                            ),
+                        ).header(ApiTokenFilter.HEADER, properties.apiToken),
+                ).andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.detail").value(containsString("row 2: expected 5 columns")))
+                .andExpect(jsonPath("$.detail").value(containsString("direction_code")))
+
+            assertEquals(0, scheduleRepository.count())
+        }
+
+        /** 한 정류장에 상·하행이 같이 선다. 요청한 방향 차만 나와야 한다 (#26). */
+        @Test
+        fun `next departures return only the requested direction`() {
+            import(
+                csv(
+                    "$lineId,$stopId,WEEKDAY,$UP,08:10",
+                    "$lineId,$stopId,WEEKDAY,$UP,08:40",
+                    "$lineId,$stopId,WEEKDAY,$DN,08:20",
+                    "$lineId,$stopId,WEEKDAY,$DN,08:50",
+                ),
+            )
+
+            // 2026-05-01(금) 08:00 KST
+            val at = Instant.parse("2026-04-30T23:00:00Z")
+            val up = next(at, limit = 5, direction = UP)
+            val down = next(at, limit = 5, direction = DN)
+
+            assertEquals(UP, up.directionCode)
+            assertEquals(
+                listOf(LocalTime.parse("08:10"), LocalTime.parse("08:40")),
+                up.departures.map { it.scheduledTime },
+            )
+            assertEquals(DN, down.directionCode)
+            assertEquals(
+                listOf(LocalTime.parse("08:20"), LocalTime.parse("08:50")),
+                down.departures.map { it.scheduledTime },
+            )
+        }
+
+        /** 멱등성 단위에 방향이 없으면 한 방향을 넣을 때 반대 방향이 같이 지워진다 (#26). */
+        @Test
+        fun `importing one direction leaves the other direction intact`() {
+            import(
+                csv(
+                    "$lineId,$stopId,WEEKDAY,$UP,08:10",
+                    "$lineId,$stopId,WEEKDAY,$DN,08:20",
+                    "$lineId,$stopId,WEEKDAY,$DN,08:50",
+                ),
+            )
+
+            // 상행만 개정해서 다시 넣는다.
+            assertEquals(listOf(1, 1, 0, 0), import(csv("$lineId,$stopId,WEEKDAY,$UP,09:10")))
+
+            assertEquals(1, weekdayRows(UP))
+            assertEquals(2, weekdayRows(DN))
+            assertEquals(3, scheduleRepository.count())
+        }
+
+        @Test
+        fun `next departures require an explicit direction`() {
+            mockMvc
+                .perform(get("/api/v1/transit-lines/$lineId/schedules/next?stopId=$stopId").authed())
+                .andExpect(status().isBadRequest)
         }
 
         /** 헤더가 없는 파일의 깨진 첫 행이 헤더로 오인돼 조용히 버려지면 안 된다. */
@@ -141,7 +224,12 @@ class ScheduleApiIT
                 .perform(
                     multipart("/api/v1/admin/schedules/import")
                         .file(
-                            MockMultipartFile("file", "s.csv", "text/csv", "oops,$stopId,WEEKDAY,08:00".toByteArray()),
+                            MockMultipartFile(
+                                "file",
+                                "s.csv",
+                                "text/csv",
+                                "oops,$stopId,WEEKDAY,$UP,08:00".toByteArray(),
+                            ),
                         ).header(ApiTokenFilter.HEADER, properties.apiToken),
                 ).andExpect(status().isBadRequest)
                 .andExpect(jsonPath("$.detail").value(containsString("row 1: transit_line_id must be a number")))
@@ -152,32 +240,36 @@ class ScheduleApiIT
         @Test
         fun `query rejects unknown line or stop and a bad limit`() {
             mockMvc
-                .perform(get("/api/v1/transit-lines/999999/schedules/next?stopId=$stopId").authed())
+                .perform(get("/api/v1/transit-lines/999999/schedules/next?stopId=$stopId&direction=$UP").authed())
                 .andExpect(status().isNotFound)
             mockMvc
-                .perform(get("/api/v1/transit-lines/$lineId/schedules/next?stopId=999999").authed())
+                .perform(get("/api/v1/transit-lines/$lineId/schedules/next?stopId=999999&direction=$UP").authed())
                 .andExpect(status().isNotFound)
             mockMvc
-                .perform(get("/api/v1/transit-lines/$lineId/schedules/next?stopId=$stopId&limit=0").authed())
-                .andExpect(status().isBadRequest)
+                .perform(
+                    get("/api/v1/transit-lines/$lineId/schedules/next?stopId=$stopId&direction=$UP&limit=0").authed(),
+                ).andExpect(status().isBadRequest)
         }
 
-        private fun weekdayRows() =
-            scheduleRepository.findByTransitLineIdAndStopIdAndDayType(lineId, stopId, DayType.WEEKDAY).size
+        private fun weekdayRows(direction: String = UP) =
+            scheduleRepository
+                .findByTransitLineIdAndStopIdAndDayTypeAndDirectionCode(lineId, stopId, DayType.WEEKDAY, direction)
+                .size
 
         private fun fullCsv() =
             csv(
-                "$lineId,$stopId,WEEKDAY,23:30",
-                "$lineId,$stopId,WEEKDAY,23:55",
-                "$lineId,$stopId,SATURDAY,05:30",
-                "$lineId,$stopId,SATURDAY,06:00",
-                "$lineId,$stopId,SUNDAY_HOLIDAY,06:20",
+                "$lineId,$stopId,WEEKDAY,$UP,23:30",
+                "$lineId,$stopId,WEEKDAY,$UP,23:55",
+                "$lineId,$stopId,SATURDAY,$UP,05:30",
+                "$lineId,$stopId,SATURDAY,$UP,06:00",
+                "$lineId,$stopId,SUNDAY_HOLIDAY,$UP,06:20",
             )
 
         /** 엑셀에서 내보낸 CSV처럼 BOM으로 시작시킨다. */
         private fun csv(vararg rows: String) =
             "${Char(0xFEFF)}" +
-                (listOf("transit_line_id,transit_stop_id,day_type,scheduled_time") + rows).joinToString("\n")
+                (listOf("transit_line_id,transit_stop_id,day_type,direction_code,scheduled_time") + rows)
+                    .joinToString("\n")
 
         /** `{fetched, created, updated, skipped}` 순서로 돌려준다. */
         private fun import(body: String): List<Int> {
@@ -200,8 +292,11 @@ class ScheduleApiIT
         private fun next(
             at: Instant,
             limit: Int,
+            direction: String = UP,
         ): NextDeparturesResponse {
-            val url = "/api/v1/transit-lines/$lineId/schedules/next?stopId=$stopId&at=$at&limit=$limit"
+            val url =
+                "/api/v1/transit-lines/$lineId/schedules/next" +
+                    "?stopId=$stopId&direction=$direction&at=$at&limit=$limit"
             val json =
                 mockMvc
                     .perform(get(url).authed())
@@ -213,4 +308,10 @@ class ScheduleApiIT
 
         private fun org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder.authed() =
             header(ApiTokenFilter.HEADER, properties.apiToken)
+
+        private companion object {
+            /** GTX-A 기준 UP = 수서 방면, DN = 동탄 방면 (`transit_line_stops`와 같은 어휘). */
+            const val UP = "UP"
+            const val DN = "DN"
+        }
     }

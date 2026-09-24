@@ -154,12 +154,13 @@ CREATE TABLE transit_schedules (
     transit_line_id BIGINT NOT NULL REFERENCES transit_lines(id) ON DELETE CASCADE,
     stop_id         BIGINT NOT NULL REFERENCES transit_stops(id) ON DELETE CASCADE,
     day_type        day_type NOT NULL,
+    direction_code  TEXT NOT NULL,              -- transit_line_stops와 같은 어휘 (KLID drcGbnCd, GTX는 UP/DN)
     scheduled_time  TIME NOT NULL,              -- KST 하루 중 시각 (반복 시간표)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_transit_schedules_lookup
-    ON transit_schedules(transit_line_id, stop_id, day_type, scheduled_time);
+    ON transit_schedules(transit_line_id, stop_id, day_type, direction_code, scheduled_time);
 
 -- KLID rtm_loc_info 원본 차량 위치. ETA는 이 위치를 transit_line_stops 폴리라인에 투영해 계산한다.
 CREATE TABLE bus_position_observations (

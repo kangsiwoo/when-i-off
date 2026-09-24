@@ -136,6 +136,10 @@ PostgreSQL의 UNIQUE는 NULL을 서로 다른 값으로 취급하므로 수동 �
 노선의 **방향별 정류장 순서**. TAGO `getRouteAcctoThrghSttnList` 한 행 = 이 테이블 한 행이며
 `(transit_line_id, direction_code, seq_no=nodeord)`으로 유일하다.
 
+GTX처럼 TAGO 동기화 대상이 아닌 노선은 시드(`db/seed/R__seed_gtx_a.sql`)로 채운다. 비어 있으면
+`LegDirectionResolver.resolve()`가 그 노선 구간에 대해 `null`을 돌려주고, `transit_schedules` 조회에
+넘길 방향이 없어진다.
+
 TAGO는 정류장 단위 도착예측을 직접 주므로 이 순서를 ETA 계산(폴리라인 투영)에 쓰지는 않는다.
 그래도 노선-정류장 관계 자체(구간 등록 시 "이 노선이 지나가는 정류장" 검색/표시, 승차·하차
 정류장이 실제로 그 노선 위에 있는지 검증)에 필요해서 계속 채운다. `direction_code`가 다르면
@@ -157,8 +161,17 @@ TAGO 노선 정보의 첫차/막차는 시간표가 아니라 운행 범위이�
 운행일을 붙여 UTC 절대 시각으로 바꿔 내보낸다. 어느 시간표를 볼지는 KST 날짜 → `day_type`
 매핑(`DayTypeResolver`, 공휴일은 `calendar/kr-holidays.txt` 수동 목록)으로 정한다.
 
-UNIQUE 제약이 없는 것은 의도다. import는 (노선, 정류장, `day_type`) 조합 단위로 기존 행을 지우고
-다시 넣어 멱등성을 얻는데, UNIQUE 기반 upsert로는 개정으로 없어진 차편이 남는다.
+`direction_code`는 **`transit_line_stops`와 같은 어휘**다 (KLID `drcGbnCd`, GTX-A는 `UP`=수서 방면 /
+`DN`=동탄 방면). 한 정류장은 거의 항상 상·하행 양쪽에 서므로, 방향이 없으면 "다음 차"가 반대 방향
+차를 섞어 돌려준다. 새 enum을 만들지 않은 이유는 구간의 방향을 정하는 `LegDirectionResolver`가
+`transit_line_stops.direction_code`를 그대로 돌려주기 때문이다 — 두 테이블이 같은 값이어야 비교가
+변환 없이 된다. 사업자마다 코드값이 달라(`0`/`1`, `UP`/`DN`) enum으로 고정하면 노선을 추가할 때마다
+마이그레이션이 생기는 것도 이유다. 조회 인덱스는
+`(transit_line_id, stop_id, day_type, direction_code, scheduled_time)`이다.
+
+UNIQUE 제약이 없는 것은 의도다. import는 (노선, 정류장, `day_type`, `direction_code`) 조합 단위로
+기존 행을 지우고 다시 넣어 멱등성을 얻는데, UNIQUE 기반 upsert로는 개정으로 없어진 차편이 남는다.
+방향이 이 키에 들어가야 상행 파일을 넣을 때 같은 정류장의 하행 행이 같이 지워지지 않는다.
 
 ### `transit_arrival_observations`
 "이 시점에 시스템이 받은 정류장 도착 예정 시각"의 스냅샷. 버스는 **TAGO가 정류장 단위로
