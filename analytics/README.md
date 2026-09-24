@@ -75,6 +75,11 @@ UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다.
   방향을 각각 잡는다.
 - **시간표는 KST 벽시계**: `transit_schedules.scheduled_time`에 운행일을 붙여야 절대 시각이 된다.
   후보 창이 자정을 넘으면 날짜마다 `day_type`을 다시 판정한다 (금→토, 일→월, 공휴일 전날).
+- **방향은 필수**: 한 정류장에는 상·하행이 같이 선다. `load_scheduled_departures()`의
+  `direction_code`는 기본값 없는 필수 인자이고, 값은 `resolve_leg_direction()`이
+  `transit_line_stops`의 승차→하차 `seq_no` 순서로 정한다 (backend `LegDirectionResolver`와 같은 규칙).
+  그 테이블에 승차역 행이 없으면 방향을 모르므로 `IncompleteLegError`로 멈춘다 — 반대 방향 차를
+  후보에 섞는 것보다 낫다.
 
 v1에서 문서와 다르게 한(또는 문서가 정하지 않은) 것:
 
@@ -105,4 +110,5 @@ uv run pytest -q
 ```
 
 통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다. DB가 필요한 것은 `io` 계층뿐이고,
-시간표 전개는 가짜 커서로 테스트한다 (`tests/test_schedule_window.py`).
+시간표 전개와 방향 판정은 가짜 커서로 테스트한다
+(`tests/test_schedule_window.py`, `tests/test_leg_direction.py`).

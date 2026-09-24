@@ -11,7 +11,7 @@ from whenioff_analytics.io.db import Connection
 _SQL = """
 SELECT scheduled_time
 FROM transit_schedules
-WHERE transit_line_id = %s AND stop_id = %s AND day_type = %s::day_type
+WHERE transit_line_id = %s AND stop_id = %s AND day_type = %s::day_type AND direction_code = %s
 ORDER BY scheduled_time
 """
 
@@ -28,13 +28,17 @@ def load_scheduled_departures(
     conn: Connection,
     transit_line_id: int,
     stop_id: int,
+    direction_code: str,
     window_start: datetime,
     window_end: datetime,
 ) -> tuple[ScheduledDeparture, ...]:
-    """[window_start, window_end] 안에 승차역을 떠나는 시간표상의 차량.
+    """[window_start, window_end] 안에 승차역을 `direction_code` 방향으로 떠나는 시간표상의 차량.
 
     시간표는 "KST 하루 중 시각"의 반복이라 운행일을 붙여야 절대 시각이 된다. 창이 자정을 넘으면
     날짜마다 `day_type`을 다시 판정한다 — 금→토, 일→월, 공휴일 전날에 시간표가 바뀌기 때문이다.
+
+    `direction_code`는 기본값 없는 필수 인자다. 한 정류장에는 상·하행이 같이 서므로, 생략을
+    허용하면 반대 방향 차가 조용히 후보에 섞인다 (`transit_line_stops`와 같은 어휘, #26).
     """
     if window_end < window_start:
         raise ValueError("window_end must not be before window_start")
@@ -47,7 +51,7 @@ def load_scheduled_departures(
         while service_date <= last_date:
             day_type = resolve_day_type(service_date)
             if day_type not in by_day_type:
-                cur.execute(_SQL, (transit_line_id, stop_id, day_type.value))
+                cur.execute(_SQL, (transit_line_id, stop_id, day_type.value, direction_code))
                 by_day_type[day_type] = tuple(row[0] for row in cur.fetchall())
             for scheduled_time in by_day_type[day_type]:
                 departure_at = kst_wall_clock_to_instant(service_date, scheduled_time)

@@ -50,7 +50,7 @@
 | ✔ | GET | `/transit-lines/search?mode=BUS&keyword=` | 노선 검색 (구간 등록 시 자동완성용, `mode` 생략 가능) |
 | ✔ | POST | `/transit-stops` | 정류장/역 수동 등록 |
 | ✔ | GET | `/transit-stops/nearby?lat=&lng=&radiusM=&mode=` | 근처 정류장/역 (`radiusM` 기본값은 서버 설정, `mode` 생략 가능) |
-| ✔ | GET | `/transit-lines/{id}/schedules/next?stopId=&at=&limit=` | 정적 시간표 기준 다음 출발 N대 (아래 "정적 시간표") |
+| ✔ | GET | `/transit-lines/{id}/schedules/next?stopId=&direction=&at=&limit=` | 정적 시간표 기준 다음 출발 N대 (아래 "정적 시간표") |
 | ✔ | POST | `/traffic-signals` | 교차로 수동 등록 (좌표 + 이름) |
 | ✔ | GET | `/traffic-signals/nearby?lat=&lng=&radiusM=` | 근처 교차로 |
 
@@ -188,33 +188,45 @@ GTX처럼 실시간 API가 없는 노선(`has_realtime_api=false`)은 `transit_s
 적어 뒀지만, 배포된 서버에 셸 없이 넣을 수 있어야 실용적이라 **관리 엔드포인트(multipart CSV)**로 바꿨다.
 
 ### `POST /admin/schedules/import`
-파트명 `file`, UTF-8 CSV. 컬럼은 `transit_line_id, transit_stop_id, day_type, scheduled_time`이고
-헤더 행이 있으면 건너뛴다.
+파트명 `file`, UTF-8 CSV. 컬럼은
+`transit_line_id, transit_stop_id, day_type, direction_code, scheduled_time`이고 헤더 행이 있으면 건너뛴다.
 
 ```csv
-transit_line_id,transit_stop_id,day_type,scheduled_time
-12,45,WEEKDAY,23:30
-12,45,SATURDAY,05:30
+transit_line_id,transit_stop_id,day_type,direction_code,scheduled_time
+12,45,WEEKDAY,UP,23:30
+12,45,WEEKDAY,DN,23:36
+12,45,SATURDAY,UP,05:30
 ```
 
-- 식별자는 **내부 id**다. 수동 등록 행은 `external_id`가 NULL이라 외부 ID로는 지정할 수 없고,
-  주 대상인 GTX가 바로 그 경우다. id는 노선/정류장 등록 응답과 `/transit-lines/search`로 얻는다
+- 식별자는 **내부 id**다. 수동 등록(`POST /transit-lines`, `POST /transit-stops`)은 `externalId`가
+  선택 값이라 NULL일 수 있고, 그러면 외부 ID로는 지정할 수 없다. id는 노선/정류장 등록 응답과
+  `/transit-lines/search`로 얻는다
+  (GTX-A는 시드가 `L09`/`X108`~`X111`을 넣어 두므로 이 경우엔 해당하지 않는다)
 - `day_type`은 `WEEKDAY|SATURDAY|SUNDAY_HOLIDAY`, `scheduled_time`은 `HH:mm` 또는 `HH:mm:ss`이며 **KST 벽시계**다
-- 멱등성은 **(노선, 정류장, day_type) 단위 교체**다. 파일에 나오는 조합의 기존 행을 지우고 파일 내용을
+- `direction_code`는 `transit_line_stops.direction_code`와 **같은 어휘**다 (KLID/TAGO가 주는 코드 그대로,
+  GTX-A는 `UP`=수서 방면 / `DN`=동탄 방면). 사업자마다 값이 달라 서버는 목록을 검사하지 않고 비어 있는지만 본다
+- **방향이 없는 구 4컬럼 CSV는 `400`이다** (`row 2: expected 5 columns ...`). 한 정류장에는 상·하행이 같이
+  서므로, 빠진 방향을 서버가 추측해서 넣는 것보다 거부하는 쪽이 낫다
+- 멱등성은 **(노선, 정류장, day_type, 방향) 단위 교체**다. 파일에 나오는 조합의 기존 행을 지우고 파일 내용을
   넣는다. 같은 파일을 두 번 넣으면 행 수가 같고, 개정으로 없어진 차편은 사라진다. 파일에 없는 조합은
-  건드리지 않는다
+  건드리지 않는다 — 상행만 다시 넣어도 같은 정류장의 하행 행은 그대로 남는다
 - 응답은 다른 동기화 API와 같은 `{ "fetched", "created", "updated", "skipped" }` — `fetched`는 데이터 행 수,
   `updated`는 이미 같은 시각으로 있던 차편, `skipped`는 파일 안 중복 행
 - 검증 실패는 `400`이고 `detail`에 **파일 행 번호**가 들어간다 (`row 3: unknown transit_stop_id 999999`).
   한 행이라도 틀리면 전체가 들어가지 않는다
 
-### `GET /transit-lines/{id}/schedules/next?stopId=&at=&limit=`
+### `GET /transit-lines/{id}/schedules/next?stopId=&direction=&at=&limit=`
 `at`은 ISO-8601 절대 시각(생략 시 현재), `limit`은 기본 5 · 최대 50(범위 밖이면 `400`).
 노선/정류장이 없으면 `404`.
 
+`direction`은 **필수 파라미터**다. 한 정류장에는 상·하행이 같이 서므로 생략하면 반대 방향 차가
+"다음 차"로 섞인다. 서버가 대신 추측하지 않고 호출자가 정한다 — 구간(승차→하차)에서 방향을 뽑는
+쪽은 백엔드의 `LegDirectionResolver`(`transit_line_stops`의 `seq_no` 순서로 판정)이고, 이 엔드포인트는
+그 결과를 받는 자리다. 값 어휘는 import CSV의 `direction_code`와 같다. 빠지면 `400`.
+
 ```json
 {
-  "transitLineId": 12, "stopId": 45,
+  "transitLineId": 12, "stopId": 45, "directionCode": "UP",
   "departures": [
     { "serviceDate": "2026-05-01", "dayType": "WEEKDAY", "scheduledTime": "23:30:00", "departureAt": "2026-05-01T14:30:00Z" },
     { "serviceDate": "2026-05-02", "dayType": "SATURDAY", "scheduledTime": "05:30:00", "departureAt": "2026-05-01T20:30:00Z" }
@@ -228,6 +240,7 @@ transit_line_id,transit_stop_id,day_type,scheduled_time
   `day_type`이 다를 수 있으므로(금→토, 일→월, 공휴일 전날) 날짜별로 다시 판정한다
 - `day_type` 판정은 KST 날짜 기준이고, 공휴일은 리소스 파일(`calendar/kr-holidays.txt`)의 수동 목록이다
   (연 1회 갱신). 일요·공휴일 → `SUNDAY_HOLIDAY`, 토요 → `SATURDAY`, 나머지 → `WEEKDAY`
+- 응답의 `directionCode`는 요청한 방향을 그대로 돌려준다. 담긴 차편은 전부 그 방향이다
 - 이 조회는 적재 확인과 소비자용 원재료다. 추천 계산의 `predicted_at` fallback 배선은 별도 작업이다 (ALGORITHM.md 2.2)
 
 ## 캘리브레이션 상태 조회 (데스크탑, 디버깅/신뢰도 확인용)

@@ -8,6 +8,7 @@ from datetime import datetime, time, timedelta
 from whenioff_analytics import defaults
 from whenioff_analytics.daytype import kst_date_of, kst_time_of, resolve_day_type
 from whenioff_analytics.io.db import Connection
+from whenioff_analytics.io.line_stops import resolve_leg_direction
 from whenioff_analytics.io.recommendations import RecommendationRow, SaveOutcome, save_recommendation
 from whenioff_analytics.io.routes import CommuteRoute, RouteLeg, load_route
 from whenioff_analytics.io.schedules import load_scheduled_departures
@@ -141,11 +142,17 @@ def _transit_leg(
     if leg.transit_line_id is None or leg.board_stop_id is None or leg.planned_travel_sec is None:
         raise IncompleteLegError(leg.id, "TRANSIT leg is missing line, stop or planned_travel_sec")
 
+    # 같은 정류장에 상·하행이 같이 서므로 방향을 먼저 정한다. 안 그러면 반대 방향 차가 후보에
+    # 섞여 출발 시각이 통째로 틀린다 (#26).
+    direction_code = resolve_leg_direction(conn, leg.transit_line_id, leg.board_stop_id, leg.alight_stop_id)
+    if direction_code is None:
+        raise IncompleteLegError(leg.id, "transit_line_stops has no board stop row: direction unknown")
+
     # 후보를 목표 시각에서 lookback_hours만큼 거슬러 통째로 실어 온다. 역산이 그중 조건을
     # 만족하는 가장 늦은 차를 고르므로 "없으면 한 대 앞으로"가 창 안에서 저절로 해결된다.
     window_start = target_arrival_at - timedelta(hours=lookback_hours)
     departures = load_scheduled_departures(
-        conn, leg.transit_line_id, leg.board_stop_id, window_start, target_arrival_at
+        conn, leg.transit_line_id, leg.board_stop_id, direction_code, window_start, target_arrival_at
     )
     if not departures:
         raise NoCandidateVehiclesError(leg.id, window_start, target_arrival_at)

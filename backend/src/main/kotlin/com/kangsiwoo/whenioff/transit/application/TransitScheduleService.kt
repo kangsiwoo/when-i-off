@@ -26,11 +26,13 @@ class TransitScheduleService(
     private val dayTypeResolver: DayTypeResolver,
 ) {
     /**
-     * CSV(`transit_line_id, transit_stop_id, day_type, scheduled_time`) 적재.
+     * CSV(`transit_line_id, transit_stop_id, day_type, direction_code, scheduled_time`) 적재.
      *
-     * 멱등성은 **(노선, 정류장, day_type) 단위 교체**로 얻는다. 파일에 등장한 조합의 기존 행을 지우고
-     * 파일 내용을 넣으므로, 같은 파일을 두 번 넣어도 결과가 같고 개정으로 없어진 차편도 같이 사라진다.
-     * UNIQUE 제약으로는 삭제분이 남기 때문에 제약을 새로 걸지 않았다 (#16 결정 3).
+     * 멱등성은 **(노선, 정류장, day_type, 방향) 단위 교체**로 얻는다. 파일에 등장한 조합의 기존 행을
+     * 지우고 파일 내용을 넣으므로, 같은 파일을 두 번 넣어도 결과가 같고 개정으로 없어진 차편도 같이
+     * 사라진다. UNIQUE 제약으로는 삭제분이 남기 때문에 제약을 새로 걸지 않았다 (#16 결정 3).
+     *
+     * 방향이 키에 없으면 상행 파일을 넣을 때 같은 정류장의 하행 행이 같이 지워진다 (#26).
      */
     fun importCsv(content: String): SyncCounts {
         val rows = parseRows(content)
@@ -47,45 +49,67 @@ class TransitScheduleService(
         var created = 0
         var updated = 0
         var skipped = 0
-        rows.groupBy { Key(it.lineId, it.stopId, it.dayType) }.forEach { (key, group) ->
+        rows.groupBy { Key(it.lineId, it.stopId, it.dayType, it.directionCode) }.forEach { (key, group) ->
             val existing =
-                scheduleRepository.findByTransitLineIdAndStopIdAndDayType(key.lineId, key.stopId, key.dayType)
+                scheduleRepository.findByTransitLineIdAndStopIdAndDayTypeAndDirectionCode(
+                    key.lineId,
+                    key.stopId,
+                    key.dayType,
+                    key.directionCode,
+                )
             val existingTimes = existing.mapTo(mutableSetOf()) { it.scheduledTime }
             val times = linkedSetOf<LocalTime>()
             group.forEach { if (!times.add(it.scheduledTime)) skipped++ }
             times.forEach { if (it in existingTimes) updated++ else created++ }
             scheduleRepository.deleteAllInBatch(existing)
             scheduleRepository.saveAll(
-                times.map { TransitSchedule(lines.getValue(key.lineId), stops.getValue(key.stopId), key.dayType, it) },
+                times.map {
+                    TransitSchedule(
+                        lines.getValue(key.lineId),
+                        stops.getValue(key.stopId),
+                        key.dayType,
+                        key.directionCode,
+                        it,
+                    )
+                },
             )
         }
         return SyncCounts(fetched = rows.size, created = created, updated = updated, skipped = skipped)
     }
 
-    /** 기준 시각 `at` 이후 출발하는 `limit`대. 오늘 차편이 모자라면 다음 날로 이어진다. */
+    /**
+     * 기준 시각 `at` 이후 `direction` 방향으로 출발하는 `limit`대. 오늘 차편이 모자라면 다음 날로 이어진다.
+     *
+     * `direction`은 필수다. 한 정류장에는 상·하행이 같이 서므로, 생략을 허용하면 반대 방향 차가
+     * 조용히 "다음 차"로 섞여 나온다 (#26).
+     */
     @Transactional(readOnly = true)
     fun nextDepartures(
         lineId: Long,
         stopId: Long,
+        direction: String,
         at: Instant,
         limit: Int,
     ): NextDeparturesResponse {
         if (limit !in 1..MAX_LIMIT) throw BadRequestException("limit must be between 1 and $MAX_LIMIT")
+        val directionCode = direction.trim()
+        if (directionCode.isEmpty()) throw BadRequestException("direction must not be blank")
         if (!lineRepository.existsById(lineId)) throw NotFoundException("transit line $lineId not found")
         if (!stopRepository.existsById(stopId)) throw NotFoundException("transit stop $stopId not found")
 
         val kstNow = at.atZone(DayTypeResolver.KST)
         val today = kstNow.toLocalDate()
-        val departures = take(lineId, stopId, today, kstNow.toLocalTime(), limit)
+        val departures = take(lineId, stopId, directionCode, today, kstNow.toLocalTime(), limit)
         // 막차/첫차 경계: 오늘 남은 차편이 모자라면 다음 날 00:00부터 이어 본다. 다음 날은 day_type이
         // 다를 수 있으므로(금→토, 일→월, 공휴일 전날) 날짜별로 다시 판정한다.
         val remaining = limit - departures.size
         return NextDeparturesResponse(
             transitLineId = lineId,
             stopId = stopId,
+            directionCode = directionCode,
             departures =
                 if (remaining > 0) {
-                    departures + take(lineId, stopId, today.plusDays(1), LocalTime.MIN, remaining)
+                    departures + take(lineId, stopId, directionCode, today.plusDays(1), LocalTime.MIN, remaining)
                 } else {
                     departures
                 },
@@ -95,19 +119,15 @@ class TransitScheduleService(
     private fun take(
         lineId: Long,
         stopId: Long,
+        directionCode: String,
         date: LocalDate,
         from: LocalTime,
         limit: Int,
     ): List<ScheduledDepartureResponse> {
         val dayType = dayTypeResolver.resolve(date)
         return scheduleRepository
-            .findByTransitLineIdAndStopIdAndDayTypeAndScheduledTimeGreaterThanEqualOrderByScheduledTimeAsc(
-                lineId,
-                stopId,
-                dayType,
-                from,
-                PageRequest.of(0, limit),
-            ).map {
+            .findFrom(lineId, stopId, dayType, directionCode, from, PageRequest.of(0, limit))
+            .map {
                 ScheduledDepartureResponse(
                     serviceDate = date,
                     dayType = dayType,
@@ -152,11 +172,15 @@ class TransitScheduleService(
                 ?: throw BadRequestException(
                     "row $number: unknown day_type '${cells[2]}' (${DayType.entries.joinToString()})",
                 )
+        // 방향 코드는 사업자가 주는 값을 그대로 쓴다(transit_line_stops와 같은 어휘). 값 목록을
+        // 코드에 박으면 노선을 추가할 때마다 고쳐야 해서 비어 있는지만 본다.
+        val directionCode =
+            cells[3].ifEmpty { throw BadRequestException("row $number: direction_code must not be blank") }
         val scheduledTime =
-            runCatching { LocalTime.parse(cells[3]) }.getOrElse {
-                throw BadRequestException("row $number: scheduled_time '${cells[3]}' must be HH:mm or HH:mm:ss (KST)")
+            runCatching { LocalTime.parse(cells[4]) }.getOrElse {
+                throw BadRequestException("row $number: scheduled_time '${cells[4]}' must be HH:mm or HH:mm:ss (KST)")
             }
-        return CsvRow(number, lineId, stopId, dayType, scheduledTime)
+        return CsvRow(number, lineId, stopId, dayType, directionCode, scheduledTime)
     }
 
     private data class CsvRow(
@@ -164,6 +188,7 @@ class TransitScheduleService(
         val lineId: Long,
         val stopId: Long,
         val dayType: DayType,
+        val directionCode: String,
         val scheduledTime: LocalTime,
     )
 
@@ -171,13 +196,17 @@ class TransitScheduleService(
         val lineId: Long,
         val stopId: Long,
         val dayType: DayType,
+        val directionCode: String,
     )
 
     companion object {
         const val DEFAULT_LIMIT = 5
         const val MAX_LIMIT = 50
-        private const val COLUMNS = 4
+
+        // 방향이 빠진 구 4컬럼 파일은 컬럼 수에서 걸려 400이 된다. 방향을 추측해서 넣지 않는다 (#26).
+        private const val COLUMNS = 5
         private const val FIRST_COLUMN = "transit_line_id"
-        private const val COLUMN_NAMES = "transit_line_id, transit_stop_id, day_type, scheduled_time"
+        private const val COLUMN_NAMES =
+            "transit_line_id, transit_stop_id, day_type, direction_code, scheduled_time"
     }
 }

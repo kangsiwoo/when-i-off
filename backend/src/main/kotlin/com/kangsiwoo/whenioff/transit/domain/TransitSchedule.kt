@@ -30,6 +30,9 @@ class TransitSchedule(
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
     var dayType: DayType,
+    /** `transit_line_stops.direction_code`와 같은 어휘 (KLID drcGbnCd, GTX는 UP/DN). */
+    @Column(nullable = false)
+    var directionCode: String,
     @Column(nullable = false)
     var scheduledTime: LocalTime,
 ) {
