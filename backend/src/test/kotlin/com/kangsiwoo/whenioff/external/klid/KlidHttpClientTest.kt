@@ -13,6 +13,7 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.web.client.RestClient
 import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KlidHttpClientTest {
@@ -82,10 +83,41 @@ class KlidHttpClientTest {
     }
 
     @Test
-    fun `NODATA K3 without body yields an empty list`() {
+    fun `NODATA K3 without body yields an empty list flagged as noData`() {
         server.enqueue(Fixtures.json("klid/tl_drct_info_nodata.json"))
 
-        assertEquals(emptyList(), client.fetchAll(endpoint, "tl_drct_info", "1100000000"))
+        val result = client.fetchAll(endpoint, "tl_drct_info", "1100000000")
+
+        assertEquals(emptyList(), result.items)
+        assertTrue(result.noData)
+    }
+
+    /**
+     * K3(제공되지 않는 지자체)와 K0 + 0건(지금 보고가 없음)은 둘 다 빈 목록이지만 의미가 다르다.
+     * 폴링 건너뛰기(#31)가 이 구분 위에 서 있으므로 여기서 고정한다.
+     */
+    @Test
+    fun `K0 with zero items is not noData`() {
+        server.enqueue(
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"header":{"resultCode":"K0","resultMsg":"NORMAL_SERVICE"},
+                       "body":{"totalCount":0,"pageNo":1,"numOfRows":1000,"items":{"item":[]}}}""",
+                ),
+        )
+
+        val result = client.fetchAll(endpoint, "tl_drct_info", "1100000000")
+
+        assertEquals(emptyList(), result.items)
+        assertFalse(result.noData)
+    }
+
+    @Test
+    fun `a K0 body with data is not noData`() {
+        server.enqueue(Fixtures.json("klid/crsrd_map_info_ok.json"))
+
+        assertFalse(client.fetchAll(endpoint, "crsrd_map_info", "1100000000").noData)
     }
 
     @Test
@@ -124,7 +156,7 @@ class KlidHttpClientTest {
         server.enqueue(MockResponse().setResponseCode(429).setBody("Too Many Requests"))
         server.enqueue(Fixtures.json("klid/crsrd_map_info_ok.json"))
 
-        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000")
+        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000").items
 
         assertEquals(3, items.size)
         assertEquals(2, server.requestCount)
@@ -144,7 +176,7 @@ class KlidHttpClientTest {
         server.enqueue(pageOf(totalCount = 1500, pageNo = 1, count = 1000))
         server.enqueue(pageOf(totalCount = 1500, pageNo = 2, count = 500))
 
-        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000")
+        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000").items
 
         assertEquals(1500, items.size)
         assertEquals("p1-0", items.first()["crsrdId"])
@@ -165,7 +197,7 @@ class KlidHttpClientTest {
                 ),
         )
 
-        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000")
+        val items = client.fetchAll(endpoint, "crsrd_map_info", "1100000000").items
 
         assertEquals(listOf(mapOf("crsrdId" to "X", "lat" to "")), items)
     }

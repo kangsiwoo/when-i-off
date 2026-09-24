@@ -23,7 +23,9 @@ class IntersectionSyncService(
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun syncIntersections(stdgCd: String): IntersectionSyncResult {
-        val intersections = signalApi.crsrdMapInfo(stdgCd)
+        // crsrd_map_info는 하루 한 번 수준의 수동 동기화라 NODATA를 캐시해 건너뛸 이유가 없다 (#31).
+        // 제공되지 않는 지자체면 빈 목록으로 그대로 흘러가 created=0이 된다.
+        val intersections = signalApi.crsrdMapInfo(stdgCd).items
         return transactionTemplate.execute { persist(stdgCd, intersections) }!!
     }
 

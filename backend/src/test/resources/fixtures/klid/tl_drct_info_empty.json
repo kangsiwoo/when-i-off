@@ -1,0 +1,14 @@
+{
+  "header": {
+    "resultCode": "K0",
+    "resultMsg": "NORMAL_SERVICE"
+  },
+  "body": {
+    "totalCount": 0,
+    "pageNo": 1,
+    "numOfRows": 1000,
+    "items": {
+      "item": []
+    }
+  }
+}

@@ -3,6 +3,7 @@ package com.kangsiwoo.whenioff.ingestion
 import com.kangsiwoo.whenioff.common.auth.ApiTokenFilter
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import com.kangsiwoo.whenioff.external.klid.KlidNoDataRegistry
 import com.kangsiwoo.whenioff.polling.PollingCycleService
 import com.kangsiwoo.whenioff.route.domain.CommuteDirection
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
@@ -44,6 +45,7 @@ import org.springframework.test.web.servlet.post
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -88,9 +90,13 @@ class IngestionIT {
 
     @Autowired lateinit var properties: WioProperties
 
+    @Autowired lateinit var noDataRegistry: KlidNoDataRegistry
+
     @BeforeEach
     fun resetServer() {
         dispatcher.reset()
+        // 레지스트리는 싱글턴이라 @Transactional 롤백으로 지워지지 않는다. 테스트마다 비워 둔다.
+        noDataRegistry.clear()
     }
 
     @Test
@@ -344,6 +350,7 @@ class IngestionIT {
         assertEquals(1, result.legsPredicted)
         assertEquals(2, result.predictions)
         assertEquals(setOf(SEOUL), result.signalStdgCds)
+        assertEquals(emptySet(), result.signalSkippedStdgCds)
         assertEquals(6, result.signalStatesInserted)
         assertEquals(emptySet(), result.failedCodes)
         assertEquals(requestsBefore + 2, server.requestCount)
@@ -368,6 +375,72 @@ class IngestionIT {
         assertEquals(0, result.legsPredicted)
         assertEquals(setOf(SEOUL), result.signalStdgCds)
         assertEquals(6, result.signalStatesInserted)
+    }
+
+    @Test
+    fun `polling cycle stops calling a stdgCd that answered K3 and reports it as skipped`() {
+        intersectionSync.syncIntersections(SEOUL)
+        seedSignalOnlyRoute(signalAt("1850"))
+        dispatcher.responses["tl_drct_info"] = { Fixtures.json("klid/tl_drct_info_nodata.json") }
+
+        // 첫 사이클은 실제로 불러 봐야 K3인 줄 안다.
+        val first = cycleService.runCycle()
+
+        assertEquals(setOf(SEOUL), first.signalStdgCds)
+        assertEquals(emptySet(), first.signalSkippedStdgCds)
+        assertEquals(0, first.signalStatesInserted)
+        assertTrue(noDataRegistry.isMarked(SEOUL))
+
+        val requestsBefore = server.requestCount
+        val second = cycleService.runCycle()
+
+        assertEquals(requestsBefore, server.requestCount)
+        assertEquals(setOf(SEOUL), second.signalStdgCds)
+        assertEquals(setOf(SEOUL), second.signalSkippedStdgCds)
+        assertEquals(0, second.signalStatesInserted)
+        assertEquals(emptySet(), second.failedCodes)
+    }
+
+    /**
+     * 핵심: `K0` + 0건은 "지금 이 순간 보고가 없다"는 일시적 상태일 뿐이다. 이걸 NODATA로 오인해
+     * 건너뛰면 실제로 커버되는 지자체의 관측을 TTL 동안 조용히 잃는다 (#31).
+     */
+    @Test
+    fun `polling cycle keeps calling a stdgCd that answered K0 with zero items`() {
+        intersectionSync.syncIntersections(SEOUL)
+        seedSignalOnlyRoute(signalAt("1850"))
+        dispatcher.responses["tl_drct_info"] = { Fixtures.json("klid/tl_drct_info_empty.json") }
+
+        val first = cycleService.runCycle()
+
+        assertEquals(emptySet(), first.signalSkippedStdgCds)
+        assertFalse(noDataRegistry.isMarked(SEOUL))
+
+        val requestsBefore = server.requestCount
+        val second = cycleService.runCycle()
+
+        assertEquals(requestsBefore + 1, server.requestCount)
+        assertEquals(setOf(SEOUL), second.signalStdgCds)
+        assertEquals(emptySet(), second.signalSkippedStdgCds)
+        assertFalse(noDataRegistry.isMarked(SEOUL))
+    }
+
+    @Test
+    fun `polling cycle never skips a stdgCd that returns data`() {
+        intersectionSync.syncIntersections(SEOUL)
+        seedSignalOnlyRoute(signalAt("1850"))
+
+        val first = cycleService.runCycle()
+
+        assertEquals(6, first.signalStatesInserted)
+        assertFalse(noDataRegistry.isMarked(SEOUL))
+
+        val requestsBefore = server.requestCount
+        val second = cycleService.runCycle()
+
+        assertEquals(requestsBefore + 1, server.requestCount)
+        assertEquals(emptySet(), second.signalSkippedStdgCds)
+        assertFalse(noDataRegistry.isMarked(SEOUL))
     }
 
     private fun user() = userRepository.findById(DefaultUser.ID).orElseThrow()
@@ -408,6 +481,31 @@ class IngestionIT {
         )
         crossingRepository.save(RouteLegSignalCrossing(walk, signal, 1, "nt", "Pd"))
     }
+
+    /** KLID 호출만 일어나는 최소 경로 — 신호 폴링의 호출 수를 그대로 셀 수 있다. */
+    private fun seedSignalOnlyRoute(signal: TrafficSignal) {
+        val route =
+            routeRepository.save(
+                CommuteRoute(user(), "도보만", CommuteDirection.TO_WORK, 37.5690, 126.9770, 37.5700, 126.9780),
+            )
+        val walk =
+            legRepository.save(
+                RouteLeg(
+                    commuteRoute = route,
+                    seqOrder = 1,
+                    legType = LegType.WALK,
+                    startLat = 37.5690,
+                    startLng = 126.9770,
+                    endLat = 37.5700,
+                    endLng = 126.9780,
+                    plannedDistanceM = 200.0,
+                ),
+            )
+        crossingRepository.save(RouteLegSignalCrossing(walk, signal, 1, "nt", "Pd"))
+    }
+
+    private fun signalAt(crsrdId: String): TrafficSignal =
+        signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == crsrdId }
 
     private fun line(routeId: String): TransitLine =
         lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).single { it.externalId == routeId }
