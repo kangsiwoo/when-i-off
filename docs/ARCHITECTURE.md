@@ -96,7 +96,7 @@
 | | `getRouteAcctoThrghSttnList` 노선 경유 정류소 순서 | `transit_lines`, `transit_stops`, `transit_line_stops` | 수동, 노선 등록 시 |
 | TAGO 버스도착정보 | `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList` 정류소별 특정노선 도착예정 | `transit_arrival_observations` (`source='TAGO_ARVL'`) | 출퇴근 시간대 폴링 |
 | KLID 신호등 `rti` | `crsrd_map_info` 교차로 마스터 | `traffic_signals` | 수동 / 일 1회 |
-| | `tl_drct_info` 신호 잔여시간 | `traffic_signal_states` | 출퇴근 시간대 폴링 |
+| | `tl_drct_info` 신호 잔여시간 (**현재 울산만 제공 — 아래 참고**) | `traffic_signal_states` | 출퇴근 시간대 폴링 |
 
 ### 왜 버스는 TAGO인가
 KLID 초정밀버스 위치(`rte`)로 대상 지자체(화성·성남·서울) 커버리지를 실 키로 확인한 결과
@@ -104,8 +104,32 @@ KLID 초정밀버스 위치(`rte`)로 대상 지자체(화성·성남·서울) �
 TAGO 버스도착정보(`15098530`)와 경기 GBIS 중, GBIS는 경기도 버스만 커버해 서울을 못 덮으므로
 전국 단일 게이트웨이인 TAGO를 골랐다. TAGO는 KLID와 달리 **정류장 단위로 도착예측(초)을
 직접** 주므로 차량 위치를 폴리라인에 투영하는 기하 계산이 필요 없다 — 그래서 `bus_position_observations`/
-`KlidPositionEtaProvider`(위치→ETA 파생)는 더 이상 쓰지 않는다. 신호등(`rti`)은 서울
-`K0`/`totalCount=2779`로 커버되어 KLID를 그대로 쓴다. 상세 결정 과정은 ADR 0001.
+`KlidPositionEtaProvider`(위치→ETA 파생)는 더 이상 쓰지 않는다. 신호등(`rti`)은 교차로
+마스터(`crsrd_map_info`)가 서울 `K0`/`totalCount=2779`로 커버되어 KLID를 그대로 쓴다 —
+다만 **실시간 잔여시간(`tl_drct_info`)의 커버리지는 이것과 별개이고 서울은 0건**이다
+(바로 아래). 상세 결정 과정은 ADR 0001.
+
+### 신호등 커버리지: 두 오퍼레이션이 서로 다르다 (#30)
+같은 `rti` 서비스지만 **오퍼레이션마다 제공 지자체가 다르다.** 실 키로 확인한 결과:
+
+| `stdgCd` | `crsrd_map_info` (교차로 정적) | `tl_drct_info` (실시간 잔여시간) |
+|---|---|---|
+| `1100000000` 서울 | `K0` / 2,779 | **`K3` NODATA / 0** |
+| `4113000000` 성남 | `K3` / 0 | **`K3` NODATA / 0** |
+| `4159000000` 화성 | `K3` / 0 | **`K3` NODATA / 0** |
+| `3100000000` 울산 | `K0` / 402 | `K0` / 399 |
+
+`stdgCd` 필터가 고장난 게 아니다. **필터 없이** 호출하면 `K0`/398건이 오는데 그 398건의
+`stdgCd`가 전부 `3100000000`(`lclgvNm`도 전부 `울산광역시`)이다 — 전국 스냅샷 자체가 울산뿐이다.
+따라서 **우리 대상 지자체(서울·성남·화성)에는 실시간 신호 데이터가 아예 없다.**
+
+결과: `traffic_signal_states`는 현재 경로에서 채워지지 않고,
+[ALGORITHM.md](./ALGORITHM.md) 2.(b)의 실시간 신호 경로는 도달하지 않는다. 실제로 도는 것은
+(a) 주기 모델뿐이다. 설계상 fallback이 이미 있어 기능이 깨지지는 않는다. 코드 경로는 그대로
+두는데, 커버리지가 늘면 설정 변경 없이 바로 동작하기 때문이다.
+
+덧붙여 `crsrdId`는 **필터로 적용되지 않는다** — `crsrdId`만 주면 1건이 아니라 전량이 온다.
+교차로 단위 조회가 불가능하다는 아래 "필터가 `stdgCd`뿐이라는 제약"은 그대로 유효하다.
 
 ### TAGO 응답 규약
 KLID와 게이트웨이·인증 방식(`serviceKey` 인코딩 규칙 포함, 아래 참고)은 비슷하지만 JSON
