@@ -108,8 +108,8 @@ geofence 이벤트마다, 그리고 오프라인 후 재전송 때 같은 요청
 
 | 상태 | Method | Path | 설명 |
 |---|---|---|---|
-| 계약 | GET | `/commute-routes/{id}/recommendation?targetArrivalAt=` | 목표 도착 시각 기준 추천 출발 시각 조회 |
-| 계약 | GET | `/commute-routes/{id}/recommendation/latest` | 가장 최근 계산된 추천 (기본 목표 시각 사용) |
+| ✔ | GET | `/commute-routes/{id}/recommendation?targetArrivalAt=` | 목표 도착 시각 기준 추천 출발 시각 조회 |
+| ✔ | GET | `/commute-routes/{id}/recommendation/latest` | 목표 시각과 무관하게 가장 최근 계산된 추천 |
 | 계약 | GET | `/commute-routes/{id}/recommendation/history` | 과거 추천과 실제 결과 비교 (모델 성능 확인용) |
 
 `recommendation` 엔드포인트는 Backend가 직접 계산하지 않고, Analytics가 미리 계산해
@@ -118,8 +118,30 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 초기 구현은 "배치로 미리 계산 + 캐시 조회"만으로 충분하다.
 
 적재하는 쪽은 #22에서 구현됐다 — `uv run wio-analytics recommend --route-id … --target-arrival-at …`
-(콜드스타트 기본값, `model_version=v1`, [analytics/README.md](../analytics/README.md)). 위 세
-엔드포인트는 아직 `계약` 그대로이고, 값이 쌓인 뒤에 붙인다.
+(콜드스타트 기본값, `model_version=v1`, [analytics/README.md](../analytics/README.md)). 조회 두 개는
+#24에서 붙었고(캐시 조회만, 즉석 계산 위임은 아직 없다), `history`는 아직 `계약` 그대로다.
+
+### 조회 두 개의 계약
+
+```json
+{
+  "recommendedLeaveHomeAt": "2026-09-20T22:24:00Z",
+  "targetArrivalAt": "2026-09-21T00:00:00Z",
+  "catchProbability": 0.91,
+  "bufferSeconds": 660,
+  "modelVersion": "v1",
+  "computedAt": "2026-09-20T21:00:00Z"
+}
+```
+
+- `computedAt`은 analytics가 그 추천을 계산한 시각이다 (`departure_recommendations.computed_at`)
+- `targetArrivalAt`은 **필수**이고 ISO-8601 절대 시각이다. 없거나 파싱 실패면 `400`
+- `/latest`는 목표 시각을 가리지 않고 그 경로에서 가장 늦게 계산된 한 건을 준다
+- 추천이 한 건도 없으면 `404`다 (빈 `200`이 아니라). 경로가 없거나 내 것이 아닐 때도 같은 `404`
+- `departure_recommendations`는 과거 추천을 지우지 않고 누적하므로
+  ([DATA_MODEL.md](./DATA_MODEL.md)) 같은 (경로, 목표 시각)에 행이 여러 개다. 두 조회 모두
+  `computed_at DESC, id DESC`로 **최신 한 건**만 고른다 — `computed_at` 기본값이 트랜잭션
+  시각이라 한 번에 들어간 행끼리는 값이 같을 수 있어 id로 동점을 깬다
 
 ## 외부 데이터 동기화 (TAGO/KLID) — 관리 API
 
