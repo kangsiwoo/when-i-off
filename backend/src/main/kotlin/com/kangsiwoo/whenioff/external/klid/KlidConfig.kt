@@ -9,11 +9,18 @@ import org.springframework.boot.http.client.ClientHttpRequestFactorySettings
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.client.RestClient
+import java.time.Clock
 
 @Configuration
 class KlidConfig {
     @Bean
     fun klidCallCounter(meterRegistry: MeterRegistry): KlidCallCounter = KlidCallCounter(meterRegistry)
+
+    @Bean
+    fun klidNoDataRegistry(
+        properties: WioProperties,
+        clock: Clock,
+    ): KlidNoDataRegistry = KlidNoDataRegistry(properties.klid.noDataTtl, clock)
 
     @Bean
     fun klidHttpClient(

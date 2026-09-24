@@ -33,6 +33,13 @@ data class WioProperties(
         val readTimeout: Duration = Duration.ofSeconds(20),
         val maxRetries: Int = 2,
         val retryBackoff: Duration = Duration.ofMillis(500),
+        /**
+         * `tl_drct_info`가 K3(NODATA)를 준 `stdgCd`를 다시 찔러보기까지 기다리는 시간 (#31).
+         * 6시간이면 출퇴근 창(각 3시간) 하나를 통째로 덮어 그 창의 호출을 거의 다 아끼면서도,
+         * 하루에 네 번은 다시 확인하므로 커버리지가 늘어난 날 안에 사람 개입 없이 복구된다.
+         * `0`이면 표시가 즉시 만료되어 건너뛰기가 사실상 꺼진다.
+         */
+        val noDataTtl: Duration = Duration.ofHours(6),
     )
 
     data class Endpoint(

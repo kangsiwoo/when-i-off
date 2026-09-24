@@ -2,6 +2,7 @@ package com.kangsiwoo.whenioff.external.klid.signal
 
 import com.kangsiwoo.whenioff.common.config.WioProperties
 import com.kangsiwoo.whenioff.external.klid.KlidHttpClient
+import com.kangsiwoo.whenioff.external.klid.KlidResult
 import com.kangsiwoo.whenioff.external.klid.KlidTime
 import java.time.Instant
 
@@ -9,10 +10,10 @@ class KlidSignalApi(
     private val client: KlidHttpClient,
     private val endpoint: WioProperties.Endpoint,
 ) {
-    fun crsrdMapInfo(stdgCd: String): List<Intersection> =
+    fun crsrdMapInfo(stdgCd: String): KlidResult<Intersection> =
         client.fetchAll(endpoint, OP_CRSRD_MAP_INFO, stdgCd).map(Intersection::from)
 
-    fun tlDrctInfo(stdgCd: String): List<SignalStateItem> =
+    fun tlDrctInfo(stdgCd: String): KlidResult<SignalStateItem> =
         client.fetchAll(endpoint, OP_TL_DRCT_INFO, stdgCd).map(SignalStateItem::from)
 
     companion object {

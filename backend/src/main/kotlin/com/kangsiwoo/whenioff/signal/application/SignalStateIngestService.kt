@@ -16,6 +16,11 @@ data class SignalIngestResult(
     val intersectionsMatched: Int,
     val statesInserted: Int,
     val statesDuplicate: Int,
+    /**
+     * KLID가 K3(NODATA)로 답했다 = 이 지자체에는 실시간 신호가 제공되지 않는다(#30).
+     * K0인데 항목이 0건인 경우(일시적으로 보고가 없음)는 여기서 `false`다.
+     */
+    val noData: Boolean = false,
 )
 
 @Service
@@ -26,13 +31,14 @@ class SignalStateIngestService(
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun ingest(stdgCd: String): SignalIngestResult {
-        val items = signalApi.tlDrctInfo(stdgCd)
-        return transactionTemplate.execute { persist(stdgCd, items) }!!
+        val fetched = signalApi.tlDrctInfo(stdgCd)
+        return transactionTemplate.execute { persist(stdgCd, fetched.items, fetched.noData) }!!
     }
 
     private fun persist(
         stdgCd: String,
         items: List<SignalStateItem>,
+        noData: Boolean,
     ): SignalIngestResult {
         val signalsByCrsrdId = signalRepository.findAllByStdgCd(stdgCd).associateBy { it.crsrdId }
         var matched = 0
@@ -55,7 +61,7 @@ class SignalStateIngestService(
                 if (affected > 0) inserted++ else duplicate++
             }
         }
-        val result = SignalIngestResult(stdgCd, items.size, matched, inserted, duplicate)
+        val result = SignalIngestResult(stdgCd, items.size, matched, inserted, duplicate, noData)
         log.info { "signal state ingest $stdgCd: $result" }
         return result
     }

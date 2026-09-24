@@ -2,6 +2,7 @@ package com.kangsiwoo.whenioff.polling
 
 import com.kangsiwoo.whenioff.external.klid.KlidCallCounter
 import com.kangsiwoo.whenioff.external.klid.KlidException
+import com.kangsiwoo.whenioff.external.klid.KlidNoDataRegistry
 import com.kangsiwoo.whenioff.external.tago.TagoCallCounter
 import com.kangsiwoo.whenioff.external.tago.TagoException
 import com.kangsiwoo.whenioff.route.domain.LegType
@@ -25,6 +26,8 @@ data class PollingCycleResult(
     val legsPredicted: Int,
     val predictions: Int,
     val signalStdgCds: Set<String>,
+    /** 확정 NODATA(K3)로 표시돼 이번 사이클에 호출하지 않은 지자체 (#31). */
+    val signalSkippedStdgCds: Set<String>,
     val signalStatesInserted: Int,
     val failedCodes: Set<String>,
     val tagoCallsToday: Long,
@@ -40,6 +43,7 @@ class PollingCycleService(
     private val directionResolver: LegDirectionResolver,
     private val predictionProvider: ArrivalPredictionProvider,
     private val signalIngestService: SignalStateIngestService,
+    private val noDataRegistry: KlidNoDataRegistry,
     private val tagoCallCounter: TagoCallCounter,
     private val klidCallCounter: KlidCallCounter,
     private val transactionTemplate: TransactionTemplate,
@@ -76,10 +80,24 @@ class PollingCycleService(
         }
 
         val signalStdgCds = collectSignalStdgCds()
+        val skippedStdgCds = mutableSetOf<String>()
         var statesInserted = 0
         for (stdgCd in signalStdgCds) {
+            // 실시간 신호가 제공되지 않는 지자체(K3)는 TTL이 끝날 때까지 호출 자체를 하지 않는다.
+            // 매 사이클 K3를 받아 오며 KLID 일 한도만 갉아먹던 것을 막는다 (#31).
+            if (noDataRegistry.isMarked(stdgCd)) {
+                skippedStdgCds += stdgCd
+                continue
+            }
             try {
-                statesInserted += signalIngestService.ingest(stdgCd).statesInserted
+                val ingest = signalIngestService.ingest(stdgCd)
+                statesInserted += ingest.statesInserted
+                // K3일 때만 표시한다. K0 + 0건은 "지금은 보고가 없다"는 일시적 상태라서, 이것까지
+                // 표시하면 실제로 커버되는 지자체의 관측을 TTL 동안 조용히 잃는다.
+                if (ingest.noData) {
+                    noDataRegistry.mark(stdgCd)
+                    log.info { "tl_drct_info NODATA for $stdgCd; skipping it for ${noDataRegistry.ttl}" }
+                }
             } catch (e: KlidException) {
                 log.warn(e) { "tl_drct_info fetch failed for $stdgCd" }
                 failed += stdgCd
@@ -92,6 +110,7 @@ class PollingCycleService(
                 legsPredicted = legsPredicted,
                 predictions = predictions,
                 signalStdgCds = signalStdgCds,
+                signalSkippedStdgCds = skippedStdgCds,
                 signalStatesInserted = statesInserted,
                 failedCodes = failed,
                 tagoCallsToday = tagoCallCounter.todayCount(),

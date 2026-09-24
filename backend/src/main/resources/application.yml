@@ -58,6 +58,8 @@ wio:
     read-timeout: 20s
     max-retries: 2
     retry-backoff: 500ms
+    # K3(NODATA)를 준 stdgCd를 이 시간 동안 폴링에서 건너뛴다 (#31).
+    no-data-ttl: 6h
   polling:
     enabled: false
     interval-ms: 60000

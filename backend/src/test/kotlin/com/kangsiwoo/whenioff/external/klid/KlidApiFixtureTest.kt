@@ -43,7 +43,7 @@ class KlidApiFixtureTest {
     fun `tl_drct_info items keep raw fields and parse totDt`() {
         server.enqueue(Fixtures.json("klid/tl_drct_info_ok.json"))
 
-        val items = signalApi.tlDrctInfo("1100000000")
+        val items = signalApi.tlDrctInfo("1100000000").items
 
         assertEquals(1, items.size)
         assertEquals("1850", items[0].crsrdId)
@@ -55,7 +55,7 @@ class KlidApiFixtureTest {
     fun `crsrd_map_info items parse coordinates`() {
         server.enqueue(Fixtures.json("klid/crsrd_map_info_ok.json"))
 
-        val intersections = signalApi.crsrdMapInfo("1100000000")
+        val intersections = signalApi.crsrdMapInfo("1100000000").items
 
         assertEquals(listOf("1850", "1851", "1852"), intersections.map { it.crsrdId })
         assertEquals(37.5696, intersections[0].lat)

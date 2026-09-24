@@ -20,7 +20,23 @@ data class KlidPage(
     val pageNo: Int,
     val numOfRows: Int,
     val items: List<Map<String, String>>,
+    /** 응답 header의 resultCode가 K3(NODATA)였다. 항목이 0건인 K0 응답과 구분된다. */
+    val noData: Boolean = false,
 )
+
+/**
+ * 한 번의 조회(전 페이지) 결과.
+ *
+ * [noData]는 게이트웨이가 **K3(NODATA)** 로 답했다는 뜻 — 그 `stdgCd`에는 이 오퍼레이션의 데이터가
+ * 아예 제공되지 않는다(#30). `K0`인데 항목이 0건인 것("지금 이 순간 보고가 없다")과는 다르며,
+ * 둘을 뭉뚱그리면 커버되는 지자체의 관측을 조용히 잃게 되므로 반드시 구분해서 올린다.
+ */
+data class KlidResult<T>(
+    val items: List<T>,
+    val noData: Boolean,
+) {
+    fun <R> map(transform: (T) -> R): KlidResult<R> = KlidResult(items.map(transform), noData)
+}
 
 class KlidHttpClient(
     private val restClient: RestClient,
@@ -34,16 +50,18 @@ class KlidHttpClient(
         endpoint: WioProperties.Endpoint,
         op: String,
         stdgCd: String,
-    ): List<Map<String, String>> {
+    ): KlidResult<Map<String, String>> {
         val all = mutableListOf<Map<String, String>>()
         var pageNo = 1
+        var noData = false
         while (true) {
             val page = fetchPage(endpoint, op, stdgCd, pageNo, PAGE_SIZE)
+            noData = noData || page.noData
             all += page.items
             if (page.items.isEmpty() || page.items.size < PAGE_SIZE || all.size >= page.totalCount) break
             pageNo++
         }
-        return all
+        return KlidResult(all, noData)
     }
 
     fun fetchPage(
@@ -149,7 +167,9 @@ class KlidHttpClient(
         val resultMsg = header.path("resultMsg").asText("")
         when (resultCode) {
             RESULT_OK -> Unit
-            RESULT_NODATA -> return EMPTY_PAGE
+            // K3는 에러가 아니다(예외를 올리지 않는다). 다만 "제공되지 않는 지자체"라는 사실은
+            // 호출자가 알아야 하므로 빈 목록으로 뭉개지 않고 noData로 표시해 올린다.
+            RESULT_NODATA -> return NODATA_PAGE
             else -> throw KlidApiException(resultCode.ifBlank { "HTTP${response.status}" }, resultMsg)
         }
         val body = root.path("body")
@@ -184,5 +204,6 @@ class KlidHttpClient(
         const val RESULT_OK = "K0"
         const val RESULT_NODATA = "K3"
         private val EMPTY_PAGE = KlidPage(0, 1, 0, emptyList())
+        private val NODATA_PAGE = KlidPage(0, 1, 0, emptyList(), noData = true)
     }
 }
