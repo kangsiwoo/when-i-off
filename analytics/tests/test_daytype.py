@@ -28,6 +28,24 @@ def test_listed_and_substitute_holidays_are_sunday_holiday() -> None:
     assert resolve_day_type(date(2026, 3, 2)) is DayType.SUNDAY_HOLIDAY
 
 
+def test_chuseok_on_a_saturday_gets_no_substitute_day() -> None:
+    # 2026 추석 연휴는 9/24(목)·25(금)·26(토)라 일요일이 없다. 설날·추석 연휴의 대체공휴일은
+    # 일요일이나 다른 공휴일과 겹칠 때만 생기므로(토요일은 어린이날·국경일만 해당),
+    # 9/28(월)은 평일이다. 한때 목록에 대체공휴일로 잘못 들어가 있었다 (#28).
+    assert resolve_day_type(date(2026, 9, 25)) is DayType.SUNDAY_HOLIDAY
+    # 26일은 토요일이지만 추석 다음 날이라 목록에 있다 — 공휴일이 토요일을 이긴다.
+    assert resolve_day_type(date(2026, 9, 26)) is DayType.SUNDAY_HOLIDAY
+    assert resolve_day_type(date(2026, 9, 27)) is DayType.SUNDAY_HOLIDAY
+    assert resolve_day_type(date(2026, 9, 28)) is DayType.WEEKDAY
+
+
+def test_constitution_day_is_a_holiday_again_from_2026() -> None:
+    # 2008년 공휴일에서 빠졌던 제헌절이 2026년부터 재지정됐다 (#28). 7/17은 금요일이라
+    # 대체공휴일은 없다 — 제헌절 대체공휴일 적용은 2027년부터다.
+    assert resolve_day_type(date(2026, 7, 17)) is DayType.SUNDAY_HOLIDAY
+    assert resolve_day_type(date(2026, 7, 20)) is DayType.WEEKDAY
+
+
 def test_day_type_changes_across_midnight() -> None:
     # 금→토, 일→월, 공휴일 전날(한글날은 금요일) — 자정을 넘기면 시간표가 바뀐다.
     assert resolve_day_type(date(2026, 9, 18)) is DayType.WEEKDAY
