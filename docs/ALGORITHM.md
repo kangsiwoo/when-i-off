@@ -62,6 +62,12 @@ Var[W] = E[W²] − E[W]²
 
 #### (b) 실시간 신호 상태 — KLID `tl_drct_info` 커버 교차로
 
+> **현재 이 경로는 실제로 돌지 않는다.** `tl_drct_info`는 지금 울산광역시에서만 데이터를 주고
+> 우리 대상 지자체(서울·성남·화성)는 `K3` NODATA다 (#30,
+> [ARCHITECTURE.md](./ARCHITECTURE.md) "신호등 커버리지"). 따라서 `traffic_signal_states`가
+> 비어 있어 모든 횡단보도가 (a) 주기 모델로 떨어진다. 아래 규칙은 커버리지가 생겼을 때의
+> 계약이고 코드도 그대로 두지만, 지금 동작을 설명하는 것은 (a)다.
+
 계산 시각 `t_0`에 그 crossing의 `(traffic_signal_id, approach_dir, signal_kind)`와 일치하는
 `traffic_signal_states` 최신 행이 있고, 다음을 모두 만족하면 주기 모델 대신 실시간 값을 쓴다.
 
@@ -205,7 +211,7 @@ def recommend_departure(route, target_arrival_at, p=0.95):
 | `transit_prediction_calibration` | attempt의 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 그룹별 평균/표준편차. 샘플 5회 미만이면 노선 단위 값을 상속 |
 | `transit_travel_time_calibration` | attempt의 `alighted_at − vehicle_actual_departure_at` | 동일 |
 | `walking_segments` | trip/attempt의 인접 사건 시각 + `gps_traces` | DATA_MODEL.md의 규칙으로 파생 |
-| `traffic_signal_cycles` (`PUBLIC_API`) | `traffic_signal_states` 누적 | 커버 교차로는 실시간 상태의 현시 전환 시각에서 `R`, `C`를 추정해 주기 행을 갱신 → 지평선 밖 계산과 폴링이 꺼진 시간대에도 실측 기반 주기를 쓴다 |
+| `traffic_signal_cycles` (`PUBLIC_API`) | `traffic_signal_states` 누적 | 커버 교차로는 실시간 상태의 현시 전환 시각에서 `R`, `C`를 추정해 주기 행을 갱신 → 지평선 밖 계산과 폴링이 꺼진 시간대에도 실측 기반 주기를 쓴다. **현재는 커버 교차로가 없어 돌지 않는다** (#30) |
 
 콜드스타트(기록 없음)는 `bias=0`, `σ_pred=90초`, 도보 속도 1.2 m/s ± 0.15 같은 보수적
 기본값으로 "일단 안전하게" 추천하고, 기록이 쌓일수록 분포가 좁아져 출발 시각이 뒤로 밀린다.

@@ -145,22 +145,38 @@ KLID 호출 한도(개발계정 일 5,000회 수준) 안에 있으려면 활성 
    `Unauthorized`/`K30`이 오면 대부분 미승인 상태. (공공데이터포털 활용신청 참고사항: "API 환경
    또는 API 호출 조건에 따라 인증키가 적용되는 방식이 다를 수 있다" — 포털도 두 형태 중 실제로
    구동되는 키를 쓰라고 안내한다)
-2. **커버리지 `totalCount` 확인**(신호는 서울 `K0`/2779건으로 이미 확인됨, #10 — 다른
-   지자체를 새로 쓰게 되면 아래로 재확인):
+2. **커버리지 `totalCount` 확인 — 두 오퍼레이션을 반드시 따로 본다.** 같은 `rti` 서비스라도
+   제공 지자체가 다르다. 예전에 이 항목이 "신호는 서울 `K0`/2779건으로 확인됨"이라고만 적혀
+   있었는데, 그 2779는 `crsrd_map_info`(교차로 정적) 건수였고 실시간(`tl_drct_info`) 서울
+   커버리지는 0건이었다. 한동안 아무도 실시간 쪽을 확인하지 않은 원인이었다 (#30):
 
    ```bash
    # 아래 --data-urlencode는 Decoding 키 기준. Encoding 키(값에 `%` 포함)라면
    # 이중 인코딩되므로 `-d "serviceKey=$K"`로 바꿔 그대로 실어 보낸다
    K="$REALTIME_TREFFIC_LIGHT_API"
-   for cd in 4159000000 4113000000 1100000000; do
-     curl -sG "https://apis.data.go.kr/B551982/rti/tl_drct_info" \
-       --data-urlencode "serviceKey=$K" -d "stdgCd=$cd" -d "numOfRows=1" -d "pageNo=1" -d "type=json" \
-       | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["header"]["resultCode"], d.get("body",{}).get("totalCount"))'
+   for op in crsrd_map_info tl_drct_info; do
+     for cd in 4159000000 4113000000 1100000000; do
+       printf "%-16s %s -> " "$op" "$cd"
+       curl -sG "https://apis.data.go.kr/B551982/rti/$op" \
+         --data-urlencode "serviceKey=$K" -d "stdgCd=$cd" -d "numOfRows=1" -d "pageNo=1" -d "type=json" \
+         | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["header"]["resultCode"], (d.get("body") or {}).get("totalCount"))'
+     done
    done
+
+   # 전국에 실시간이 어디까지 있는지 (stdgCd 없이 = 전체 스냅샷)
+   curl -sG "https://apis.data.go.kr/B551982/rti/tl_drct_info" \
+     --data-urlencode "serviceKey=$K" -d "numOfRows=1000" -d "pageNo=1" -d "type=json" \
+     | python3 -c 'import sys,json,collections; d=json.load(sys.stdin); print(collections.Counter(i["stdgCd"] for i in d["body"]["items"]["item"]))'
    ```
 
-   `K3`(NODATA)는 "그 지자체는 제공 안 함"이다. 오류가 아니다. (버스 `rte`/`rtm_loc_info`는
-   세 지자체 모두 `K3`/0으로 이미 확인되어 TAGO로 교체됨 — ADR 0001, 다시 확인할 필요 없음)
+   `K3`(NODATA)는 "그 지자체는 제공 안 함"이다. 오류가 아니다.
+
+   2026-09 기준 확인값: `crsrd_map_info`는 서울 2,779 / 성남·화성 0, `tl_drct_info`는
+   **세 지자체 모두 0이고 전국 스냅샷이 울산(`3100000000`) 398건뿐**이다. 즉 실시간 신호는
+   현재 우리 경로에서 쓸 수 없다 ([ARCHITECTURE.md](../docs/ARCHITECTURE.md) "신호등 커버리지").
+   커버리지가 늘었는지 보려면 위 두 번째 명령을 다시 돌린다.
+   (버스 `rte`/`rtm_loc_info`는 세 지자체 모두 `K3`/0으로 이미 확인되어 TAGO로 교체됨 —
+   ADR 0001, 다시 확인할 필요 없음)
 3. 페이지 크기: `totalCount`가 1,000을 넘는 지자체는 폴링 1회에 여러 호출이 들어간다.
    한도 계산을 다시 한다
 4. 실제 응답 하나를 `src/test/resources/fixtures/klid/`에 저장해 fixture를 갱신한다
