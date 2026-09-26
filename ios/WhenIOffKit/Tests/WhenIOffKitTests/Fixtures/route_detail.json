@@ -1,0 +1,47 @@
+{
+  "route": {
+    "id": 1,
+    "name": "출근",
+    "direction": "TO_WORK",
+    "originLat": 37.199,
+    "originLng": 127.099,
+    "destinationLat": 37.489,
+    "destinationLng": 127.105,
+    "isActive": true,
+    "createdAt": "2026-09-26T16:06:29.343556Z"
+  },
+  "legs": [
+    {
+      "id": 1,
+      "seqOrder": 1,
+      "legType": "WALK",
+      "startLat": 37.199,
+      "startLng": 127.099,
+      "endLat": 37.201167,
+      "endLng": 127.095111,
+      "plannedDistanceM": 450.0,
+      "signalCrossings": []
+    },
+    {
+      "id": 2,
+      "seqOrder": 2,
+      "legType": "TRANSIT",
+      "transitLineId": 1,
+      "boardStopId": 4,
+      "alightStopId": 1,
+      "plannedTravelSec": 1260,
+      "signalCrossings": []
+    },
+    {
+      "id": 3,
+      "seqOrder": 3,
+      "legType": "WALK",
+      "startLat": 37.48694,
+      "startLng": 127.10194,
+      "endLat": 37.489,
+      "endLng": 127.105,
+      "plannedDistanceM": 380.0,
+      "signalCrossings": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+name: ios-ci
+
+# WhenIOffKit(API 레이어)은 Apple 전용 프레임워크에 의존하지 않아 Linux에서 빌드·테스트된다 (#34).
+# 앱 타깃(SwiftUI/CoreLocation)은 Xcode가 필요해 여기서 돌지 않는다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ci.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ci.yml"
+
+jobs:
+  kit:
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: ios/WhenIOffKit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Format
+        run: swift format lint --strict -r Sources Tests Package.swift
+      - name: Build
+        # 경고도 실패로 본다. Swift 6 언어 모드의 동시성 경고를 놓치지 않기 위해서다.
+        run: swift build -Xswiftc -warnings-as-errors
+      - name: Tests
+        run: swift test

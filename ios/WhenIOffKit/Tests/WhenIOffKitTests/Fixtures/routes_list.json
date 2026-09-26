@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "name": "출근",
+    "direction": "TO_WORK",
+    "originLat": 37.199,
+    "originLng": 127.099,
+    "destinationLat": 37.489,
+    "destinationLng": 127.105,
+    "isActive": true,
+    "createdAt": "2026-09-26T16:06:29.343556Z"
+  }
+]

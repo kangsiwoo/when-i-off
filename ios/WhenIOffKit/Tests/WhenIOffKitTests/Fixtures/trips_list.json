@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "routeId": 1,
+    "tripDate": "2026-09-28",
+    "leftHomeAt": "2026-09-27T22:31:05.123Z",
+    "arrivedDestinationAt": "2026-09-27T23:11:02Z",
+    "createdAt": "2026-09-26T16:06:29.662289Z",
+    "boardingAttempts": [
+      {
+        "id": 1,
+        "tripId": 1,
+        "routeLegId": 2,
+        "arrivedAtStopAt": "2026-09-27T22:38:40Z",
+        "vehicleActualDepartureAt": "2026-09-27T22:43:00Z",
+        "alightedAt": "2026-09-27T23:04:30.500Z",
+        "result": "CAUGHT",
+        "createdAt": "2026-09-26T16:06:29.758067Z"
+      }
+    ]
+  }
+]

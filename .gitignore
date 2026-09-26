@@ -34,6 +34,9 @@ ios/**/DerivedData/
 ios/**/*.xcconfig
 !ios/**/*.example.xcconfig
 ios/**/Pods/
+# SwiftPM 빌드 산출물, Xcode가 패키지를 열 때 만드는 설정
+ios/**/.build/
+ios/**/.swiftpm/
 
 # IDE / OS
 .idea/
