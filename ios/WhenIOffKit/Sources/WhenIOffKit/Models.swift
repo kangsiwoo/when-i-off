@@ -14,6 +14,12 @@ public enum LegType: String, Codable, Sendable {
     case transit = "TRANSIT"
 }
 
+public enum TransitMode: String, Codable, Sendable {
+    case bus = "BUS"
+    case subway = "SUBWAY"
+    case gtx = "GTX"
+}
+
 public enum BoardingResult: String, Codable, Sendable {
     case caught = "CAUGHT"
     case missed = "MISSED"
@@ -42,10 +48,33 @@ public struct SignalCrossing: Codable, Sendable, Equatable, Identifiable {
     public let signalKind: String
 }
 
-/// 경로의 한 구간. WALK면 시작/끝 좌표가, TRANSIT이면 노선·승하차 정류장 id가 채워진다.
-///
-/// TRANSIT 구간은 정류장 **id만** 온다 — 이름·좌표는 이 응답에 없다. 화면에 "동탄 → 수서"를
-/// 띄우거나 정류장 geofence를 걸려면 백엔드에 조회가 더 필요하다 (#34 후속).
+/// 노선. 백엔드 `TransitLineResponse`.
+public struct TransitLine: Codable, Sendable, Equatable, Identifiable {
+    public let id: Int64
+    public let mode: TransitMode
+    /// 예: "GTX-A (수서~동탄)"
+    public let name: String
+    public let stdgCd: String?
+    public let externalId: String?
+    public let agency: String?
+    /// `false`면 실시간 도착정보가 없어 정적 시간표로 추천한다 (GTX 등).
+    public let hasRealtimeApi: Bool
+    public let createdAt: Date
+}
+
+/// 정류장·역. 백엔드 `TransitStopResponse`. 정류장 geofence는 이 좌표로 건다.
+public struct TransitStop: Codable, Sendable, Equatable, Identifiable {
+    public let id: Int64
+    public let mode: TransitMode
+    public let name: String
+    public let lat: Double
+    public let lng: Double
+    public let stdgCd: String?
+    public let externalId: String?
+    public let createdAt: Date
+}
+
+/// 경로의 한 구간. WALK면 시작/끝 좌표가, TRANSIT이면 노선과 승하차 정류장이 채워진다.
 public struct RouteLeg: Codable, Sendable, Equatable, Identifiable {
     public let id: Int64
     public let seqOrder: Int
@@ -59,6 +88,10 @@ public struct RouteLeg: Codable, Sendable, Equatable, Identifiable {
     public let boardStopId: Int64?
     public let alightStopId: Int64?
     public let plannedTravelSec: Int?
+    /// TRANSIT 구간에서만 온다 (#36). 기록 화면의 "동탄 → 수서 (GTX-A)"와 정류장 geofence에 쓴다.
+    public let transitLine: TransitLine?
+    public let boardStop: TransitStop?
+    public let alightStop: TransitStop?
     public let signalCrossings: [SignalCrossing]
 }
 

@@ -50,7 +50,7 @@ class CommuteRouteService(
             ?: throw NotFoundException("commute route $routeId not found")
 
     fun toDetail(route: CommuteRoute): CommuteRouteDetailResponse {
-        val legs = routeLegRepository.findByCommuteRouteOrderBySeqOrderAsc(route)
+        val legs = routeLegRepository.findWithTransitByCommuteRoute(route)
         val crossingsByLeg =
             if (legs.isEmpty()) {
                 emptyMap()
