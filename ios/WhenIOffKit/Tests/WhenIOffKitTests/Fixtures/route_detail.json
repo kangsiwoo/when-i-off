@@ -8,7 +8,7 @@
     "destinationLat": 37.489,
     "destinationLng": 127.105,
     "isActive": true,
-    "createdAt": "2026-09-26T16:06:29.343556Z"
+    "createdAt": "2026-09-26T16:26:05.215471Z"
   },
   "legs": [
     {
@@ -30,6 +30,35 @@
       "boardStopId": 4,
       "alightStopId": 1,
       "plannedTravelSec": 1260,
+      "transitLine": {
+        "id": 1,
+        "mode": "GTX",
+        "name": "GTX-A (수서~동탄)",
+        "stdgCd": "GTX-A",
+        "externalId": "L09",
+        "hasRealtimeApi": false,
+        "createdAt": "2026-09-26T16:24:56.569985Z"
+      },
+      "boardStop": {
+        "id": 4,
+        "mode": "GTX",
+        "name": "동탄",
+        "lat": 37.201167,
+        "lng": 127.095111,
+        "stdgCd": "GTX-A",
+        "externalId": "X111",
+        "createdAt": "2026-09-26T16:24:56.569985Z"
+      },
+      "alightStop": {
+        "id": 1,
+        "mode": "GTX",
+        "name": "수서",
+        "lat": 37.48694,
+        "lng": 127.10194,
+        "stdgCd": "GTX-A",
+        "externalId": "X108",
+        "createdAt": "2026-09-26T16:24:56.569985Z"
+      },
       "signalCrossings": []
     },
     {

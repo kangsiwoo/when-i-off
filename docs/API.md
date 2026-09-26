@@ -43,7 +43,7 @@
 |---|---|---|---|
 | ✔ | GET | `/commute-routes` | 내 출퇴근 경로 목록 |
 | ✔ | POST | `/commute-routes` | 경로 생성 (이름, 방향, 출발/도착 좌표) → `201` |
-| ✔ | GET | `/commute-routes/{id}` | 경로 상세 (구간 + 구간별 신호등 crossing 포함) |
+| ✔ | GET | `/commute-routes/{id}` | 경로 상세 (구간 + 구간별 신호등 crossing, TRANSIT 구간의 노선·정류장 — 아래 "경로 상세의 TRANSIT 구간") |
 | ✔ | PUT | `/commute-routes/{id}/legs` | 구간 목록 교체 (순서 재정렬 포함, 아래 "구간 교체의 의미"). WALK/TRANSIT 필드 규칙은 DB CHECK와 동일, 좌표는 WGS84 범위 검증 |
 | ✔ | PUT | `/route-legs/{id}/signal-crossings` | WALK 구간의 교차로 순서 전체 교체. 항목: `trafficSignalId`, `approachDir`(`nt…nw`), `signalKind`(`Bs,Bc,Lt,Pd,St,Ut`, 기본 `Pd`) |
 | ✔ | POST | `/transit-lines` | 노선 수동 등록 (`mode`, `name`, `stdgCd?`, `externalId?`, `hasRealtimeApi`) |
@@ -53,6 +53,25 @@
 | ✔ | GET | `/transit-lines/{id}/schedules/next?stopId=&direction=&at=&limit=` | 정적 시간표 기준 다음 출발 N대 (아래 "정적 시간표") |
 | ✔ | POST | `/traffic-signals` | 교차로 수동 등록 (좌표 + 이름) |
 | ✔ | GET | `/traffic-signals/nearby?lat=&lng=&radiusM=` | 근처 교차로 |
+
+### 경로 상세의 TRANSIT 구간
+TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노선과 승하차 정류장 객체**를 준다 (#36).
+앱이 "동탄 → 수서 (GTX-A)"를 띄우고 승하차 정류장 geofence를 거는 데 필요한 것이 경로 상세 한 번으로 온다.
+객체는 `POST /transit-lines`, `/transit-stops/nearby`의 응답과 같은 모양이다.
+
+```json
+{ "id": 2, "seqOrder": 2, "legType": "TRANSIT",
+  "transitLineId": 1, "boardStopId": 4, "alightStopId": 1, "plannedTravelSec": 1260,
+  "transitLine": { "id": 1, "mode": "GTX", "name": "GTX-A (수서~동탄)", "stdgCd": "GTX-A", "externalId": "L09", "hasRealtimeApi": false, … },
+  "boardStop":  { "id": 4, "mode": "GTX", "name": "동탄", "lat": 37.201167, "lng": 127.095111, … },
+  "alightStop": { "id": 1, "mode": "GTX", "name": "수서", "lat": 37.48694, "lng": 127.10194, … },
+  "signalCrossings": [] }
+```
+
+- `…Id` 필드는 하위 호환으로 남긴다
+- WALK 구간은 세 객체가 null이라 **키째로 빠진다** (`non_null`)
+- 노선·정류장 단건 조회(`GET /transit-stops/{id}` 등)는 두지 않았다. 앱이 경로를 그리려고 구간마다 2~3번씩 더
+  부르게 되기 때문이다. 경로 상세는 노선·정류장을 한 쿼리로 함께 읽는다 — TRANSIT 구간이 늘어도 쿼리 수가 늘지 않는다
 
 ### 구간 교체의 의미
 `PUT /commute-routes/{id}/legs`는 목록을 통째로 보내지만, 기존 구간을 지우고 다시 만드는 것이 아니라
