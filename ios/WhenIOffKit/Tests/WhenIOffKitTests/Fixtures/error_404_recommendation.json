@@ -1,0 +1,7 @@
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "no recommendation for commute route 1",
+  "instance": "/api/v1/commute-routes/1/recommendation/latest"
+}

@@ -1,0 +1,7 @@
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "legs must alternate WALK/TRANSIT (seqOrder 1 and 2)",
+  "instance": "/api/v1/commute-routes/1/legs"
+}
