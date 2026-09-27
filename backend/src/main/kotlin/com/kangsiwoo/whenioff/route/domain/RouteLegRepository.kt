@@ -7,6 +7,24 @@ import org.springframework.data.repository.query.Param
 interface RouteLegRepository : JpaRepository<RouteLeg, Long> {
     fun findByCommuteRouteOrderBySeqOrderAsc(commuteRoute: CommuteRoute): List<RouteLeg>
 
+    /**
+     * 경로 상세용. TRANSIT 구간의 노선·정류장을 함께 읽는다 — 응답에 이름·좌표를 넣으므로(#36) 따로 읽으면
+     * 구간 수만큼 쿼리가 늘어난다(N+1).
+     */
+    @Query(
+        """
+        select l from RouteLeg l
+        left join fetch l.transitLine
+        left join fetch l.boardStop
+        left join fetch l.alightStop
+        where l.commuteRoute = :route
+        order by l.seqOrder asc
+        """,
+    )
+    fun findWithTransitByCommuteRoute(
+        @Param("route") route: CommuteRoute,
+    ): List<RouteLeg>
+
     @Query(
         """
         select l from RouteLeg l

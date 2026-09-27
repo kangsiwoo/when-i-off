@@ -3,7 +3,9 @@ package com.kangsiwoo.whenioff.route.api
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import jakarta.persistence.EntityManagerFactory
 import org.hamcrest.Matchers.containsString
+import org.hibernate.SessionFactory
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -33,6 +35,7 @@ class RouteApiIT
         private val objectMapper: ObjectMapper,
         private val jdbcTemplate: JdbcTemplate,
         private val properties: WioProperties,
+        private val entityManagerFactory: EntityManagerFactory,
     ) {
         private val token get() = properties.apiToken
 
@@ -91,6 +94,79 @@ class RouteApiIT
             assertEquals(boardId, detail["legs"][1]["boardStopId"].asLong())
             assertEquals(alightId, detail["legs"][1]["alightStopId"].asLong())
             assertEquals(baseLat, detail["legs"][0]["startLat"].asDouble())
+        }
+
+        @Test
+        fun `transit legs carry the line and stop names and coordinates the app needs`() {
+            // 앱이 "board → alight (1234)"를 띄우고 정류장 geofence를 걸려면 id만으로는 부족하다 (#36).
+            val lineId = createLine("BUS", "1234", "L-1")
+            val boardId = createStop("BUS", "board", baseLat + 0.002, baseLng)
+            val alightId = createStop("BUS", "alight", baseLat + 0.02, baseLng + 0.001)
+            val routeId = createRoute()
+            val legs =
+                listOf(
+                    walk(1, baseLat, baseLng, baseLat + 0.002, baseLng),
+                    transit(2, lineId, boardId, alightId),
+                    walk(3, baseLat + 0.02, baseLng, baseLat + 0.021, baseLng),
+                )
+
+            // 구간 교체 응답과 상세 조회가 같은 모양이어야 한다.
+            val replaced = putLegs(routeId, legs)
+            val detail = getJson("/api/v1/commute-routes/$routeId")
+            for (body in listOf(replaced, detail)) {
+                val leg = body["legs"][1]
+                assertEquals(lineId, leg["transitLine"]["id"].asLong())
+                assertEquals("1234", leg["transitLine"]["name"].asText())
+                assertEquals("BUS", leg["transitLine"]["mode"].asText())
+                assertEquals("board", leg["boardStop"]["name"].asText())
+                assertEquals(baseLat + 0.002, leg["boardStop"]["lat"].asDouble())
+                assertEquals(baseLng, leg["boardStop"]["lng"].asDouble())
+                assertEquals("alight", leg["alightStop"]["name"].asText())
+                assertEquals(baseLng + 0.001, leg["alightStop"]["lng"].asDouble())
+                // 하위 호환: id 필드도 그대로 온다.
+                assertEquals(boardId, leg["boardStopId"].asLong())
+
+                // WALK 구간은 null이라 키째로 빠진다 (jackson non_null).
+                val walkLeg = body["legs"][0]
+                assertTrue(!walkLeg.has("transitLine") && !walkLeg.has("boardStop") && !walkLeg.has("alightStop"))
+            }
+        }
+
+        @Test
+        fun `route detail does not issue a query per transit leg`() {
+            // 노선·정류장을 구간마다 따로 읽으면 TRANSIT 구간이 늘어날수록 쿼리가 늘어난다(N+1).
+            val line1 = createLine("BUS", "1234", "L-1")
+            val line2 = createLine("SUBWAY", "2호선", "S-2")
+            // 정류장 mode는 노선 mode와 같아야 한다 (BUS 노선 → BUS 정류장, 2호선 → SUBWAY 역).
+            val s =
+                (1..4).map {
+                    createStop(if (it <= 2) "BUS" else "SUBWAY", "s$it", baseLat + 0.01 * it, baseLng)
+                }
+
+            val oneTransit = createRoute()
+            putLegs(
+                oneTransit,
+                listOf(
+                    walk(1, baseLat, baseLng, baseLat + 0.01, baseLng),
+                    transit(2, line1, s[0], s[1]),
+                    walk(3, baseLat + 0.02, baseLng, baseLat + 0.021, baseLng),
+                ),
+            )
+            val twoTransits = createRoute()
+            putLegs(
+                twoTransits,
+                listOf(
+                    walk(1, baseLat, baseLng, baseLat + 0.01, baseLng),
+                    transit(2, line1, s[0], s[1]),
+                    walk(3, baseLat + 0.02, baseLng, baseLat + 0.03, baseLng),
+                    transit(4, line2, s[2], s[3]),
+                    walk(5, baseLat + 0.04, baseLng, baseLat + 0.041, baseLng),
+                ),
+            )
+
+            val one = statementsFor { getJson("/api/v1/commute-routes/$oneTransit") }
+            val two = statementsFor { getJson("/api/v1/commute-routes/$twoTransits") }
+            assertEquals(one, two, "detail query count grew with the number of transit legs ($one -> $two)")
         }
 
         @Test
@@ -325,6 +401,19 @@ class RouteApiIT
                     .response
                     .contentAsString
             return objectMapper.readTree(response)
+        }
+
+        /** 블록이 실행한 SQL 문 수. Hibernate 통계를 이 블록 동안만 켠다. */
+        private fun statementsFor(block: () -> Unit): Long {
+            val statistics = entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+            statistics.isStatisticsEnabled = true
+            try {
+                statistics.clear()
+                block()
+                return statistics.prepareStatementCount
+            } finally {
+                statistics.isStatisticsEnabled = false
+            }
         }
 
         private fun boardingAttemptCount(): Int =

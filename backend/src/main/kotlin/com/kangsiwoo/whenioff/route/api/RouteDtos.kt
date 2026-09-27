@@ -5,6 +5,8 @@ import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import com.kangsiwoo.whenioff.route.domain.LegType
 import com.kangsiwoo.whenioff.route.domain.RouteLeg
 import com.kangsiwoo.whenioff.route.domain.RouteLegSignalCrossing
+import com.kangsiwoo.whenioff.transit.api.TransitLineResponse
+import com.kangsiwoo.whenioff.transit.api.TransitStopResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
@@ -87,6 +89,13 @@ data class RouteLegResponse(
     val boardStopId: Long?,
     val alightStopId: Long?,
     val plannedTravelSec: Int?,
+    /**
+     * TRANSIT 구간의 노선과 승하차 정류장 (#36). 앱이 "동탄 → 수서 (GTX-A)"를 띄우고 정류장 geofence를
+     * 거는 데 쓴다. `…Id` 필드는 하위 호환으로 남긴다. WALK 구간은 null이라 응답에서 키째로 빠진다.
+     */
+    val transitLine: TransitLineResponse?,
+    val boardStop: TransitStopResponse?,
+    val alightStop: TransitStopResponse?,
     val signalCrossings: List<SignalCrossingResponse>,
 ) {
     companion object {
@@ -106,6 +115,9 @@ data class RouteLegResponse(
             boardStopId = leg.boardStop?.id,
             alightStopId = leg.alightStop?.id,
             plannedTravelSec = leg.plannedTravelSec,
+            transitLine = leg.transitLine?.let(TransitLineResponse::from),
+            boardStop = leg.boardStop?.let { TransitStopResponse.from(it) },
+            alightStop = leg.alightStop?.let { TransitStopResponse.from(it) },
             signalCrossings = crossings.map(SignalCrossingResponse::from),
         )
     }

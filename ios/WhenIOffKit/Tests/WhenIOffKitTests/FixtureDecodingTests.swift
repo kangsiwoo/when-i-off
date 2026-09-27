@@ -37,6 +37,28 @@ struct FixtureDecodingTests {
         #expect(transit.plannedTravelSec == 1260)
     }
 
+    /// TRANSIT 구간은 노선과 승하차 정류장을 객체로 준다 (#36). 기록 화면의 "동탄 → 수서 (GTX-A)"와 정류장
+    /// geofence가 이 값으로 그려진다. WALK 구간엔 키 자체가 없다.
+    @Test func transitLegCarriesLineAndStops() throws {
+        let detail = try Fixture.decode(CommuteRouteDetail.self, "route_detail")
+        let transit = try #require(detail.transitLegs.first)
+
+        let line = try #require(transit.transitLine)
+        #expect(line.name == "GTX-A (수서~동탄)")
+        #expect(line.mode == .gtx)
+        #expect(line.hasRealtimeApi == false)  // GTX는 실시간 API가 없어 정적 시간표로 추천한다
+
+        let board = try #require(transit.boardStop)
+        #expect(board.name == "동탄")
+        #expect(board.lat == 37.201167)
+        #expect(board.lng == 127.095111)
+        #expect(board.id == transit.boardStopId)
+        #expect(transit.alightStop?.name == "수서")
+
+        let walk = detail.legs[0]
+        #expect(walk.transitLine == nil && walk.boardStop == nil && walk.alightStop == nil)
+    }
+
     /// `createdAt`이 나노초(9자리)로 온다 — 메모리의 `Instant`가 DB를 거치지 않고 그대로 나간 값이다.
     @Test func createdTripWithNanosecondTimestampAndPlainDate() throws {
         let trip = try Fixture.decode(CommuteTrip.self, "trip_created")
