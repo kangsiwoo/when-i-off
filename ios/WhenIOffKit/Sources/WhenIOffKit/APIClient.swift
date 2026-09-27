@@ -14,12 +14,12 @@ public struct APIConfiguration: Sendable, Equatable {
 
 /// when-i-off 백엔드 `/api/v1` 클라이언트.
 ///
-/// **자동 재시도를 하지 않는다.** `POST /commute-trips`는 멱등이 아니어서(`(경로, 날짜)` 유일 제약이
-/// 없다) 응답을 못 받은 채 다시 보내면 trip이 중복 생성된다. ``APIError/transport(_:)``는
-/// "서버에 도달했는지 모른다"는 뜻이므로, 재전송하려는 쪽이 먼저 ``trips(routeId:from:to:)``로
-/// 같은 `leftHomeAt`의 trip이 이미 있는지 확인해야 한다 (#34 후속: 오프라인 큐).
+/// **자동 재시도를 하지 않는다.** ``APIError/transport(_:)``는 "서버에 도달했는지 모른다"는 뜻이고,
+/// 언제 다시 보낼지는 오프라인 큐(후속)가 정한다.
 ///
-/// 반대로 탑승 시도 upsert와 GPS 배치는 서버가 중복을 흡수하므로 그대로 다시 보내도 안전하다.
+/// 다시 보내는 것 자체는 안전하다. `POST /commute-trips`는 `leftHomeAt`이 있으면 `(경로, leftHomeAt)`으로
+/// 재전송을 흡수해 기존 trip을 돌려주고(#37), 탑승 시도 upsert와 GPS 배치도 서버가 중복을 흡수한다.
+/// `leftHomeAt` 없이 만든 trip만은 다시 보내면 중복 생성된다.
 public struct APIClient: Sendable {
     public let configuration: APIConfiguration
     private let transport: any HTTPTransport
@@ -41,7 +41,7 @@ public struct APIClient: Sendable {
 
     // MARK: 이동 기록
 
-    /// 멱등이 아니다 — 타입 설명의 재시도 주의 참고.
+    /// `leftHomeAt`이 있으면 재전송해도 같은 trip이 돌아온다. 없으면 매번 새로 만든다.
     public func createTrip(_ request: CreateCommuteTripRequest) async throws(APIError) -> CommuteTrip {
         try await send("POST", ["commute-trips"], body: request)
     }

@@ -37,6 +37,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -247,6 +248,161 @@ class TripApiTest {
         assertEquals(1, jdbcTemplate.queryForObject("SELECT count(*) FROM boarding_attempts", Int::class.java))
     }
 
+    // ── #37: 재전송 흡수 ─────────────────────────────────────────────
+
+    @Test
+    fun `resending the same create returns the existing trip instead of a duplicate`() {
+        // 지하에서 "집 나섬" 응답을 못 받은 앱이 같은 요청을 다시 보내는 상황.
+        val body = mapOf("routeId" to route.id, "tripDate" to "2026-09-21", "leftHomeAt" to "2026-09-20T22:30:00.123Z")
+        val first = postJson("/api/v1/commute-trips", body).andExpect { status { isCreated() } }.json()
+        val again = postJson("/api/v1/commute-trips", body).andExpect { status { isOk() } }.json()
+
+        assertEquals(first["id"].asLong(), again["id"].asLong())
+        assertEquals(1, tripCount())
+    }
+
+    @Test
+    fun `resent create returns the trip with the attempts recorded since`() {
+        // 재전송 사이에 다른 기록이 붙었으면 그것까지 보여줘야 앱이 상태를 맞출 수 있다.
+        val body = mapOf("routeId" to route.id, "tripDate" to "2026-09-21", "leftHomeAt" to "2026-09-20T22:30:00Z")
+        val tripId = postJson("/api/v1/commute-trips", body).json()["id"].asLong()
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf("routeLegId" to transitLeg.id, "arrivedAtStopAt" to "2026-09-20T22:36:00Z"),
+        ).andExpect { status { isCreated() } }
+
+        val again = postJson("/api/v1/commute-trips", body).andExpect { status { isOk() } }.json()
+        assertEquals(1, again["boardingAttempts"].size())
+    }
+
+    @Test
+    fun `trips without leftHomeAt are never merged`() {
+        // 키가 없으면 재전송인지 알 수 없다. 합치면 서로 다른 출근이 하나로 뭉개진다.
+        val body = mapOf("routeId" to route.id, "tripDate" to "2026-09-21")
+        postJson("/api/v1/commute-trips", body).andExpect { status { isCreated() } }
+        postJson("/api/v1/commute-trips", body).andExpect { status { isCreated() } }
+        assertEquals(2, tripCount())
+    }
+
+    @Test
+    fun `same leftHomeAt with a different tripDate is a conflict, not a silent merge`() {
+        // 재전송이면 본문이 같다. 날짜만 다르면 클라이언트가 날짜를 다르게 계산한 버그다(UTC로 뽑는 등).
+        postJson(
+            "/api/v1/commute-trips",
+            mapOf("routeId" to route.id, "tripDate" to "2026-09-21", "leftHomeAt" to "2026-09-20T22:30:00Z"),
+        ).andExpect { status { isCreated() } }
+        postJson(
+            "/api/v1/commute-trips",
+            mapOf("routeId" to route.id, "tripDate" to "2026-09-20", "leftHomeAt" to "2026-09-20T22:30:00Z"),
+        ).andExpect { status { isConflict() } }
+        assertEquals(1, tripCount())
+    }
+
+    @Test
+    fun `concurrent resends of the same create produce one trip and no error`() {
+        // 서비스의 "먼저 조회"만으로는 둘 다 "없음"을 보고 삽입하는 경쟁을 못 막는다. 유일 인덱스(V4)가 막고,
+        // 진 쪽은 컨트롤러가 한 번 다시 태워 기존 trip을 돌려준다.
+        val body =
+            objectMapper.writeValueAsString(
+                mapOf("routeId" to route.id, "tripDate" to "2026-09-21", "leftHomeAt" to "2026-09-20T22:30:00Z"),
+            )
+        val workers = 4
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(workers)
+        val statuses =
+            try {
+                val futures =
+                    (1..workers).map {
+                        pool.submit(
+                            Callable {
+                                start.await()
+                                mockMvc
+                                    .post("/api/v1/commute-trips") {
+                                        header(ApiTokenFilter.HEADER, properties.apiToken)
+                                        contentType = MediaType.APPLICATION_JSON
+                                        content = body
+                                    }.andReturn()
+                                    .response.status
+                            },
+                        )
+                    }
+                start.countDown()
+                futures.map { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+
+        assertEquals(1, statuses.count { it == 201 }, "$statuses")
+        assertEquals(workers - 1, statuses.count { it == 200 }, "$statuses")
+        assertEquals(1, tripCount())
+    }
+
+    // ── #37: trip과 탑승 시도 사이의 시각 순서 ─────────────────────────
+
+    @Test
+    fun `boarding attempt observed before leaving home is rejected`() {
+        // 집→역 도보 시간이 음수가 되어 도보 속도 보정이 오염된다.
+        val tripId = createTripLeftAt("2026-09-20T22:30:00Z")
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf("routeLegId" to transitLeg.id, "arrivedAtStopAt" to "2026-09-20T22:20:00Z"),
+        ).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") { value("arrivedAtStopAt must not be before the trip's leftHomeAt") }
+        }
+        assertEquals(0, attemptCount())
+    }
+
+    @Test
+    fun `boarding attempt after arriving at the destination is rejected`() {
+        val tripId = createTripLeftAt("2026-09-20T22:30:00Z")
+        patchJson("/api/v1/commute-trips/$tripId", mapOf("arrivedDestinationAt" to "2026-09-20T23:28:00Z"))
+            .andExpect { status { isOk() } }
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf("routeLegId" to transitLeg.id, "alightedAt" to "2026-09-20T23:40:00Z"),
+        ).andExpect { status { isBadRequest() } }
+        assertEquals(0, attemptCount())
+    }
+
+    @Test
+    fun `trip times cannot be moved past attempts already recorded`() {
+        // 탑승 시도 쪽에서만 검사하면, 시도를 먼저 기록하고 trip 시각을 나중에 고쳐 같은 모순을 만들 수 있다.
+        val tripId = createTripLeftAt("2026-09-20T22:30:00Z")
+        val attemptId =
+            postJson(
+                "/api/v1/commute-trips/$tripId/boarding-attempts",
+                mapOf("routeLegId" to transitLeg.id, "arrivedAtStopAt" to "2026-09-20T22:36:00Z"),
+            ).json()["id"].asLong()
+        patchJson("/api/v1/boarding-attempts/$attemptId", mapOf("alightedAt" to "2026-09-20T23:20:00Z"))
+            .andExpect { status { isOk() } }
+
+        patchJson("/api/v1/commute-trips/$tripId", mapOf("leftHomeAt" to "2026-09-20T22:40:00Z"))
+            .andExpect { status { isBadRequest() } }
+        patchJson("/api/v1/commute-trips/$tripId", mapOf("arrivedDestinationAt" to "2026-09-20T23:10:00Z"))
+            .andExpect { status { isBadRequest() } }
+
+        // 거부된 PATCH는 아무것도 바꾸지 않는다 (트랜잭션 롤백).
+        val trip = getTrips()[0]
+        assertEquals("2026-09-20T22:30:00Z", trip["leftHomeAt"].asText())
+        assertTrue(trip["arrivedDestinationAt"] == null || trip["arrivedDestinationAt"].isNull)
+    }
+
+    @Test
+    fun `a predicted time before leaving home is still accepted`() {
+        // vehicleScheduledOrPredictedAt은 관측이 아니라 그 순간 시스템이 알려준 예측의 스냅샷이다.
+        // 오래된 예측이 집 나섬보다 이를 수 있으므로 시각 창 검사에서 뺐다.
+        val tripId = createTripLeftAt("2026-09-20T22:30:00Z")
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf(
+                "routeLegId" to transitLeg.id,
+                "arrivedAtStopAt" to "2026-09-20T22:36:00Z",
+                "vehicleScheduledOrPredictedAt" to "2026-09-20T22:25:00Z",
+            ),
+        ).andExpect { status { isCreated() } }
+    }
+
     @Test
     fun `unknown trip and route give 404`() {
         postJson("/api/v1/commute-trips", mapOf("routeId" to 999_999, "tripDate" to "2026-09-21"))
@@ -358,6 +514,29 @@ class TripApiTest {
             .andExpect { status { isCreated() } }
             .json()["id"]
             .asLong()
+
+    private fun createTripLeftAt(leftHomeAt: String): Long =
+        postJson(
+            "/api/v1/commute-trips",
+            mapOf(
+                "routeId" to route.id,
+                "tripDate" to "2026-09-21",
+                "leftHomeAt" to leftHomeAt,
+            ),
+        ).andExpect { status { isCreated() } }
+            .json()["id"]
+            .asLong()
+
+    private fun tripCount(): Int = jdbcTemplate.queryForObject("SELECT count(*) FROM commute_trips", Int::class.java)!!
+
+    private fun attemptCount(): Int =
+        jdbcTemplate.queryForObject("SELECT count(*) FROM boarding_attempts", Int::class.java)!!
+
+    private fun getTrips(): JsonNode =
+        mockMvc
+            .get("/api/v1/commute-trips?routeId=${route.id}") { header(ApiTokenFilter.HEADER, properties.apiToken) }
+            .andExpect { status { isOk() } }
+            .json()
 
     private fun point(index: Int): Map<String, Any> =
         mapOf(
