@@ -61,7 +61,7 @@ class CommuteTripController(
             try {
                 service.upsertBoardingAttempt(DefaultUser.ID, id, request)
             } catch (e: DataIntegrityViolationException) {
-                // 같은 (trip, leg)의 첫 요청 둘이 동시에 들어오면 진 쪽이 UNIQUE에 걸리므로 갱신 경로로 한 번 다시 탄다.
+                // 같은 (trip, leg, attemptSeq)의 첫 요청 둘이 동시에 들어오면 진 쪽이 UNIQUE(V5)에 걸리므로 갱신 경로로 한 번 다시 탄다.
                 service.upsertBoardingAttempt(DefaultUser.ID, id, request)
             }
         val status = if (result.created) HttpStatus.CREATED else HttpStatus.OK

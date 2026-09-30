@@ -111,6 +111,7 @@ class TripApiTest {
             ).andExpect { status { isCreated() } }.json()
         val attemptId = first["id"].asLong()
         assertEquals("UNKNOWN", first["result"].asText())
+        assertEquals(1, first["attemptSeq"].asInt()) // 생략하면 첫 시도 (#38)
 
         val upserted =
             postJson(
@@ -401,6 +402,193 @@ class TripApiTest {
                 "vehicleScheduledOrPredictedAt" to "2026-09-20T22:25:00Z",
             ),
         ).andExpect { status { isCreated() } }
+    }
+
+    // ── #38: 구간당 탑승 시도 여러 건 (차 한 대 = 한 행) ─────────────────
+
+    @Test
+    fun `missed then caught keeps both attempts and each resend is idempotent`() {
+        // 22:43 차를 놓치고 22:58 차를 탄다. 예전에는 두 번째가 첫 번째를 덮어써 가짜 예측 오차가 생겼다.
+        val tripId = createTripLeftAt("2026-09-20T22:30:00Z")
+        val missed =
+            mapOf(
+                "routeLegId" to transitLeg.id,
+                "attemptSeq" to 1,
+                "arrivedAtStopAt" to "2026-09-20T22:43:30Z",
+                "vehicleScheduledOrPredictedAt" to "2026-09-20T22:43:00Z",
+                "vehicleActualDepartureAt" to "2026-09-20T22:43:00Z",
+                "result" to "MISSED",
+            )
+        val caught =
+            mapOf(
+                "routeLegId" to transitLeg.id,
+                "attemptSeq" to 2,
+                "vehicleScheduledOrPredictedAt" to "2026-09-20T22:57:00Z",
+                "vehicleActualDepartureAt" to "2026-09-20T22:58:00Z",
+                "result" to "CAUGHT",
+            )
+        val first =
+            postJson("/api/v1/commute-trips/$tripId/boarding-attempts", missed)
+                .andExpect { status { isCreated() } }
+                .json()
+        val second =
+            postJson("/api/v1/commute-trips/$tripId/boarding-attempts", caught)
+                .andExpect { status { isCreated() } }
+                .json()
+        assertEquals(2, attemptCount())
+
+        // 재전송은 seq마다 제자리 갱신이다 (행이 늘지 않는다).
+        val missedAgain =
+            postJson("/api/v1/commute-trips/$tripId/boarding-attempts", missed)
+                .andExpect { status { isOk() } }
+                .json()
+        val caughtAgain =
+            postJson("/api/v1/commute-trips/$tripId/boarding-attempts", caught)
+                .andExpect { status { isOk() } }
+                .json()
+        assertEquals(first["id"].asLong(), missedAgain["id"].asLong())
+        assertEquals(second["id"].asLong(), caughtAgain["id"].asLong())
+        assertEquals(2, attemptCount())
+
+        val attempts = getTrips()[0]["boardingAttempts"]
+        assertEquals(listOf(1, 2), attempts.map { it["attemptSeq"].asInt() })
+        assertEquals(listOf("MISSED", "CAUGHT"), attempts.map { it["result"].asText() })
+        assertEquals(
+            listOf("2026-09-20T22:43:00Z", "2026-09-20T22:57:00Z"),
+            attempts.map { it["vehicleScheduledOrPredictedAt"].asText() },
+        )
+        assertEquals(
+            listOf("2026-09-20T22:43:00Z", "2026-09-20T22:58:00Z"),
+            attempts.map { it["vehicleActualDepartureAt"].asText() },
+        )
+        assertEquals("2026-09-20T22:43:30Z", attempts[0]["arrivedAtStopAt"].asText())
+        assertTrue(attempts[1]["arrivedAtStopAt"] == null || attempts[1]["arrivedAtStopAt"].isNull)
+    }
+
+    @Test
+    fun `attemptSeq must not skip ahead and is bounded`() {
+        val tripId = createTrip()
+        for (seq in listOf(2, 0, 21)) {
+            postJson(
+                "/api/v1/commute-trips/$tripId/boarding-attempts",
+                mapOf("routeLegId" to transitLeg.id, "attemptSeq" to seq),
+            ).andExpect { status { isBadRequest() } }
+        }
+        assertEquals(0, attemptCount())
+
+        postJson("/api/v1/commute-trips/$tripId/boarding-attempts", mapOf("routeLegId" to transitLeg.id))
+            .andExpect { status { isCreated() } }
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf("routeLegId" to transitLeg.id, "attemptSeq" to 3),
+        ).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") { value("attemptSeq 3 skips ahead: next attemptSeq for this leg is 2") }
+        }
+        assertEquals(1, attemptCount())
+    }
+
+    @Test
+    fun `trip attempts are ordered by leg then attemptSeq`() {
+        val tripId = createTrip()
+        val laterLeg = saveTransitLeg(route, seqOrder = 4)
+        // 삽입 순서(id)와 다르게: 2구간#1 → 4구간#1 → 2구간#2
+        for ((leg, seq) in listOf(transitLeg to 1, laterLeg to 1, transitLeg to 2)) {
+            postJson(
+                "/api/v1/commute-trips/$tripId/boarding-attempts",
+                mapOf("routeLegId" to leg.id, "attemptSeq" to seq),
+            ).andExpect { status { isCreated() } }
+        }
+        val attempts = getTrips()[0]["boardingAttempts"]
+        assertEquals(
+            listOf(transitLeg.id to 1, transitLeg.id to 2, laterLeg.id to 1),
+            attempts.map { it["routeLegId"].asLong() to it["attemptSeq"].asInt() },
+        )
+    }
+
+    @Test
+    fun `a later attempt cannot precede the departure of an earlier one`() {
+        val tripId = createTripLeftAt("2026-09-20T22:30:00Z")
+        val firstId =
+            postJson(
+                "/api/v1/commute-trips/$tripId/boarding-attempts",
+                mapOf(
+                    "routeLegId" to transitLeg.id,
+                    "vehicleActualDepartureAt" to "2026-09-20T22:43:00Z",
+                    "result" to "MISSED",
+                ),
+            ).json()["id"].asLong()
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf(
+                "routeLegId" to transitLeg.id,
+                "attemptSeq" to 2,
+                "vehicleActualDepartureAt" to "2026-09-20T22:40:00Z",
+            ),
+        ).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.detail") {
+                value("vehicleActualDepartureAt of attempt 2 must not be before vehicleActualDepartureAt of attempt 1")
+            }
+        }
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf("routeLegId" to transitLeg.id, "attemptSeq" to 2, "arrivedAtStopAt" to "2026-09-20T22:42:00Z"),
+        ).andExpect { status { isBadRequest() } }
+        assertEquals(1, attemptCount())
+
+        postJson(
+            "/api/v1/commute-trips/$tripId/boarding-attempts",
+            mapOf(
+                "routeLegId" to transitLeg.id,
+                "attemptSeq" to 2,
+                "vehicleActualDepartureAt" to "2026-09-20T22:58:00Z",
+            ),
+        ).andExpect { status { isCreated() } }
+        // 앞 시도를 나중에 고쳐 순서를 뒤집는 것도 막는다 (PATCH도 같은 검사를 탄다).
+        patchJson("/api/v1/boarding-attempts/$firstId", mapOf("vehicleActualDepartureAt" to "2026-09-20T23:00:00Z"))
+            .andExpect { status { isBadRequest() } }
+        assertEquals("2026-09-20T22:43:00Z", getTrips()[0]["boardingAttempts"][0]["vehicleActualDepartureAt"].asText())
+    }
+
+    @Test
+    fun `concurrent resends of the same new attemptSeq produce one row and no error`() {
+        val tripId = createTrip()
+        postJson("/api/v1/commute-trips/$tripId/boarding-attempts", mapOf("routeLegId" to transitLeg.id))
+            .andExpect { status { isCreated() } }
+        val body =
+            objectMapper.writeValueAsString(
+                mapOf("routeLegId" to transitLeg.id, "attemptSeq" to 2, "result" to "CAUGHT"),
+            )
+        val workers = 4
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(workers)
+        val statuses =
+            try {
+                val futures =
+                    (1..workers).map {
+                        pool.submit(
+                            Callable {
+                                start.await()
+                                mockMvc
+                                    .post("/api/v1/commute-trips/$tripId/boarding-attempts") {
+                                        header(ApiTokenFilter.HEADER, properties.apiToken)
+                                        contentType = MediaType.APPLICATION_JSON
+                                        content = body
+                                    }.andReturn()
+                                    .response.status
+                            },
+                        )
+                    }
+                start.countDown()
+                futures.map { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+
+        assertEquals(1, statuses.count { it == 201 }, "$statuses")
+        assertEquals(workers - 1, statuses.count { it == 200 }, "$statuses")
+        assertEquals(2, attemptCount())
     }
 
     @Test

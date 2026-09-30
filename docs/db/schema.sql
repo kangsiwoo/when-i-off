@@ -233,7 +233,8 @@ CREATE INDEX idx_signal_states_lookup
 -- ============================================================
 -- 실측 기록 (핵심)
 -- ============================================================
--- 하루의 출근(또는 퇴근) 1회 = commute_trip 1건. 그 안에서 TRANSIT 구간마다 boarding_attempt 1건.
+-- 하루의 출근(또는 퇴근) 1회 = commute_trip 1건. 그 안에서 TRANSIT 구간마다
+-- 시도한 차 한 대당 boarding_attempt 1건 (놓치고 다음 차를 타면 2건, #38).
 CREATE TABLE commute_trips (
     id                      BIGSERIAL PRIMARY KEY,
     user_id                 BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -264,8 +265,11 @@ CREATE TABLE boarding_attempts (
     result                              boarding_result NOT NULL DEFAULT 'UNKNOWN',
     notes                               TEXT,
     created_at                          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 같은 구간에서 몇 번째 차인가 (1부터). 놓치고 다음 차를 타면 행이 둘이다 (V5, #38)
+    attempt_seq                         INT NOT NULL DEFAULT 1 CHECK (attempt_seq >= 1),
 
-    UNIQUE (commute_trip_id, route_leg_id)
+    CONSTRAINT boarding_attempts_trip_leg_attempt_seq_key
+        UNIQUE (commute_trip_id, route_leg_id, attempt_seq)
 );
 
 CREATE INDEX idx_boarding_attempts_leg ON boarding_attempts(route_leg_id);

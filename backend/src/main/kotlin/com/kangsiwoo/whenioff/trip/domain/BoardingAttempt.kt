@@ -25,6 +25,9 @@ class BoardingAttempt(
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "route_leg_id", nullable = false)
     var routeLeg: RouteLeg,
+    /** 같은 (trip, 구간)에서 몇 번째로 시도한 차인가 (1부터). 차 한 대 = 한 행이다 (#38). */
+    @Column(nullable = false, updatable = false)
+    val attemptSeq: Int = 1,
     var arrivedAtStopAt: Instant? = null,
     var vehicleScheduledOrPredictedAt: Instant? = null,
     var vehicleActualDepartureAt: Instant? = null,

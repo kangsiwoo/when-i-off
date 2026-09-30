@@ -7,6 +7,8 @@ import com.kangsiwoo.whenioff.trip.domain.GpsPoint
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.PositiveOrZero
 import jakarta.validation.constraints.Size
@@ -60,6 +62,10 @@ interface BoardingAttemptChanges {
 
 data class UpsertBoardingAttemptRequest(
     val routeLegId: Long,
+    /** 같은 구간에서 몇 번째 차인가. 생략하면 1 — 한 대만 시도한 구간은 예전과 같다 (#38). */
+    @field:Min(1)
+    @field:Max(MAX_ATTEMPT_SEQ)
+    val attemptSeq: Int = 1,
     override val arrivedAtStopAt: Instant? = null,
     override val vehicleScheduledOrPredictedAt: Instant? = null,
     override val vehicleActualDepartureAt: Instant? = null,
@@ -67,7 +73,12 @@ data class UpsertBoardingAttemptRequest(
     override val result: BoardingResult? = null,
     @field:Size(max = 2000)
     override val notes: String? = null,
-) : BoardingAttemptChanges
+) : BoardingAttemptChanges {
+    companion object {
+        /** 한 구간에서 이만큼 놓치는 일은 없다. 앱 버그로 seq가 폭주하는 것만 막는다. */
+        const val MAX_ATTEMPT_SEQ = 20L
+    }
+}
 
 data class UpdateBoardingAttemptRequest(
     override val arrivedAtStopAt: Instant? = null,
@@ -83,6 +94,7 @@ data class BoardingAttemptResponse(
     val id: Long,
     val tripId: Long,
     val routeLegId: Long,
+    val attemptSeq: Int,
     val arrivedAtStopAt: Instant?,
     val vehicleScheduledOrPredictedAt: Instant?,
     val vehicleActualDepartureAt: Instant?,
@@ -97,6 +109,7 @@ data class BoardingAttemptResponse(
                 id = attempt.id!!,
                 tripId = attempt.commuteTrip.id!!,
                 routeLegId = attempt.routeLeg.id!!,
+                attemptSeq = attempt.attemptSeq,
                 arrivedAtStopAt = attempt.arrivedAtStopAt,
                 vehicleScheduledOrPredictedAt = attempt.vehicleScheduledOrPredictedAt,
                 vehicleActualDepartureAt = attempt.vehicleActualDepartureAt,

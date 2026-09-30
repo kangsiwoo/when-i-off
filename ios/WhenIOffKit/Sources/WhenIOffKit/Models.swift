@@ -111,6 +111,9 @@ public struct BoardingAttempt: Codable, Sendable, Equatable, Identifiable {
     public let id: Int64
     public let tripId: Int64
     public let routeLegId: Int64
+    /// 같은 구간에서 몇 번째로 시도한 차인가 (1부터). 놓치고 다음 차를 타면 구간당 여러 건이다.
+    /// 이 필드가 없던 서버 응답도 읽도록 옵셔널이다.
+    public let attemptSeq: Int?
     public let arrivedAtStopAt: Date?
     public let vehicleScheduledOrPredictedAt: Date?
     public let vehicleActualDepartureAt: Date?
@@ -154,9 +157,12 @@ public struct UpdateCommuteTripRequest: Codable, Sendable, Equatable {
     }
 }
 
-/// `(trip, routeLegId)` 기준 **upsert**라 같은 구간을 다시 보내도 행이 늘지 않는다.
+/// `(trip, routeLegId, attemptSeq)` 기준 **upsert**라 같은 차를 다시 보내도 행이 늘지 않는다.
 public struct UpsertBoardingAttemptRequest: Codable, Sendable, Equatable {
     public var routeLegId: Int64
+    /// 같은 구간에서 몇 번째 차인가. `nil`이면 요청에서 빠지고 서버는 1로 본다.
+    /// 놓치고 다음 차를 타면 2, 3…으로 보낸다 (건너뛰면 400).
+    public var attemptSeq: Int?
     public var arrivedAtStopAt: Date?
     public var vehicleScheduledOrPredictedAt: Date?
     public var vehicleActualDepartureAt: Date?
@@ -166,6 +172,7 @@ public struct UpsertBoardingAttemptRequest: Codable, Sendable, Equatable {
 
     public init(
         routeLegId: Int64,
+        attemptSeq: Int? = nil,
         arrivedAtStopAt: Date? = nil,
         vehicleScheduledOrPredictedAt: Date? = nil,
         vehicleActualDepartureAt: Date? = nil,
@@ -174,6 +181,7 @@ public struct UpsertBoardingAttemptRequest: Codable, Sendable, Equatable {
         notes: String? = nil
     ) {
         self.routeLegId = routeLegId
+        self.attemptSeq = attemptSeq
         self.arrivedAtStopAt = arrivedAtStopAt
         self.vehicleScheduledOrPredictedAt = vehicleScheduledOrPredictedAt
         self.vehicleActualDepartureAt = vehicleActualDepartureAt

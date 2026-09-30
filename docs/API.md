@@ -95,8 +95,8 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
 | ✔ | POST | `/commute-trips` | 이동 시작 (`routeId`, `tripDate`, `leftHomeAt?`) → `201`, 재전송이면 `200` (아래) |
 | ✔ | PATCH | `/commute-trips/{id}` | `leftHomeAt`, `arrivedDestinationAt` 갱신. 이미 기록된 attempt가 새 범위 밖이 되면 400 |
 | ✔ | GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts 포함, 히스토리 화면용). `to < from`이면 400 |
-| ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도 **upsert** (아래) |
-| ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`) |
+| ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도(차 한 대) **upsert** (아래) |
+| ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`). id로 한 건만 |
 | ✔ | POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (아래) |
 
 ### trip 생성의 재전송 (#37)
@@ -119,12 +119,34 @@ trip `PATCH`로 범위를 줄여 이미 기록된 attempt가 밖으로 밀려나
 `vehicleScheduledOrPredictedAt`은 검사하지 않는다 — 예측 시각은 집을 나서기 전 값일 수 있다.
 
 ### boarding attempt의 upsert 의미
-같은 trip·leg에 attempt는 하나만 존재한다(`UNIQUE (commute_trip_id, route_leg_id)`). 앱은
-geofence 이벤트마다, 그리고 오프라인 후 재전송 때 같은 요청을 여러 번 보낼 수 있으므로
-`POST /commute-trips/{id}/boarding-attempts`는 **`routeLegId`를 키로 upsert**한다.
+attempt는 **차 한 대 = 한 건**이다 (#38). 한 구간에서 차를 놓치고 다음 차를 타면 그 구간의 attempt는
+둘이고, `attemptSeq`(1부터)로 몇 번째 차인지 구분한다(`UNIQUE (commute_trip_id, route_leg_id, attempt_seq)`).
+앱은 geofence 이벤트마다, 그리고 오프라인 후 재전송 때 같은 요청을 여러 번 보낼 수 있으므로
+`POST /commute-trips/{id}/boarding-attempts`는 **`(routeLegId, attemptSeq)`를 키로 upsert**한다.
 
-- 없으면 생성 → `201 Created`, 있으면 갱신 → `200 OK`. 본문은 둘 다 attempt 전체. 같은 (trip, leg)의
-  첫 요청이 동시에 둘 들어와도 진 쪽은 갱신으로 다시 처리되어 `200`을 받는다 (409가 아님)
+- `attemptSeq`는 생략하면 `1`. 한 대만 시도한 구간은 예전처럼 보내면 된다
+- 없으면 생성 → `201 Created`, 있으면 갱신 → `200 OK`. 본문은 둘 다 attempt 전체(`attemptSeq` 포함).
+  같은 (trip, leg, attemptSeq)의 첫 요청이 동시에 둘 들어와도 진 쪽은 갱신으로 다시 처리되어 `200`을
+  받는다 (409가 아님)
+- **번호를 건너뛸 수 없다.** 새 `attemptSeq`는 그 구간의 현재 최댓값 + 1 이하여야 한다(첫 시도는 1).
+  아니면 400 — 중간 시도가 빠진 기록은 "그 사이 놓친 차"를 잃는다. 범위는 1~20
+- 같은 구간에서 뒤 시도의 `arrivedAtStopAt`, `vehicleActualDepartureAt`은 앞 시도의
+  `vehicleActualDepartureAt`보다 이르면 400 (값이 있는 쪽만). 뒤 시도의 `arrivedAtStopAt`은 보통
+  생략한다 — 도보 구간은 첫 시도의 도착을 쓴다
+- trip의 `boardingAttempts`는 구간 순서(`seqOrder`) → `attemptSeq` 순으로 나온다
+
+예: 역 도착 → 22:43 차 놓침 → 22:58 차 탐
+
+```
+POST …/boarding-attempts {routeLegId: 2, attemptSeq: 1, arrivedAtStopAt: 22:43:30,
+                          vehicleActualDepartureAt: 22:43, result: MISSED}          → 201
+POST …/boarding-attempts {routeLegId: 2, attemptSeq: 2,
+                          vehicleActualDepartureAt: 22:58, result: CAUGHT}          → 201
+```
+
+두 건이 따로 남는다. 각 요청을 다시 보내면 자기 행만 갱신한다(`200`). 하차는 탄 시도에
+`{routeLegId: 2, attemptSeq: 2, alightedAt: …}`로 보낸다.
+
 - **요청에서 `null`(생략)인 필드는 건드리지 않는다.** 정류장 도착만 보낸 뒤 나중에 하차만 보내도
   앞의 값이 지워지지 않는다. 값을 지우는 API는 없다 (실측 기록은 지우지 않는 게 원칙)
 - `routeLegId`는 그 trip의 경로에 속한 `TRANSIT` 구간이어야 한다. 아니면 400
