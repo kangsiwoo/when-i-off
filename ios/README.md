@@ -49,5 +49,5 @@ let trip = try await api.createTrip(
 - `POST /commute-trips`: **`leftHomeAt`을 넣어 만들면** 서버가 `(경로, leftHomeAt)`으로 재전송을 흡수해
   기존 trip을 돌려준다(#37, 처음이면 201·재전송이면 200). `leftHomeAt` 없이 만든 trip은 다시 보내면
   중복 생성되므로, "집 나섬" 시각은 생성 요청에 담는다
-- 탑승 시도 upsert(`(trip, routeLegId)` 기준)와 GPS 배치(`(user, recordedAt)` 중복 무시)도 서버가
-  중복을 흡수한다
+- 탑승 시도 upsert(`(trip, routeLegId, attemptSeq)` 기준, 차 한 대 = 한 건 — 놓치고 다음 차를 타면
+  `attemptSeq` 2)와 GPS 배치(`(user, recordedAt)` 중복 무시)도 서버가 중복을 흡수한다

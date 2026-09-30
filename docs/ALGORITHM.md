@@ -208,8 +208,8 @@ def recommend_departure(route, target_arrival_at, p=0.95):
 | 대상 | 원재료 | 방법 |
 |---|---|---|
 | `user_walking_profile` | `walking_segments` | 최근 N회 윈도우 또는 EWMA. 구간별 행은 `sample_count ≥ 5`부터 사용, 그 전엔 전역 행 |
-| `transit_prediction_calibration` | attempt의 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 그룹별 평균/표준편차. 샘플 5회 미만이면 노선 단위 값을 상속 |
-| `transit_travel_time_calibration` | attempt의 `alighted_at − vehicle_actual_departure_at` | 동일 |
+| `transit_prediction_calibration` | attempt(차 한 대, 놓친 차 포함)마다 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 그룹별 평균/표준편차. 샘플 5회 미만이면 노선 단위 값을 상속 |
+| `transit_travel_time_calibration` | 탄 attempt(`CAUGHT`)의 `alighted_at − vehicle_actual_departure_at` | 동일 |
 | `walking_segments` | trip/attempt의 인접 사건 시각 + `gps_traces` | DATA_MODEL.md의 규칙으로 파생 |
 | `traffic_signal_cycles` (`PUBLIC_API`) | `traffic_signal_states` 누적 | 커버 교차로는 실시간 상태의 현시 전환 시각에서 `R`, `C`를 추정해 주기 행을 갱신 → 지평선 밖 계산과 폴링이 꺼진 시간대에도 실측 기반 주기를 쓴다. **현재는 커버 교차로가 없어 돌지 않는다** (#30) |
 

@@ -107,12 +107,25 @@ class CommuteTripService(
         request: UpsertBoardingAttemptRequest,
     ): UpsertResult {
         val trip = findTrip(userId, tripId)
-        val existing = boardingAttemptRepository.findByCommuteTripIdAndRouteLegId(tripId, request.routeLegId)
+        // 차 한 대 = 한 행이라 upsert 키는 (trip, 구간, attemptSeq)다 (#38).
+        val legAttempts =
+            boardingAttemptRepository.findByCommuteTripIdAndRouteLegIdOrderByAttemptSeqAsc(tripId, request.routeLegId)
+        val existing = legAttempts.find { it.attemptSeq == request.attemptSeq }
+        val nextSeq = (legAttempts.lastOrNull()?.attemptSeq ?: 0) + 1
+        if (existing == null && request.attemptSeq > nextSeq) {
+            // 건너뛴 번호가 있으면 "그 사이에 놓친 차"가 빠진 기록이 된다. 재전송 순서가 뒤바뀐 앱은 다시 보내면 된다.
+            throw BadRequestException(
+                "attemptSeq ${request.attemptSeq} skips ahead: next attemptSeq for this leg is $nextSeq",
+            )
+        }
         val attempt =
             existing?.apply { applyChanges(request) }
                 ?: boardingAttemptRepository.save(
-                    BoardingAttempt(commuteTrip = trip, routeLeg = transitLegOf(trip, request.routeLegId))
-                        .apply { applyChanges(request) },
+                    BoardingAttempt(
+                        commuteTrip = trip,
+                        routeLeg = transitLegOf(trip, request.routeLegId),
+                        attemptSeq = request.attemptSeq,
+                    ).apply { applyChanges(request) },
                 )
         return UpsertResult(BoardingAttemptResponse.from(attempt), created = existing == null)
     }
@@ -185,7 +198,7 @@ class CommuteTripService(
             )
         val attemptsByTrip =
             boardingAttemptRepository
-                .findByCommuteTripIdInOrderByRouteLegSeqOrderAsc(trips.map { it.id!! })
+                .findByCommuteTripIdInOrderByRouteLegSeqOrderAscAttemptSeqAsc(trips.map { it.id!! })
                 .groupBy { it.commuteTrip.id!! }
         return trips.map { CommuteTripResponse.from(it, attemptsByTrip[it.id].orEmpty()) }
     }
@@ -198,7 +211,7 @@ class CommuteTripService(
             ?: throw NotFoundException("commute trip $tripId not found")
 
     private fun attemptsOf(trip: CommuteTrip): List<BoardingAttempt> =
-        boardingAttemptRepository.findByCommuteTripIdInOrderByRouteLegSeqOrderAsc(listOf(trip.id!!))
+        boardingAttemptRepository.findByCommuteTripIdInOrderByRouteLegSeqOrderAscAttemptSeqAsc(listOf(trip.id!!))
 
     private fun transitLegOf(
         trip: CommuteTrip,
@@ -224,6 +237,31 @@ class CommuteTripService(
         changes.notes?.let { notes = it }
         requireOrdered(vehicleActualDepartureAt, alightedAt, "alightedAt must not be before vehicleActualDepartureAt")
         requireWithinTrip(commuteTrip, this)
+        requireAfterEarlierAttempts(this)
+    }
+
+    /**
+     * 같은 구간에서 뒤 시도(다음 차)의 관측 시각은 앞 시도의 차가 떠난 뒤여야 한다 (#38).
+     * 어긋나면 "놓친 차 → 탄 차" 순서가 뒤집혀 시도별 예측 오차와 차내 시간이 엉뚱한 차에 붙는다.
+     * 값이 있는 쪽만 검사한다. 뒤 시도의 `arrivedAtStopAt`은 보통 비워 둔다 (도보 구간은 첫 시도의 도착을 쓴다).
+     */
+    private fun requireAfterEarlierAttempts(attempt: BoardingAttempt) {
+        val legAttempts =
+            boardingAttemptRepository
+                .findByCommuteTripIdAndRouteLegIdOrderByAttemptSeqAsc(attempt.commuteTrip.id!!, attempt.routeLeg.id!!)
+                .filter { it !== attempt }
+                .plus(attempt)
+                .sortedBy { it.attemptSeq }
+        for ((i, earlier) in legAttempts.withIndex()) {
+            val departed = earlier.vehicleActualDepartureAt ?: continue
+            for (later in legAttempts.drop(i + 1)) {
+                val suffix =
+                    "of attempt ${later.attemptSeq} must not be before vehicleActualDepartureAt of attempt " +
+                        "${earlier.attemptSeq}"
+                requireOrdered(departed, later.arrivedAtStopAt, "arrivedAtStopAt $suffix")
+                requireOrdered(departed, later.vehicleActualDepartureAt, "vehicleActualDepartureAt $suffix")
+            }
+        }
     }
 
     /**

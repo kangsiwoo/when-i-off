@@ -32,7 +32,7 @@ erDiagram
 
     users ||--o{ commute_trips : "하루 1회 이동"
     commute_routes ||--o{ commute_trips : ""
-    commute_trips ||--o{ boarding_attempts : "TRANSIT 구간마다 1건"
+    commute_trips ||--o{ boarding_attempts : "TRANSIT 구간마다 시도한 차 한 대당 1건"
     route_legs ||--o{ boarding_attempts : ""
     commute_trips ||--o{ gps_traces : "이동 중 GPS (nullable)"
     users ||--o{ gps_traces : ""
@@ -58,7 +58,7 @@ commute_route (경로 정의, 한 번 등록)
 
 commute_trip (그 경로로 실제 이동한 하루 1건)
  ├─ left_home_at / arrived_destination_at
- ├─ boarding_attempts[]  TRANSIT 구간마다: 정류장 도착, 차 출발, 하차, 탔음/놓침
+ ├─ boarding_attempts[]  TRANSIT 구간마다, 시도한 차 한 대당: 정류장 도착, 차 출발, 하차, 탔음/놓침
  ├─ walking_segments[]   WALK 구간마다: 실제 걸린 시간/거리 (분석 배치가 파생)
  └─ gps_traces[]         원시 위치
 
@@ -236,7 +236,9 @@ fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 �
 "추천대로 나갔더니 실제로 됐는가"를 검증하는 단위이기도 하다.
 
 ### `boarding_attempts` — 핵심 테이블
-한 trip 안에서 TRANSIT 구간마다 "이 차를 타려고 시도했다"는 사실을 기록한다.
+한 trip 안에서 TRANSIT 구간마다 "이 차를 타려고 시도했다"는 사실을 **차 한 대당 한 행**으로 기록한다.
+차를 놓치고 다음 차를 타면 그 구간의 행은 둘(`MISSED`, `CAUGHT`)이다 (#38).
+- `attempt_seq`: 그 구간에서 몇 번째로 시도한 차인가 (1부터, 건너뛰지 않음)
 - `arrived_at_stop_at`: 승차 정류장/역 도착 (geofence 진입)
 - `vehicle_scheduled_or_predicted_at`: 그 순간 시스템이 알려준 예정 시각
   (스냅샷 — 나중에 재현 가능하도록 값을 복사해 둔다)
@@ -245,14 +247,19 @@ fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 �
 - `alighted_at`: 하차 정류장/역 도착 (geofence 진입)
 - `result`: `CAUGHT` / `MISSED` / `UNKNOWN`
 
-`(commute_trip_id, route_leg_id)` UNIQUE라 같은 구간의 재전송은 API에서 upsert로 흡수한다.
+`(commute_trip_id, route_leg_id, attempt_seq)` UNIQUE라 같은 차의 재전송은 API에서 upsert로 흡수한다.
+
+예전에는 `(trip, 구간)`이 유일해서 놓친 뒤 탄 기록이 놓친 기록을 덮어썼다. 그러면 한 행에 "놓친 차의
+예측 스냅샷"과 "탄 차의 실제 출발"이 섞여 가짜 예측 오차(예: 15분 늦음)가 학습에 들어간다. 놓침은
+탑승 확률의 학습 신호라 1급 데이터로 남긴다 (V5).
 
 이 한 테이블에서 세 가지를 동시에 학습한다:
 1. 도착 예측 오차 = `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at`
-   → `transit_prediction_calibration`
+   → `transit_prediction_calibration`. **시도(행)마다** 계산한다 — 놓친 차도 한 샘플이다
 2. 차내 이동시간 = `alighted_at − vehicle_actual_departure_at`
-   → `transit_travel_time_calibration`
-3. 도보 시간 = 앞 사건과 뒤 사건의 차이 (아래 `walking_segments`)
+   → `transit_travel_time_calibration`. 그 구간의 **탄 시도(`CAUGHT`)** 행으로 계산한다
+3. 도보 시간 = 앞 사건과 뒤 사건의 차이 (아래 `walking_segments`). 역 도착은 그 구간의 **첫 시도**
+   (`attempt_seq = 1`)의 `arrived_at_stop_at`을 쓴다
 
 ### `gps_traces`
 원시 위치 로그. `commute_trip_id`가 있으면 그 이동 중 수집된 것, 없으면 상시 수집분.
@@ -262,9 +269,11 @@ fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 �
 ### `walking_segments`
 trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 배치가 파생해 넣는 테이블.
 시작/끝 시각은 인접 사건에서 가져온다:
-- 첫 WALK: `trip.left_home_at` → 첫 attempt의 `arrived_at_stop_at`
-- 중간 WALK(환승): 앞 attempt의 `alighted_at` → 뒤 attempt의 `arrived_at_stop_at`
-- 마지막 WALK: 마지막 attempt의 `alighted_at` → `trip.arrived_destination_at`
+- 첫 WALK: `trip.left_home_at` → 첫 TRANSIT 구간의 첫 시도(`attempt_seq = 1`)의 `arrived_at_stop_at`
+- 중간 WALK(환승): 앞 구간의 탄 시도(`CAUGHT`)의 `alighted_at` → 뒤 구간의 첫 시도의 `arrived_at_stop_at`
+- 마지막 WALK: 마지막 구간의 탄 시도의 `alighted_at` → `trip.arrived_destination_at`
+
+정류장에서 다음 차를 기다린 시간은 도보가 아니다. 그래서 역 도착은 항상 첫 시도에서 가져온다.
 
 거리는 `gps_traces`로 계산하거나, GPS가 부실하면 `route_legs.planned_distance_m`을 쓴다.
 
