@@ -40,12 +40,14 @@ let trip = try await api.createTrip(
   22~24시)이 전부 하루 전으로 기록된다. `LocalDate.today()`의 기본값이 KST인 이유다
 - 서버 주소와 토큰은 앱이 주입한다 (xcconfig, Keychain). 이 패키지는 보관하지 않는다
 
-### 재시도 주의: `POST /commute-trips`는 멱등이 아니다
+### 재시도: 다시 보내도 안전하게 만들기
 
-`commute_trips`에 `(경로, 날짜)` 유일 제약이 없어서, 응답을 못 받은 채 다시 보내면 trip이 **중복 생성**된다.
-그래서 `APIClient`는 **자동 재시도를 하지 않는다.** `APIError.transport`는 "서버에 도달했는지 모른다"는
-뜻이므로, 재전송하려는 쪽은 먼저 `trips(routeId:from:to:)`로 같은 `leftHomeAt`의 trip이 이미 있는지
-확인해야 한다. 지하에서 누른 기록을 나중에 보내는 오프라인 큐가 이 일을 맡는다(후속).
+`APIClient`는 **자동 재시도를 하지 않는다.** `APIError.transport`는 "서버에 도달했는지 모른다"는 뜻이고,
+언제 다시 보낼지는 지하에서 누른 기록을 나중에 보내는 오프라인 큐가 정한다(후속).
 
-탑승 시도 upsert(`(trip, routeLegId)` 기준)와 GPS 배치(`(user, recordedAt)` 중복 무시)는 서버가
-중복을 흡수하므로 그대로 다시 보내도 된다.
+다시 보내는 것 자체는 안전하다.
+- `POST /commute-trips`: **`leftHomeAt`을 넣어 만들면** 서버가 `(경로, leftHomeAt)`으로 재전송을 흡수해
+  기존 trip을 돌려준다(#37, 처음이면 201·재전송이면 200). `leftHomeAt` 없이 만든 trip은 다시 보내면
+  중복 생성되므로, "집 나섬" 시각은 생성 요청에 담는다
+- 탑승 시도 upsert(`(trip, routeLegId)` 기준)와 GPS 배치(`(user, recordedAt)` 중복 무시)도 서버가
+  중복을 흡수한다

@@ -1,6 +1,7 @@
 package com.kangsiwoo.whenioff.trip.application
 
 import com.kangsiwoo.whenioff.common.api.BadRequestException
+import com.kangsiwoo.whenioff.common.api.ConflictException
 import com.kangsiwoo.whenioff.common.api.NotFoundException
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import com.kangsiwoo.whenioff.route.domain.CommuteRouteRepository
@@ -33,6 +34,12 @@ data class UpsertResult(
     val created: Boolean,
 )
 
+/** `created == false`면 같은 (경로, `leftHomeAt`)의 재전송이라 기존 trip을 돌려준 것이다 (#37). */
+data class CreateTripResult(
+    val trip: CommuteTripResponse,
+    val created: Boolean,
+)
+
 @Service
 @Transactional
 class CommuteTripService(
@@ -45,12 +52,27 @@ class CommuteTripService(
     fun create(
         userId: Long,
         request: CreateCommuteTripRequest,
-    ): CommuteTripResponse {
+    ): CreateTripResult {
         val route =
             commuteRouteRepository
                 .findByIdOrNull(request.routeId)
                 ?.takeIf { it.user.id == userId }
                 ?: throw NotFoundException("commute route ${request.routeId} not found")
+        // 지하에서 응답을 못 받은 앱이 같은 요청을 다시 보내는 경우다 (#37). 밀리초까지 같은 "집 나섬"의
+        // 서로 다른 출근은 없으므로 기존 trip을 돌려준다. leftHomeAt이 없으면 키가 없어 매번 새로 만든다.
+        request.leftHomeAt?.let { leftHomeAt ->
+            commuteTripRepository.findByCommuteRouteIdAndLeftHomeAt(route.id!!, leftHomeAt)?.let { existing ->
+                if (existing.tripDate != request.tripDate) {
+                    // 재전송이라면 본문이 같아야 한다. 날짜만 다르면 클라이언트가 날짜를 다르게 계산한 것이다
+                    // (KST가 아니라 UTC로 뽑는 등). 조용히 기존 것을 돌려주면 그 버그가 가려진다.
+                    throw ConflictException(
+                        "a trip for this route already left home at $leftHomeAt with tripDate " +
+                            "${existing.tripDate}, not ${request.tripDate}",
+                    )
+                }
+                return CreateTripResult(CommuteTripResponse.from(existing, attemptsOf(existing)), created = false)
+            }
+        }
         val trip =
             commuteTripRepository.save(
                 CommuteTrip(
@@ -60,7 +82,7 @@ class CommuteTripService(
                     leftHomeAt = request.leftHomeAt,
                 ),
             )
-        return CommuteTripResponse.from(trip, emptyList())
+        return CreateTripResult(CommuteTripResponse.from(trip, emptyList()), created = true)
     }
 
     fun update(
@@ -72,7 +94,11 @@ class CommuteTripService(
         request.leftHomeAt?.let { trip.leftHomeAt = it }
         request.arrivedDestinationAt?.let { trip.arrivedDestinationAt = it }
         requireOrdered(trip.leftHomeAt, trip.arrivedDestinationAt, "arrivedDestinationAt must not be before leftHomeAt")
-        return CommuteTripResponse.from(trip, attemptsOf(trip))
+        val attempts = attemptsOf(trip)
+        // 탑승 시도가 먼저 기록된 뒤 trip 시각을 고치는 경우. 탑승 시도 쪽에서만 검사하면 요청 순서를
+        // 바꿔 같은 모순을 만들 수 있다 (#37).
+        attempts.forEach { requireWithinTrip(trip, it) }
+        return CommuteTripResponse.from(trip, attempts)
     }
 
     fun upsertBoardingAttempt(
@@ -197,6 +223,29 @@ class CommuteTripService(
         changes.result?.let { result = it }
         changes.notes?.let { notes = it }
         requireOrdered(vehicleActualDepartureAt, alightedAt, "alightedAt must not be before vehicleActualDepartureAt")
+        requireWithinTrip(commuteTrip, this)
+    }
+
+    /**
+     * 탑승 시도에서 **관측된** 시각은 모두 집을 나선 뒤, 목적지에 닿기 전이어야 한다 (#37).
+     * 어긋나면 도보 구간(집→역, 역→목적지) 시간이 음수가 되어 도보 속도 보정이 오염된다.
+     *
+     * `vehicleScheduledOrPredictedAt`은 관측이 아니라 시스템이 그 순간 알려준 예측의 스냅샷이라 넣지 않는다.
+     */
+    private fun requireWithinTrip(
+        trip: CommuteTrip,
+        attempt: BoardingAttempt,
+    ) {
+        val observed =
+            listOf(
+                "arrivedAtStopAt" to attempt.arrivedAtStopAt,
+                "vehicleActualDepartureAt" to attempt.vehicleActualDepartureAt,
+                "alightedAt" to attempt.alightedAt,
+            )
+        for ((field, at) in observed) {
+            requireOrdered(trip.leftHomeAt, at, "$field must not be before the trip's leftHomeAt")
+            requireOrdered(at, trip.arrivedDestinationAt, "$field must not be after the trip's arrivedDestinationAt")
+        }
     }
 
     private fun requireOrdered(

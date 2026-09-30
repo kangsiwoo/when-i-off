@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
-import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDate
 
@@ -23,11 +22,22 @@ import java.time.LocalDate
 class CommuteTripController(
     private val service: CommuteTripService,
 ) {
+    /** 새로 만들면 201, 같은 (경로, `leftHomeAt`)의 재전송이면 기존 trip을 200으로 돌려준다 (#37). */
     @PostMapping("/commute-trips")
-    @ResponseStatus(HttpStatus.CREATED)
     fun create(
         @Valid @RequestBody request: CreateCommuteTripRequest,
-    ): CommuteTripResponse = service.create(DefaultUser.ID, request)
+    ): ResponseEntity<CommuteTripResponse> {
+        val result =
+            try {
+                service.create(DefaultUser.ID, request)
+            } catch (e: DataIntegrityViolationException) {
+                // 같은 재전송 둘이 동시에 들어오면 둘 다 "없음"을 보고 삽입하고, 진 쪽이 유일 인덱스(V4)에 걸린다.
+                // 한 번 다시 타면 이긴 쪽 trip을 찾아 돌려준다 — 탑승 시도 upsert와 같은 방식이다.
+                service.create(DefaultUser.ID, request)
+            }
+        val status = if (result.created) HttpStatus.CREATED else HttpStatus.OK
+        return ResponseEntity.status(status).body(result.trip)
+    }
 
     @PatchMapping("/commute-trips/{id}")
     fun update(

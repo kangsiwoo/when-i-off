@@ -246,6 +246,10 @@ CREATE TABLE commute_trips (
 
 CREATE INDEX idx_commute_trips_user_date ON commute_trips(user_id, trip_date);
 CREATE INDEX idx_commute_trips_route_date ON commute_trips(commute_route_id, trip_date);
+-- 같은 (경로, 집 나섬 시각)의 재전송을 기존 trip으로 흡수한다 (V4, #37)
+CREATE UNIQUE INDEX uq_commute_trips_route_left_home
+    ON commute_trips (commute_route_id, left_home_at)
+    WHERE left_home_at IS NOT NULL;
 
 CREATE TABLE boarding_attempts (
     id                                  BIGSERIAL PRIMARY KEY,

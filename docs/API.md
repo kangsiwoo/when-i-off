@@ -32,7 +32,7 @@
 | 400 | 검증 실패(`@Valid`), 잘못된 파라미터, 도메인 규칙 위반(예: `alightedAt`가 출발보다 앞) | 검증 실패는 `errors[]`에 필드별 메시지 |
 | 401 | `X-Api-Token` 없음/불일치 | |
 | 404 | 리소스 없음 또는 **다른 사용자 소유** (존재 여부를 숨김) | |
-| 409 | UNIQUE/FK 위반 등 무결성 오류, 실측 기록이 붙은 구간을 지우는 구간 교체 | `detail`에 DB 메시지 첫 줄 또는 문제의 구간 id |
+| 409 | UNIQUE/FK 위반 등 무결성 오류, 실측 기록이 붙은 구간을 지우는 구간 교체, 같은 `leftHomeAt`인데 `tripDate`가 다른 trip 생성 | `detail`에 DB 메시지 첫 줄 또는 문제의 구간 id |
 | 502 | 외부 API(KLID/TAGO)가 오류 코드/비JSON 응답 | KLID는 `klidResultCode`(`K22` 같은 결과 코드, 비JSON이면 `HTTP403` 형식), TAGO는 `tagoResultCode`(`resultCode`가 `"00"`이 아닌 경우) 확장 필드 |
 | 503 | 서비스 키 미설정 (`TAGO_BUS_API` 또는 KLID `REALTIME_TREFFIC_LIGHT_API`) | 관리 동기화 API에서만 |
 | 500 | 그 외 | `detail`은 항상 `"unexpected error"`, 원인은 서버 로그 |
@@ -92,12 +92,31 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
 
 | 상태 | Method | Path | 설명 |
 |---|---|---|---|
-| ✔ | POST | `/commute-trips` | 이동 시작 (`routeId`, `tripDate`, `leftHomeAt?`) → `201` |
-| ✔ | PATCH | `/commute-trips/{id}` | `leftHomeAt`, `arrivedDestinationAt` 갱신 |
+| ✔ | POST | `/commute-trips` | 이동 시작 (`routeId`, `tripDate`, `leftHomeAt?`) → `201`, 재전송이면 `200` (아래) |
+| ✔ | PATCH | `/commute-trips/{id}` | `leftHomeAt`, `arrivedDestinationAt` 갱신. 이미 기록된 attempt가 새 범위 밖이 되면 400 |
 | ✔ | GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts 포함, 히스토리 화면용). `to < from`이면 400 |
 | ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도 **upsert** (아래) |
 | ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`) |
 | ✔ | POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (아래) |
+
+### trip 생성의 재전송 (#37)
+지하에서 "집 나섬" 응답을 못 받은 앱은 같은 요청을 다시 보낸다. 같은 경로에서 **밀리초까지 같은
+`leftHomeAt`**의 서로 다른 출근은 없으므로 `(routeId, leftHomeAt)`를 키로 재전송을 흡수한다
+(부분 유일 인덱스 `uq_commute_trips_route_left_home`).
+
+- 처음이면 생성 → `201 Created`. 같은 키의 trip이 이미 있으면 **그 trip을 `200 OK`로** 돌려준다.
+  본문은 그 사이 기록된 attempts까지 포함한 trip 전체. 동시에 둘 들어와도 진 쪽은 `200`을 받는다
+- 같은 키인데 `tripDate`가 다르면 `409` — 재전송이라면 본문이 같아야 한다. 날짜를 다르게 계산한
+  클라이언트 버그(KST 대신 UTC)를 조용히 가리지 않기 위해서다
+- `leftHomeAt` 없이 만든 trip은 키가 없으므로 매번 새로 만든다. 재전송해도 안전하려면 `leftHomeAt`을
+  생성 요청에 넣는다
+
+### 기록 시각은 trip 안에 있어야 한다 (#37)
+attempt의 `arrivedAtStopAt`, `vehicleActualDepartureAt`, `alightedAt`은 trip의
+`[leftHomeAt, arrivedDestinationAt]` 안이어야 한다(값이 있는 쪽만 검사). 벗어나면 400 —
+집을 나서기 전에 역에 도착했거나 회사에 도착한 뒤 하차한 기록은 GPS 지연·수동 입력 실수다.
+trip `PATCH`로 범위를 줄여 이미 기록된 attempt가 밖으로 밀려나도 400이다.
+`vehicleScheduledOrPredictedAt`은 검사하지 않는다 — 예측 시각은 집을 나서기 전 값일 수 있다.
 
 ### boarding attempt의 upsert 의미
 같은 trip·leg에 attempt는 하나만 존재한다(`UNIQUE (commute_trip_id, route_leg_id)`). 앱은
