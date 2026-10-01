@@ -84,8 +84,8 @@ trip마다 WALK 구간 하나당 `walking_segments` 한 행을 만든다. 시작
 - **멱등성**: `(commute_trip_id, route_leg_id)` UNIQUE에 `ON CONFLICT DO UPDATE`. 값이 그대로인
   행은 건드리지 않아(`unchanged`) 다시 돌려도 결과가 같다. 이상치 속도도 저장한다 — 제외는
   `calibrate`의 몫이다
-- 입력이 고쳐져 이제는 건너뛰는 구간의 **예전 행은 지우지 않는다** (파생 규칙이 바뀌어 정리가
-  필요하면 그때 범위를 지정해 지운다)
+- 입력이 고쳐져 이제는 건너뛰는 구간의 **예전 행은 지운다** (`deleted`). 이번에 읽은 trip
+  범위(`--from`/`--to`) 안에서만이다. 남겨 두면 `calibrate`가 이미 틀렸다고 판명된 실측을 계속 쓴다
 
 ## 계산
 

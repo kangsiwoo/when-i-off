@@ -284,7 +284,8 @@ trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 
 거리는 그 시간 창의 `gps_traces`(`accuracy_m > 100`인 점 제외)를 이은 haversine 누적이고, 쓸 만한
 점이 둘 미만이면 `route_legs.planned_distance_m`, 그것도 없으면 구간 양 끝 좌표의 대권거리를 쓴다.
 `(commute_trip_id, route_leg_id)`당 한 행으로 upsert하며 이상치 속도도 그대로 둔다 (제외는
-`calibrate`). 배치: `wio-analytics derive-walking-segments` (analytics/README.md).
+`calibrate`). 다시 파생했을 때 더는 나오지 않는 구간의 예전 행은 지운다.
+배치: `wio-analytics derive-walking-segments` (analytics/README.md).
 
 ### `user_walking_profile`
 `walking_segments`를 누적 집계한 사용자의 평균 도보 속도(표준편차, 샘플 수 포함).

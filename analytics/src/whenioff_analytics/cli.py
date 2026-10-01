@@ -145,9 +145,10 @@ def derive_walking_segments_command(
             conn.rollback()
             typer.echo("dry-run: nothing written")
             return
-        counts = save_walking_segments(conn, segments)
+        counts = save_walking_segments(conn, [t.commute_trip_id for t in trips], segments)
     typer.echo(
-        f"walking_segments: created {counts.created}, updated {counts.updated}, unchanged {counts.unchanged}"
+        f"walking_segments: created {counts.created}, updated {counts.updated}, "
+        f"unchanged {counts.unchanged}, deleted {counts.deleted}"
     )
 
 

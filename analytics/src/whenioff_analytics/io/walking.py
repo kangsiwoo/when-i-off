@@ -58,12 +58,24 @@ WHERE (walking_segments.started_at, walking_segments.ended_at, walking_segments.
 RETURNING (xmax = 0) AS inserted
 """
 
+# 이번에 처리한 trip에서 더는 파생되지 않는 구간(입력이 고쳐져 건너뛰게 된 것)의 옛 행을 지운다.
+# 남겨 두면 calibrate가 이미 틀렸다고 판명된 실측을 계속 쓴다.
+_DELETE_STALE_SQL = """
+DELETE FROM walking_segments ws
+WHERE ws.commute_trip_id = ANY(%s)
+  AND NOT EXISTS (
+      SELECT 1 FROM unnest(%s::bigint[], %s::bigint[]) AS kept(trip_id, leg_id)
+      WHERE kept.trip_id = ws.commute_trip_id AND kept.leg_id = ws.route_leg_id
+  )
+"""
+
 
 @dataclass(frozen=True)
 class UpsertCounts:
     created: int
     updated: int
     unchanged: int
+    deleted: int
 
 
 def load_trip_events(conn: Connection, date_from: date | None, date_to: date | None) -> list[TripEvents]:
@@ -124,10 +136,21 @@ def load_trip_events(conn: Connection, date_from: date | None, date_to: date | N
     ]
 
 
-def save_walking_segments(conn: Connection, segments: list[WalkingSegment]) -> UpsertCounts:
-    """`(commute_trip_id, route_leg_id)`당 한 행으로 upsert한다. 같은 입력이면 다시 돌려도 결과가 같다."""
+def save_walking_segments(
+    conn: Connection, trip_ids: list[int], segments: list[WalkingSegment]
+) -> UpsertCounts:
+    """`(commute_trip_id, route_leg_id)`당 한 행으로 upsert한다. 같은 입력이면 다시 돌려도 결과가 같다.
+
+    `trip_ids`(이번에 읽은 trip)에 붙은 행 중 `segments`에 없는 것은 지운다 — 다시 돌린 결과가
+    처음부터 돌린 결과와 같아야 하기 때문이다.
+    """
     created = updated = 0
     with conn.cursor() as cur:
+        cur.execute(
+            _DELETE_STALE_SQL,
+            (trip_ids, [s.commute_trip_id for s in segments], [s.route_leg_id for s in segments]),
+        )
+        deleted = max(cur.rowcount, 0)
         for s in segments:
             cur.execute(
                 _UPSERT_SQL,
@@ -148,4 +171,6 @@ def save_walking_segments(conn: Connection, segments: list[WalkingSegment]) -> U
                 created += 1
             else:
                 updated += 1
-    return UpsertCounts(created=created, updated=updated, unchanged=len(segments) - created - updated)
+    return UpsertCounts(
+        created=created, updated=updated, unchanged=len(segments) - created - updated, deleted=deleted
+    )
