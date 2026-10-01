@@ -9,6 +9,7 @@ data class WioProperties(
     val tago: Tago = Tago(),
     val klid: Klid = Klid(),
     val polling: Polling = Polling(),
+    val retention: Retention = Retention(),
 ) {
     /**
      * TAGO(버스). 버스노선정보/버스도착정보는 서로 다른 서비스 URL이지만 포털 계정 서비스 키 하나를
@@ -52,4 +53,29 @@ data class WioProperties(
         val intervalMs: Long = 60_000,
         val windows: List<String> = listOf("06:30-09:30", "17:30-20:30"),
     )
+
+    /**
+     * 오래된 원본 데이터 정리 (#74, DATA_MODEL "보관 정책"). 기간은 일(day) 단위이고 기준 시각은 실행 시점이다.
+     */
+    data class Retention(
+        val enabled: Boolean = false,
+        /** Spring 6필드 cron, KST. analytics 새벽 배치(03:00) 뒤에 돈다. */
+        val cron: String = "0 30 4 * * *",
+        /** true면 지울 행 수만 세고 지우지 않는다. */
+        val dryRun: Boolean = false,
+        /** 도보 구간이 파생된 trip의 점, trip 없는 상시 수집분. */
+        val gpsDays: Long = 90,
+        /** 도보 구간이 하나도 파생되지 않은 trip의 점 — 나중에 파생할 수 있게 더 오래 두는 상한. */
+        val gpsUnderivedDays: Long = 365,
+        val observationDays: Long = 365,
+        val signalStateDays: Long = 30,
+        /** 한 DELETE 문이 지우는 최대 행 수. 문마다 커밋해 잠금을 짧게 유지한다. */
+        val batchSize: Int = 5_000,
+    ) {
+        init {
+            require(gpsDays > 0 && observationDays > 0 && signalStateDays > 0) { "retention days must be positive" }
+            require(gpsUnderivedDays >= gpsDays) { "gps-underived-days must be >= gps-days" }
+            require(batchSize > 0) { "retention batch-size must be positive" }
+        }
+    }
 }

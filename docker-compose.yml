@@ -36,6 +36,10 @@ services:
       TAGO_BUS_API: ${TAGO_BUS_API:-}
       REALTIME_TREFFIC_LIGHT_API: ${REALTIME_TREFFIC_LIGHT_API:-}
       WIO_POLLING_ENABLED: ${WIO_POLLING_ENABLED:-false}
+      # 오래된 GPS·관측 정리 (#74). 기본 꺼짐. 기간·시각은 backend/README.md의 wio.retention.*
+      WIO_RETENTION_ENABLED: ${WIO_RETENTION_ENABLED:-false}
+      WIO_RETENTION_DRY_RUN: ${WIO_RETENTION_DRY_RUN:-false}
+      WIO_RETENTION_CRON: ${WIO_RETENTION_CRON:-0 30 4 * * *}
     ports:
       - "8080:8080"
     healthcheck:

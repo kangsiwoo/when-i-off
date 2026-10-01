@@ -130,6 +130,9 @@ trip마다 WALK 구간 하나당 `walking_segments` 한 행을 만든다. 시작
   `calibrate`의 몫이다
 - 입력이 고쳐져 이제는 건너뛰는 구간의 **예전 행은 지운다** (`deleted`). 이번에 읽은 trip
   범위(`--from`/`--to`) 안에서만이다. 남겨 두면 `calibrate`가 이미 틀렸다고 판명된 실측을 계속 쓴다
+- **GPS 보관 기간보다 오래된 trip은 다시 파생하지 않는다.** backend 보관 정책(#74)이 파생된 trip의 점을
+  90일 뒤 지우므로, 그 trip을 다시 돌리면 거리가 `gps`에서 fallback으로 바뀌어 멀쩡한 행을 덮어쓴다.
+  cron은 `--from`으로 최근 30일만 돈다 (`cron.example`, DATA_MODEL "보관 정책")
 
 ## `calibrate`
 

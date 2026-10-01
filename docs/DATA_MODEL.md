@@ -285,7 +285,7 @@ fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 �
 ### `gps_traces`
 원시 위치 로그. `commute_trip_id`가 있으면 그 이동 중 수집된 것, 없으면 상시 수집분.
 `(user_id, recorded_at)` UNIQUE + `ON CONFLICT DO NOTHING`으로 앱의 오프라인 재전송을 흡수한다.
-대량으로 쌓이므로 일정 기간 후 압축/삭제하는 정책이 필요하다 (개발계획 참고).
+대량으로 쌓이므로 도보 구간을 파생한 뒤 90일이 지나면 지운다 (아래 "보관 정책").
 
 ### `walking_segments`
 trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 배치가 파생해 넣는 테이블.
@@ -354,6 +354,49 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
 
 자세한 규칙과 요약 출력은 analytics/README.md의 `evaluate`. desktop의 버전 비교 화면은 후속이다.
 
+## 보관 정책
+
+폴링·GPS 원본은 매일 쌓이고 파생값(보정 테이블, `walking_segments`, 추천 평가)에 이미 반영되므로 일정 기간 뒤
+지운다 (#74). backend의 일 1회 스케줄(`RetentionService`)이 하고, **기본 꺼짐**이다 — 폴링처럼
+`WIO_RETENTION_ENABLED=true`로 켠다. 기간은 `wio.retention.*` 설정이고 아래가 기본값이다(backend/README.md).
+기준은 실행 시각에서 N일을 뺀 시각이며, 그보다 **이전**인 행만 지운다.
+
+| 테이블 | 지우는 행 | 기본 기간 | 설정 |
+|---|---|---|---|
+| `gps_traces` (trip 있음) | 그 trip에 `walking_segments`가 1행 이상 있고, trip 시각(`left_home_at`, 없으면 `created_at`)이 기간보다 오래된 trip의 점 전부 | 90일 | `gps-days` |
+| `gps_traces` (trip 있음, 파생 안 됨) | `walking_segments`가 하나도 없는 trip의 점 — 같은 trip 시각 기준 | 365일 | `gps-underived-days` |
+| `gps_traces` (상시 수집분) | `commute_trip_id IS NULL`이고 `recorded_at`이 기간보다 오래된 점 | 90일 | `gps-days` |
+| `transit_arrival_observations` | `observed_at`이 기간보다 오래된 행 | 365일 | `observation-days` |
+| `traffic_signal_states` | `observed_at`이 기간보다 오래된 행 | 30일 | `signal-state-days` |
+
+- **GPS는 trip 단위로 지운다.** 점마다의 `recorded_at`이 아니라 trip 시각으로 판단해 한 trip의 트랙이 반만
+  남는 일이 없다. 이슈의 "파생된 뒤 90일"을 trip 시각으로 잰다 — 파생은 다음 날 새벽 배치라 차이가 하루
+  안팎이고, `walking_segments.created_at`은 처음 파생한 시각이라 trip 시각과 거의 같다
+- **파생 안 된 trip의 점은 90일이 지나도 남긴다.** 사건 기록이 고쳐지면(앱 재전송, 수동 보정) 나중에 파생할 수
+  있게 하려는 것이다. 다만 `missing_start`/`missing_end`처럼 **정당하게 파생 결과가 없는** trip은 영원히
+  파생되지 않으므로, 상한 없이 두면 그 점들이 무한히 쌓인다. 그래서 별도 상한(`gps-underived-days`, 1년)을
+  둔다. 1년이면 사건을 고칠 시간으로 충분하고 관측 보관 기간과 같아, 그보다 오래된 trip은 보정 입력으로도
+  더는 의미가 적다. 파생은 구간 하나라도 나오면 "됐다"로 본다 — 일부 WALK만 파생된 trip도 90일 규칙이다
+- `transit_arrival_observations`는 1년. 보정(`transit_prediction_calibration`)과 탑승 시도의 예측 스냅샷
+  (`vehicle_scheduled_or_predicted_at`, 값을 복사해 둔다)에 이미 반영되어, 지워도 학습 결과가 바뀌지 않는다.
+  1년이면 계절·학기 패턴을 한 바퀴 담는다
+- `traffic_signal_states`는 30일. 실시간 신호 원본은 교차로 × 방향 × 종류 × 수집시각마다 한 행이라 폴링 한
+  번에 교차로당 수십 행이 생겨 가장 빨리 커지고, 소비자(ALGORITHM 2.1)는 **최신 상태**만 읽는다. 원본으로
+  주기를 다시 추정하려 해도 4주면 요일유형별 패턴을 여러 번 담는다. (지금은 비어 있다 — 위 커버리지 참고)
+- trip·`walking_segments`·보정·추천·평가 테이블과 `boarding_attempts`는 지우지 않는다. 행이 작고 학습의 원재료다
+- **도보 재파생과의 관계**: 점이 지워진 trip을 다시 파생하면 거리가 GPS 대신 fallback(`planned_distance_m`/
+  대권거리)으로 바뀌어 기존 행을 덮어쓴다. 그래서 analytics cron은 최근 30일 trip만 재파생하고
+  (`analytics/cron.example`), 90일보다 오래된 범위를 수동으로 다시 파생하지 않는다 (analytics/README.md)
+
+삭제는 `DELETE ... WHERE id IN (SELECT id ... LIMIT batch-size)`를 0행이 될 때까지 반복하고 문마다 커밋해
+긴 잠금을 피한다. 지운 행 수는 규칙별 로그와 Micrometer 카운터 `wio.retention.deleted{table,rule}`로 남긴다.
+`dry-run`을 켜면 지울 행 수만 센다. 하루 한 번이면 평소 지우는 양은 하루치라, 삭제 조건 컬럼
+(`observed_at`, `recorded_at`)에 따로 인덱스를 두지 않았다 — 순차 스캔 한 번이 매 폴링마다 인덱스를
+갱신하는 비용보다 싸다.
+
+백업(`pg_dump` 일 1회, 개수 회전)은 [`ops/backup/pg_dump.sh`](../ops/backup/pg_dump.sh)와 backend/README.md "백업".
+보관 정책 정리(04:30) 전인 04:00에 돌려 그날 지워질 행도 마지막 백업에는 남게 한다.
+
 ## 왜 "예측"과 "실측"을 분리해서 저장하는가
 
 이 프로젝트의 핵심은 외부 데이터에서 만든 정적/실시간 예측이 실제와 얼마나 다른지를 스스로
@@ -365,3 +408,4 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
 
 같은 이유로 실시간 원본(`bus_position_observations`, `traffic_signal_states`)도 최신값만
 유지하지 않고 수집시각별로 쌓는다. 파생 로직이 바뀌면 원본으로 다시 계산해 비교해야 한다.
+그 "다시 계산"이 닿는 범위가 위 보관 기간이다.
