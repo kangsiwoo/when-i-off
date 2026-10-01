@@ -8,7 +8,12 @@ export function RouteListPage() {
 
   return (
     <section>
-      <h1>출퇴근 경로</h1>
+      <div className="page-head">
+        <h1>출퇴근 경로</h1>
+        <Link to="/routes/new" className="button-link">
+          + 새 경로
+        </Link>
+      </div>
       {isPending ? (
         <Loading />
       ) : error ? (

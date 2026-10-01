@@ -556,6 +556,42 @@
         ],
         "type": "object"
       },
+      "GpsTraceResponse": {
+        "properties": {
+          "accuracyM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lat": {
+            "format": "double",
+            "type": "number"
+          },
+          "lng": {
+            "format": "double",
+            "type": "number"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "speedMps": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lat",
+          "lng",
+          "recordedAt"
+        ],
+        "type": "object"
+      },
       "IntersectionSyncResponse": {
         "properties": {
           "intersections": {
@@ -2174,6 +2210,40 @@
         },
         "tags": [
           "commute-trip-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-trips/{id}/gps-traces": {
+      "get": {
+        "operationId": "tripTraces",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GpsTraceResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "gps-trace-controller"
         ]
       }
     },

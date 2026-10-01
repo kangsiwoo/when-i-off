@@ -15,6 +15,7 @@ function backend(trips: CommuteTrip[], patch?: (req: Request) => Promise<Respons
     if (url.pathname === "/api/v1/commute-routes") return json([route]);
     if (url.pathname === "/api/v1/commute-routes/7") return json(detail);
     if (url.pathname === "/api/v1/commute-trips") return json(trips);
+    if (url.pathname.endsWith("/gps-traces")) return json([]);
     throw new Error(`unexpected ${req.method} ${req.url}`);
   };
 }

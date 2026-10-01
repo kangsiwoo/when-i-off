@@ -2,10 +2,11 @@
 
 TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)(#56)와
 이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58), 경로별 캘리브레이션 상태(#60), 추천 vs 실제(#62)가
-있다. 지도 위 경로/구간/정류장/신호등 편집은 이 골격 위에 올린다.
+있다. 지도 위 경로 등록·구간/정류장 편집과 trip GPS 트랙(#64)도 있다. 신호등 교차로 편집은 후속 작업이다.
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
 스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch · Recharts(차트),
+Leaflet + react-leaflet 4(지도, React 18용 마지막 메이저),
 검사는 ESLint(flat config) · Prettier · Vitest + Testing Library(jsdom). Node 22, npm(`package-lock.json` 커밋).
 
 ## 실행
@@ -105,6 +106,29 @@ npm run gen:api
   계산된 추천의 목표 시각이고, 1초라도 늦으면 지각이다
 - 계산은 `src/recommendations/history.ts`(화면 없는 순수 로직)
 
+## 지도 경로 편집과 GPS 트랙 (#64)
+
+- 지도는 Leaflet + OpenStreetMap 기본 타일(`tile.openstreetmap.org`), 오른쪽 아래에 OSM 출처 표기. leaflet(JS·CSS)은
+  `src/map/MapView.tsx` 한 파일만 import하고 `LazyMap`이 lazy로 읽으므로 지도가 있는 화면에서만 따로 받는 청크다.
+  마커는 이미지 대신 CSS 핀(`.map-pin-*`, 다크 모드 토큰 포함)이고 타일 자체는 다크 모드에서도 기본 색 그대로다
+- `/routes/new`: 이름·방향을 넣고 지도를 눌러 출발(집)·도착을 찍는다(마커는 끌어서 옮김). `POST /commute-routes` 후 구간 편집으로 간다
+- `/routes/:id/edit` (경로 탭 "구간 편집"): 구간 카드 목록 + 지도. `PUT /commute-routes/{id}/legs`로 **전체 교체**하고
+  저장된 구간은 `id`를 붙여 보낸다(재정렬해도 실측 기록·crossing 유지, API.md "구간 교체의 의미"). 구간이 없는 경로는
+  출발 → 도착 도보 한 구간으로 시작한다
+  - WALK: 끝점을 지도에서 끌거나 "지도에서 찍기". 계획 거리는 직선거리(대권거리)로 채우고, 직접 고친 값은 끝점을 옮겨도 그대로 둔다
+    ("직선거리로"로 되돌림). "뒤에 대중교통 넣기"는 도보 하나를 도보 → 대중교통 → 도보로 쪼갠다
+  - TRANSIT: `/transit-lines/search`로 노선을 고르고, 승차·하차 정류장은 `/transit-stops/nearby`(노선과 같은 수단, 800 m)에서
+    고른다. 기준점은 앞 도보의 끝 / 뒤 도보의 시작, 또는 지도에서 찍은 곳. 비어 있던(또는 예전 정류장에 붙어 있던) 옆 도보 끝점은
+    고른 정류장으로 옮긴다. 노선별 정류장 목록 API는 없어서 근처 검색만 쓴다
+  - 저장 전에 서버 규칙을 먼저 검사한다(`src/legs/legRules.ts`: `RouteLegService`·`RouteLegRequest` 검증을 그대로 옮김 —
+    서버를 바꾸면 같이 바꾼다). 서버만 아는 것(실측 기록이 붙은 구간 삭제 → 409 등)은 `detail`을 그대로 보여 준다
+  - 신호등 교차로(`PUT /route-legs/{id}/signal-crossings`, `/traffic-signals/nearby`, `POST /traffic-signals`) 편집은 아직 없다
+    (후속 이슈). 경로 상세 표의 "신호등" 열에서 개수만 본다
+- 경로 상세에 읽기 전용 지도(도보 선, 대중교통 점선과 승하차 정류장)
+- trip 상세 "GPS 트랙": `GET /commute-trips/{id}/gps-traces`를 시각순 폴리라인으로 그리고 시작/끝, 경로의 승하차 정류장(그 trip의
+  정류장 도착·하차 시각)을 마커로 단다
+- 화면 테스트는 `src/test/setup.ts`에서 `MapView`를 `src/test/MockMap.tsx`(마커·선 목록 + 클릭/끌기 버튼)로 바꾼다
+
 ## 구조
 
 ```
@@ -113,9 +137,12 @@ src/
   auth/       token.ts(localStorage), RequireAuth.tsx
   pages/      LoginPage, Layout, RouteListPage, RouteDetailPage,
               TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
+              RouteCreatePage, RouteEditPage(+ LegCards), TripGpsMap,
               RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
   recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
+  legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증) — 화면 없는 순수 로직
+  map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선)
   trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표

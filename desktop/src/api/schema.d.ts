@@ -228,6 +228,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/commute-trips/{id}/gps-traces": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["tripTraces"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/gps-traces/batch": {
     parameters: {
       query?: never;
@@ -531,6 +547,18 @@ export interface components {
       accepted: number;
       /** Format: int32 */
       ignored: number;
+    };
+    GpsTraceResponse: {
+      /** Format: double */
+      accuracyM?: number | null;
+      /** Format: double */
+      lat: number;
+      /** Format: double */
+      lng: number;
+      /** Format: date-time */
+      recordedAt: string;
+      /** Format: double */
+      speedMps?: number | null;
     };
     IntersectionSyncResponse: {
       intersections: components["schemas"]["SyncCountsResponse"];
@@ -1200,6 +1228,28 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["BoardingAttemptResponse"];
+        };
+      };
+    };
+  };
+  tripTraces: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["GpsTraceResponse"][];
         };
       };
     };

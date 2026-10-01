@@ -645,3 +645,297 @@ tr.low-sample td:not(:last-child) {
 .history-table td {
   white-space: nowrap;
 }
+
+/* --- 지도와 경로 편집 (#64) --- */
+:root {
+  --pin-walk: #2e7d32;
+  --pin-stop: #1565c0;
+  --pin-home: #1c2024;
+  --pin-gps: #eb6834;
+  --pin-ring: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pin-walk: #43a047;
+    --pin-home: #edeef0;
+    --pin-ring: #111214;
+  }
+}
+
+.page-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.button-link,
+button.primary,
+button.secondary {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.button-link,
+button.primary {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+}
+
+.button-link:hover {
+  text-decoration: none;
+}
+
+button.secondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+}
+
+button.secondary[aria-pressed="true"],
+.link-button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-button {
+  font: inherit;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.segmented {
+  display: flex;
+  gap: 0.75rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.segmented legend {
+  font-size: 0.875rem;
+  color: var(--muted);
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+.segmented label {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.point-facts {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+
+.map {
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.map-loading {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.map-canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.map-picking .leaflet-container {
+  cursor: crosshair;
+}
+
+.map .leaflet-container .leaflet-control-attribution,
+.map .leaflet-bar a {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.map .leaflet-container .leaflet-control-attribution a {
+  color: var(--accent);
+}
+
+/* leaflet.css의 .leaflet-marker-icon(display: block)보다 뒤에 오므로 두 클래스로 이긴다. */
+.leaflet-marker-icon.map-pin {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--pin-ring);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.map-pin.map-pin-origin,
+.map-pin.map-pin-destination {
+  background: var(--pin-home);
+  color: var(--pin-ring);
+}
+
+.map-pin.map-pin-walk-start {
+  background: var(--pin-ring);
+  color: var(--pin-walk);
+  border-color: var(--pin-walk);
+}
+
+.map-pin.map-pin-walk-end {
+  background: var(--pin-walk);
+}
+
+.map-pin.map-pin-stop {
+  background: var(--pin-stop);
+  border-radius: 6px;
+}
+
+.map-pin.map-pin-candidate {
+  background: var(--pin-ring);
+  border: 3px solid var(--pin-stop);
+  cursor: pointer;
+}
+
+.map-pin.map-pin-gps-start,
+.map-pin.map-pin-gps-end {
+  background: var(--pin-gps);
+}
+
+.map-pin.map-pin-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.editor-map {
+  position: sticky;
+  top: 1rem;
+}
+
+.editor-map .map {
+  height: min(70vh, 640px);
+}
+
+@media (max-width: 900px) {
+  .editor {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-map {
+    position: static;
+  }
+
+  .editor-map .map {
+    height: 360px;
+  }
+}
+
+.leg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.card.leg-card {
+  padding: 0.75rem 1rem;
+}
+
+.leg-card-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.leg-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.leg-card-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.leg-facts {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.leg-fields {
+  margin-top: 0.5rem;
+}
+
+.leg-fields input {
+  width: 8rem;
+}
+
+.stop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.75rem;
+  margin: 0.4rem 0;
+}
+
+.stop-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 2.2rem;
+}
+
+.candidates {
+  flex-basis: 100%;
+  list-style: none;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  max-height: 10rem;
+  overflow-y: auto;
+}
+
+.line-picker p {
+  margin: 0.25rem 0;
+}
+
+.editor-actions {
+  margin: 0.75rem 0 0.5rem;
+  align-items: center;
+}

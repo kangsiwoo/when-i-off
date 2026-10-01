@@ -9,6 +9,8 @@ import {
   legTypeLabel,
   modeLabel,
 } from "../format";
+import { LazyMap } from "../map/LazyMap";
+import { routeOverlay } from "../map/overlay";
 import { RouteTabs } from "./RouteTabs";
 import { ErrorMessage, Loading } from "./Status";
 
@@ -51,7 +53,15 @@ function RouteDetail({ id }: { id: number }) {
         <dd>{formatKst(route.createdAt)}</dd>
       </dl>
 
-      <h2>구간</h2>
+      <h2>지도</h2>
+      <LazyMap label="경로 지도" {...routeOverlay(route, legs)} fitKey={`route-${route.id}`} />
+
+      <h2>
+        구간{" "}
+        <Link to={`/routes/${route.id}/edit`} className="small">
+          편집
+        </Link>
+      </h2>
       {legs.length === 0 ? (
         <p className="muted">구간이 없습니다.</p>
       ) : (

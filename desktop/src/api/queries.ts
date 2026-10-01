@@ -6,7 +6,14 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useApi } from "./ApiContext";
-import { unwrap, type UpdateBoardingAttemptRequest, type UpdateCommuteTripRequest } from "./client";
+import {
+  unwrap,
+  type CreateCommuteRouteRequest,
+  type RouteLegRequest,
+  type TransitMode,
+  type UpdateBoardingAttemptRequest,
+  type UpdateCommuteTripRequest,
+} from "./client";
 
 export function useCommuteRoutes() {
   const api = useApi();
@@ -117,5 +124,91 @@ export function useUpdateAttempt(id: number) {
     mutationFn: async (body: UpdateBoardingAttemptRequest) =>
       unwrap(await api.PATCH("/api/v1/boarding-attempts/{id}", { params: { path: { id } }, body })),
     onSuccess: () => invalidateTrips(queryClient),
+  });
+}
+
+// --- 경로 편집 (#64) ---
+
+export function useCreateRoute() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CreateCommuteRouteRequest) =>
+      unwrap(await api.POST("/api/v1/commute-routes", { body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["commute-routes"], exact: true }),
+  });
+}
+
+/** 경로의 상세·보정 상태 등 그 경로 아래 캐시를 모두 다시 받게 한다. */
+function invalidateRoute(queryClient: ReturnType<typeof useQueryClient>, id: number) {
+  return queryClient.invalidateQueries({ queryKey: ["commute-routes", id] });
+}
+
+export function useReplaceLegs(id: number) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (legs: RouteLegRequest[]) =>
+      unwrap(
+        await api.PUT("/api/v1/commute-routes/{id}/legs", {
+          params: { path: { id } },
+          body: { legs },
+        }),
+      ),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["commute-routes", id], data);
+      return invalidateRoute(queryClient, id);
+    },
+  });
+}
+
+export function useTransitLineSearch(keyword: string, mode: TransitMode | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["transit-lines", "search", keyword, mode ?? null],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/transit-lines/search", {
+          params: { query: { keyword, ...(mode ? { mode } : {}) } },
+          signal,
+        }),
+      ),
+    enabled: keyword.trim() !== "",
+  });
+}
+
+export interface NearbyQuery {
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
+export function useNearbyStops(at: NearbyQuery | null, mode: TransitMode | undefined) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["transit-stops", "nearby", at, mode ?? null],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/transit-stops/nearby", {
+          params: { query: { ...at!, ...(mode ? { mode } : {}) } },
+          signal,
+        }),
+      ),
+    enabled: at != null,
+  });
+}
+
+/** trip의 GPS 트랙 (#64). 기록 시각 순. */
+export function useTripGpsTraces(tripId: number) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [TRIPS, tripId, "gps-traces"],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/commute-trips/{id}/gps-traces", {
+          params: { path: { id: tripId } },
+          signal,
+        }),
+      ),
   });
 }

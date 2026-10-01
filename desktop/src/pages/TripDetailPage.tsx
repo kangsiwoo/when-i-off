@@ -7,6 +7,7 @@ import { buildTimeline, summarizeTrip } from "../trips/timeline";
 import { AttemptForm } from "./AttemptForm";
 import { ErrorMessage, Loading } from "./Status";
 import { TripResult } from "./TripResult";
+import { TripGpsMap } from "./TripGpsMap";
 import { TripTimeline } from "./TripTimeline";
 import { TripTimesForm } from "./TripTimesForm";
 
@@ -63,6 +64,9 @@ function TripDetail({ trip }: { trip: CommuteTrip }) {
 
       <h2>타임라인 (KST)</h2>
       <TripTimeline events={buildTimeline(trip, legs)} />
+
+      <h2>GPS 트랙</h2>
+      <TripGpsMap trip={trip} legs={legs} />
 
       <h2>trip 시각 보정</h2>
       <TripTimesForm trip={trip} />
