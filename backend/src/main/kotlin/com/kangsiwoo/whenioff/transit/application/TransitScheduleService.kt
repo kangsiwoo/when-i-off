@@ -97,23 +97,36 @@ class TransitScheduleService(
         if (!lineRepository.existsById(lineId)) throw NotFoundException("transit line $lineId not found")
         if (!stopRepository.existsById(stopId)) throw NotFoundException("transit stop $stopId not found")
 
+        return NextDeparturesResponse(
+            transitLineId = lineId,
+            stopId = stopId,
+            directionCode = directionCode,
+            departures = departuresFrom(lineId, stopId, directionCode, at, limit),
+        )
+    }
+
+    /**
+     * 검증 없이 `at` 이후(같은 시각 포함) 출발 `limit`대. 오늘 차편이 모자라면 다음 날로 이어진다.
+     * 탑승 시도의 예측 스냅샷(#54)도 이 판정(day_type·자정 경계)을 그대로 쓴다.
+     */
+    fun departuresFrom(
+        lineId: Long,
+        stopId: Long,
+        directionCode: String,
+        at: Instant,
+        limit: Int,
+    ): List<ScheduledDepartureResponse> {
         val kstNow = at.atZone(DayTypeResolver.KST)
         val today = kstNow.toLocalDate()
         val departures = take(lineId, stopId, directionCode, today, kstNow.toLocalTime(), limit)
         // 막차/첫차 경계: 오늘 남은 차편이 모자라면 다음 날 00:00부터 이어 본다. 다음 날은 day_type이
         // 다를 수 있으므로(금→토, 일→월, 공휴일 전날) 날짜별로 다시 판정한다.
         val remaining = limit - departures.size
-        return NextDeparturesResponse(
-            transitLineId = lineId,
-            stopId = stopId,
-            directionCode = directionCode,
-            departures =
-                if (remaining > 0) {
-                    departures + take(lineId, stopId, directionCode, today.plusDays(1), LocalTime.MIN, remaining)
-                } else {
-                    departures
-                },
-        )
+        return if (remaining > 0) {
+            departures + take(lineId, stopId, directionCode, today.plusDays(1), LocalTime.MIN, remaining)
+        } else {
+            departures
+        }
     }
 
     private fun take(
