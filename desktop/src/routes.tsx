@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RouteCalibrationPage } from "./pages/RouteCalibrationPage";
 import { RouteDetailPage } from "./pages/RouteDetailPage";
 import { RouteListPage } from "./pages/RouteListPage";
+import { RouteRecommendationsPage } from "./pages/RouteRecommendationsPage";
 import { TripDetailPage } from "./pages/TripDetailPage";
 import { TripListPage } from "./pages/TripListPage";
 
@@ -19,6 +20,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <RouteListPage /> },
           { path: "routes/:id", element: <RouteDetailPage /> },
           { path: "routes/:id/calibration", element: <RouteCalibrationPage /> },
+          { path: "routes/:id/recommendations", element: <RouteRecommendationsPage /> },
           { path: "trips", element: <TripListPage /> },
           { path: "trips/:id", element: <TripDetailPage /> },
         ],

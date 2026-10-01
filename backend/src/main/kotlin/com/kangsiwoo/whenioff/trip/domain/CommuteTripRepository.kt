@@ -3,6 +3,7 @@ package com.kangsiwoo.whenioff.trip.domain
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor
 import java.time.Instant
+import java.time.LocalDate
 
 interface CommuteTripRepository :
     JpaRepository<CommuteTrip, Long>,
@@ -17,4 +18,10 @@ interface CommuteTripRepository :
         commuteRouteId: Long,
         leftHomeAt: Instant,
     ): CommuteTrip?
+
+    fun findByCommuteRouteIdAndTripDateBetweenOrderByTripDateAscIdAsc(
+        commuteRouteId: Long,
+        from: LocalDate,
+        to: LocalDate,
+    ): List<CommuteTrip>
 }

@@ -46,3 +46,23 @@ export function formatKstTime(iso: string): string {
 export function kstDate(iso: string): string {
   return isoToKstInput(iso).slice(0, 10);
 }
+
+/** 지금(또는 `now`)의 KST 날짜 `yyyy-MM-dd`. */
+export function kstToday(now: Date = new Date()): string {
+  return new Date(now.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** `yyyy-MM-dd`에 날짜를 더한다(음수면 뺀다). 달력 날짜 계산이라 시간대와 무관하다. */
+export function addDays(date: string, days: number): string {
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  return new Date(ms + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * `iso` 시각이 KST 날짜 `date`의 자정에서 몇 분 뒤인가. 그날을 벗어나면 0보다 작거나 1440 이상이다
+ * (자정을 넘긴 퇴근도 같은 축에 이어 그리기 위해 자르지 않는다).
+ */
+export function kstMinutesOfDay(iso: string, date: string): number {
+  const midnightUtc = Date.parse(`${date}T00:00:00Z`) - KST_OFFSET_MS;
+  return (Date.parse(iso) - midnightUtc) / 60_000;
+}

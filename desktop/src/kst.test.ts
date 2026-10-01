@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatKstTime, isoToKstInput, kstDate, kstInputToIso } from "./kst";
+import {
+  addDays,
+  formatKstTime,
+  isoToKstInput,
+  kstDate,
+  kstInputToIso,
+  kstMinutesOfDay,
+  kstToday,
+} from "./kst";
 
 // 브라우저 시간대가 KST가 아니어도 입력·표시가 KST여야 한다. Node는 실행 중 TZ 변경을 반영한다.
 describe.each(["UTC", "America/Los_Angeles", "Asia/Seoul"])("KST conversion with TZ=%s", (tz) => {
@@ -40,5 +48,22 @@ describe.each(["UTC", "America/Los_Angeles", "Asia/Seoul"])("KST conversion with
     expect(kstInputToIso("2026-09-11 07:58")).toBeNull();
     expect(kstInputToIso("2026-02-30T07:58:00")).toBeNull();
     expect(kstInputToIso("2026-09-11T24:00:00")).toBeNull();
+  });
+
+  it("takes today and day offsets in KST", () => {
+    // UTC로는 아직 9/30이지만 KST로는 10/1 아침이다.
+    expect(kstToday(new Date("2026-09-30T22:10:00Z"))).toBe("2026-10-01");
+    expect(kstToday(new Date("2026-10-01T14:59:59Z"))).toBe("2026-10-01");
+    expect(kstToday(new Date("2026-10-01T15:00:00Z"))).toBe("2026-10-02");
+    expect(addDays("2026-10-01", -29)).toBe("2026-09-02");
+    expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
+    expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+  });
+
+  it("measures minutes from KST midnight of the given date", () => {
+    expect(kstMinutesOfDay("2026-09-20T22:24:00Z", "2026-09-21")).toBe(7 * 60 + 24);
+    expect(kstMinutesOfDay("2026-09-21T14:30:00Z", "2026-09-21")).toBe(23 * 60 + 30);
+    // 자정을 넘기면 1440을 넘는다.
+    expect(kstMinutesOfDay("2026-09-21T15:10:00Z", "2026-09-21")).toBe(24 * 60 + 10);
   });
 });

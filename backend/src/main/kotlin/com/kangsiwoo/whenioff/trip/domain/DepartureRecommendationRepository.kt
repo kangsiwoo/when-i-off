@@ -3,6 +3,7 @@ package com.kangsiwoo.whenioff.trip.domain
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * 조회는 언제나 **최신 한 건**만 본다. `departure_recommendations`는 과거 추천을 지우지 않고
@@ -19,4 +20,14 @@ interface DepartureRecommendationRepository : JpaRepository<DepartureRecommendat
     ): DepartureRecommendation?
 
     fun findFirstByCommuteRouteOrderByComputedAtDescIdDesc(commuteRoute: CommuteRoute): DepartureRecommendation?
+
+    /**
+     * 기간(KST `target_date`)의 추천 전부, 날짜 → 버전 → 최신순. 화면용 이력(#62)은 여기서 (날짜, 버전)마다
+     * 첫 행만 쓴다. 기간은 화면이 날짜 범위로 좁히고 하루 행 수도 작아 전부 읽어 고른다.
+     */
+    fun findByCommuteRouteAndTargetDateBetweenOrderByTargetDateAscModelVersionAscComputedAtDescIdDesc(
+        commuteRoute: CommuteRoute,
+        from: LocalDate,
+        to: LocalDate,
+    ): List<DepartureRecommendation>
 }

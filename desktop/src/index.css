@@ -448,3 +448,200 @@ tr.low-sample td:not(:last-child) {
 .used-value {
   margin: 0.5rem 0 0;
 }
+
+/*
+ * 차트(#62). 값은 dataviz 기준 팔레트(categorical 1~3번, chrome/ink)에서 가져왔고 앱 표면(--surface)에 대해
+ * validate_palette.js로 라이트·다크 모두 검사했다(선이 교차하는 차트라 --pairs all). 3번(aqua)은 라이트에서
+ * 대비가 3:1 미만이라 직접 라벨과 표를 같이 둔다. 글자는 계열 색을 쓰지 않는다.
+ */
+.viz {
+  --viz-surface: var(--surface);
+  --viz-ink: #0b0b0b;
+  --viz-ink-2: #52514e;
+  --viz-muted: #898781;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-other: #898781;
+  --status-critical: #d03b3b;
+  --status-good: #0ca30c;
+}
+
+@media (prefers-color-scheme: dark) {
+  .viz {
+    --viz-ink: #ffffff;
+    --viz-ink-2: #c3c2b7;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #383835;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+  }
+}
+
+.viz-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1rem 0.5rem;
+  margin: 0 0 1rem;
+  transition: opacity 0.15s;
+}
+
+.viz-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.viz-sub {
+  margin: 0.15rem 0 0.5rem;
+  color: var(--viz-ink-2);
+  font-size: 0.85rem;
+}
+
+.viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0 0 0.25rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--viz-ink-2);
+}
+
+.viz-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.viz-key-line {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.viz-key-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.viz-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--viz-ink);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  min-width: 10rem;
+}
+
+.viz-tooltip-date {
+  color: var(--viz-ink-2);
+  margin-bottom: 0.3rem;
+}
+
+.viz-tooltip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.viz-tooltip li {
+  display: grid;
+  grid-template-columns: 12px auto 1fr;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.viz-tooltip strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-tooltip .viz-tooltip-label {
+  color: var(--viz-ink-2);
+}
+
+.viz-empty-chart {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.filters .presets {
+  display: flex;
+  gap: 0.25rem;
+  align-items: flex-end;
+}
+
+.presets button {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.presets button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.history-table td {
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-table .stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.history-table .ver {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-right: 0.3rem;
+}
+
+.history-table tr.same-day td.day-cell {
+  border-top: none;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.status-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* 좁은 창에서는 표만 가로로 스크롤한다 (칸 안에서 시각·날짜가 꺾이지 않게). */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.history-table {
+  min-width: 760px;
+}
+
+.history-table td {
+  white-space: nowrap;
+}
