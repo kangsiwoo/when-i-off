@@ -4,6 +4,7 @@ import com.kangsiwoo.whenioff.trip.domain.BoardingAttempt
 import com.kangsiwoo.whenioff.trip.domain.BoardingResult
 import com.kangsiwoo.whenioff.trip.domain.CommuteTrip
 import com.kangsiwoo.whenioff.trip.domain.GpsPoint
+import com.kangsiwoo.whenioff.trip.domain.GpsTrace
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
@@ -153,3 +154,22 @@ data class GpsTraceBatchResponse(
     val accepted: Int,
     val ignored: Int,
 )
+
+data class GpsTraceResponse(
+    val recordedAt: Instant,
+    val lat: Double,
+    val lng: Double,
+    val accuracyM: Double?,
+    val speedMps: Double?,
+) {
+    companion object {
+        fun from(trace: GpsTrace) =
+            GpsTraceResponse(
+                recordedAt = trace.recordedAt,
+                lat = trace.lat,
+                lng = trace.lng,
+                accuracyM = trace.accuracyM,
+                speedMps = trace.speedMps,
+            )
+    }
+}

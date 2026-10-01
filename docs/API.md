@@ -99,6 +99,7 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
 | ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도(차 한 대) **upsert** (아래) |
 | ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`). id로 한 건만. 예측 스냅샷 채움은 upsert와 같다 |
 | ✔ | POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (아래) |
+| ✔ | GET | `/commute-trips/{id}/gps-traces` | 그 trip에 묶인 GPS 포인트, 기록 시각 순 (데스크탑 trip 상세의 트랙 오버레이, 아래) |
 
 ### trip 생성의 재전송 (#37)
 지하에서 "집 나섬" 응답을 못 받은 앱은 같은 요청을 다시 보낸다. 같은 경로에서 **밀리초까지 같은
@@ -185,6 +186,14 @@ upsert(`POST …/boarding-attempts`)와 `PATCH /boarding-attempts/{id}` 모두, 
   `{ "accepted": n, "ignored": m }`으로 실제 삽입 수와 중복 수를 돌려주므로 앱은 재전송을
   마음 놓고 할 수 있다 (idempotent)
 - `tripId`가 있으면 내 trip이어야 한다 (아니면 404). 없으면 상시 수집분으로 저장
+
+### trip의 GPS 트랙 (#64)
+`GET /commute-trips/{id}/gps-traces` → `[{ "recordedAt", "lat", "lng", "accuracyM"?, "speedMps"? }, …]`
+
+- 내 trip이 아니거나 없으면 `404` (다른 조회와 같다). 포인트가 없으면 빈 배열(`200`)
+- `commute_trip_id`가 그 trip인 행만 준다. 상시 수집분(`tripId` 없이 올린 포인트)은 시각이 겹쳐도 넣지 않는다
+- `recorded_at` 오름차순(동점은 id). `accuracyM`/`speedMps`는 앱이 안 보냈으면 키째로 빠진다
+- 페이지네이션은 없다. 한 번 출퇴근(1~2시간, 10~30초 간격)이면 수백 포인트라 한 번에 준다
 
 ## 추천 조회
 

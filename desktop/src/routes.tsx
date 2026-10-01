@@ -3,7 +3,9 @@ import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./pages/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { RouteCalibrationPage } from "./pages/RouteCalibrationPage";
+import { RouteCreatePage } from "./pages/RouteCreatePage";
 import { RouteDetailPage } from "./pages/RouteDetailPage";
+import { RouteEditPage } from "./pages/RouteEditPage";
 import { RouteListPage } from "./pages/RouteListPage";
 import { RouteRecommendationsPage } from "./pages/RouteRecommendationsPage";
 import { TripDetailPage } from "./pages/TripDetailPage";
@@ -18,7 +20,9 @@ export const routes: RouteObject[] = [
         element: <Layout />,
         children: [
           { index: true, element: <RouteListPage /> },
+          { path: "routes/new", element: <RouteCreatePage /> },
           { path: "routes/:id", element: <RouteDetailPage /> },
+          { path: "routes/:id/edit", element: <RouteEditPage /> },
           { path: "routes/:id/calibration", element: <RouteCalibrationPage /> },
           { path: "routes/:id/recommendations", element: <RouteRecommendationsPage /> },
           { path: "trips", element: <TripListPage /> },

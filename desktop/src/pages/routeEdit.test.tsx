@@ -1,0 +1,305 @@
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { CommuteRouteDetail, RouteLeg, TransitLine, TransitStop } from "../api/client";
+import { setToken } from "../auth/token";
+import { detail, route, trip } from "../test/fixtures";
+import { json, renderApp } from "../test/render";
+
+beforeEach(() => setToken("devtoken"));
+
+const line: TransitLine = detail.legs.find((l) => l.legType === "TRANSIT")!.transitLine!;
+const stop = (id: number, name: string, lat: number, lng: number): TransitStop => ({
+  id,
+  mode: "GTX",
+  name,
+  lat,
+  lng,
+  createdAt: "2026-09-10T00:00:00Z",
+  distanceM: 120,
+});
+const dongtan = stop(4, "동탄", 37.2, 127.09);
+const suseo = stop(5, "수서", 37.48, 127.1);
+
+type Handler = (req: Request, url: URL) => Response | undefined | Promise<Response | undefined>;
+
+/** 기본 GET 응답 + 테스트별 handler. handler가 undefined를 주면 기본 응답으로. */
+function backend(routeDetail: CommuteRouteDetail, handler: Handler = () => undefined) {
+  return async (req: Request) => {
+    const url = new URL(req.url);
+    const custom = await handler(req, url);
+    if (custom) return custom;
+    if (req.method === "GET") {
+      if (url.pathname === "/api/v1/commute-routes") return json([routeDetail.route]);
+      if (url.pathname === `/api/v1/commute-routes/${routeDetail.route.id}`)
+        return json(routeDetail);
+      if (url.pathname === "/api/v1/transit-lines/search") return json([line]);
+      if (url.pathname === "/api/v1/transit-stops/nearby") return json([dongtan, suseo]);
+    }
+    throw new Error(`unexpected ${req.method} ${req.url}`);
+  };
+}
+
+const calls = (fetch: { mock: { calls: [Request][] } }, method: string, path: string) =>
+  fetch.mock.calls.filter(([r]) => r.method === method && new URL(r.url).pathname === path);
+
+const walkFixture = detail.legs.find((l) => l.legType === "WALK")!;
+const transitFixture = detail.legs.find((l) => l.legType === "TRANSIT")!;
+const lastWalk: RouteLeg = {
+  ...walkFixture,
+  id: 13,
+  seqOrder: 3,
+  startLat: 37.48,
+  startLng: 127.1,
+  endLat: 37.49,
+  endLng: 127.1,
+  plannedDistanceM: 1100,
+  signalCrossings: [],
+};
+const fullDetail: CommuteRouteDetail = { route, legs: [walkFixture, transitFixture, lastWalk] };
+
+describe("route create", () => {
+  it("places origin/destination by map clicks, POSTs and opens the leg editor", async () => {
+    let posted: unknown;
+    const created = {
+      ...route,
+      id: 21,
+      name: "새 출근",
+      originLat: 37.25,
+      originLng: 127.08,
+      destinationLat: 37.251,
+      destinationLng: 127.08,
+    };
+    const { router } = renderApp(
+      "/routes/new",
+      backend({ route: created, legs: [] }, async (req, url) => {
+        if (req.method === "POST" && url.pathname === "/api/v1/commute-routes") {
+          posted = await req.json();
+          return json(created, 201);
+        }
+      }),
+    );
+
+    fireEvent.change(await screen.findByLabelText("이름"), { target: { value: " 새 출근 " } });
+    fireEvent.click(screen.getByRole("button", { name: "만들고 구간 편집" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("지도에서 출발과 도착을 찍으세요.");
+
+    fireEvent.click(await screen.findByRole("button", { name: "지도 클릭" })); // 출발
+    // 다음 클릭은 도착으로 넘어간다. 도착은 끌어서 옮긴다.
+    fireEvent.click(screen.getByRole("button", { name: "지도 클릭" }));
+    fireEvent.click(screen.getByRole("button", { name: "끌기: 도착" }));
+    fireEvent.change(screen.getByLabelText("방향"), { target: { value: "TO_HOME" } });
+    fireEvent.click(screen.getByRole("button", { name: "만들고 구간 편집" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/routes/21/edit"));
+    expect(posted).toEqual({
+      name: "새 출근",
+      direction: "TO_HOME",
+      originLat: 37.25,
+      originLng: 127.08,
+      destinationLat: 37.251,
+      destinationLng: 127.08,
+      isActive: true,
+    });
+    // 구간이 없는 경로는 출발 → 도착 도보 한 구간으로 시작한다 (직선거리 미리 채움).
+    expect(await screen.findByLabelText("계획 거리 (m)")).toHaveValue(111);
+  });
+});
+
+describe("leg editor", () => {
+  it("checks the server rules before sending and PUTs ids in screen order", async () => {
+    let body: unknown;
+    const { fetch } = renderApp(
+      "/routes/7/edit",
+      backend(detail, async (req) => {
+        if (req.method === "PUT") {
+          body = await req.json();
+          return json(fullDetail);
+        }
+      }),
+    );
+
+    // 픽스처는 WALK → TRANSIT으로 끝난다: 서버 규칙(끝은 WALK)에 걸리므로 보내지 않는다.
+    fireEvent.click(await screen.findByRole("button", { name: "구간 저장" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "경로는 도보 구간으로 시작하고 도보 구간으로 끝나야 합니다.",
+    );
+    expect(calls(fetch, "PUT", "/api/v1/commute-routes/7/legs")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 도보" }));
+    expect(screen.getByText("저장 안 된 변경")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "구간 저장" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("저장했습니다.");
+    expect(body).toEqual({
+      legs: [
+        {
+          id: 11,
+          seqOrder: 1,
+          legType: "WALK",
+          startLat: 37.2,
+          startLng: 127.07,
+          endLat: 37.2,
+          endLng: 127.09,
+          plannedDistanceM: 650,
+        },
+        {
+          id: 12,
+          seqOrder: 2,
+          legType: "TRANSIT",
+          transitLineId: 3,
+          boardStopId: 4,
+          alightStopId: 5,
+          plannedTravelSec: 1200,
+        },
+        {
+          seqOrder: 3,
+          legType: "WALK",
+          // 앞 대중교통의 하차 정류장(수서) → 경로 도착
+          startLat: 37.48,
+          startLng: 127.1,
+          endLat: 37.49,
+          endLng: 127.1,
+          plannedDistanceM: 1112,
+        },
+      ],
+    });
+    expect(screen.queryByText("저장 안 된 변경")).not.toBeInTheDocument();
+  });
+
+  it("shows the 409 detail verbatim when a measured leg would be removed", async () => {
+    const detail409 =
+      "legs [12] have recorded trips and cannot be removed or retyped; send them back with their id";
+    renderApp(
+      "/routes/7/edit",
+      backend(fullDetail, (req) => {
+        if (req.method === "PUT")
+          return json({ status: 409, title: "Conflict", detail: detail409 }, 409);
+      }),
+    );
+    const cards = await screen.findAllByRole("listitem", { name: /^구간 \d$/ });
+    expect(cards).toHaveLength(3);
+    // 대중교통과 뒤 도보를 지운다 → 남은 도보 하나는 규칙상 맞지만 서버가 409.
+    fireEvent.click(within(cards[2]!).getByRole("button", { name: "삭제" }));
+    fireEvent.click(within(cards[1]!).getByRole("button", { name: "삭제" }));
+    fireEvent.click(screen.getByRole("button", { name: "구간 저장" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`저장하지 못했습니다: ${detail409}`);
+  });
+
+  it("drags a WALK endpoint and re-fills the straight-line distance unless edited", async () => {
+    renderApp("/routes/7/edit", backend({ route, legs: [] }));
+    const distance = await screen.findByLabelText("계획 거리 (m)");
+    const before = Number((distance as HTMLInputElement).value);
+    fireEvent.click(await screen.findByRole("button", { name: /끌기: 구간 1 도보 끝/ }));
+    await waitFor(() => expect(Number((distance as HTMLInputElement).value)).not.toBe(before));
+
+    fireEvent.change(distance, { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: /끌기: 구간 1 도보 끝/ }));
+    expect(distance).toHaveValue(5000);
+    fireEvent.click(screen.getByRole("button", { name: "직선거리로" }));
+    expect(distance).not.toHaveValue(5000);
+  });
+
+  it("builds a TRANSIT leg: line search, nearby stops, snapping the walk endpoints", async () => {
+    let body: { legs: unknown[] } | undefined;
+    const { fetch } = renderApp(
+      "/routes/7/edit",
+      backend({ route, legs: [] }, async (req) => {
+        if (req.method === "PUT") {
+          body = (await req.json()) as { legs: unknown[] };
+          return json(fullDetail);
+        }
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "뒤에 대중교통 넣기" }));
+    const transit = screen.getByRole("listitem", { name: "구간 2" });
+    const t = within(transit);
+    fireEvent.change(t.getByLabelText("노선 검색"), { target: { value: "GTX" } });
+    fireEvent.click(t.getByRole("button", { name: "검색" }));
+    fireEvent.click(await t.findByRole("button", { name: "GTX-A" }));
+    expect(t.getByText("GTX-A (GTX)")).toBeInTheDocument();
+
+    fireEvent.click(t.getByRole("button", { name: "앞 도보 끝 근처" }));
+    fireEvent.click(await t.findByRole("button", { name: "동탄" }));
+    // 하차는 지도에서 위치를 찍어 근처를 찾는다.
+    fireEvent.click(t.getByRole("button", { name: "하차 정류장 위치를 지도에서 찍기" }));
+    fireEvent.click(screen.getByRole("button", { name: "지도 클릭" }));
+    fireEvent.click(await t.findByRole("button", { name: "수서" }));
+    fireEvent.change(t.getByLabelText("계획 소요 (분)"), { target: { value: "21" } });
+
+    const nearby = calls(fetch, "GET", "/api/v1/transit-stops/nearby").map(
+      ([r]) => new URL(r.url).searchParams,
+    );
+    expect(nearby[0]!.get("mode")).toBe("GTX");
+    expect(nearby[1]!.get("lat")).toBe("37.25");
+
+    fireEvent.click(screen.getByRole("button", { name: "구간 저장" }));
+    await screen.findByRole("status");
+    expect(body!.legs).toEqual([
+      {
+        seqOrder: 1,
+        legType: "WALK",
+        startLat: 37.2,
+        startLng: 127.07,
+        endLat: 37.2, // 동탄으로 붙음
+        endLng: 127.09,
+        plannedDistanceM: 1771,
+      },
+      {
+        seqOrder: 2,
+        legType: "TRANSIT",
+        transitLineId: 3,
+        boardStopId: 4,
+        alightStopId: 5,
+        plannedTravelSec: 1260,
+      },
+      {
+        seqOrder: 3,
+        legType: "WALK",
+        startLat: 37.48, // 수서로 붙음
+        startLng: 127.1,
+        endLat: 37.49,
+        endLng: 127.1,
+        plannedDistanceM: 1112,
+      },
+    ]);
+  });
+
+  it("reorders legs and reports the alternation rule", async () => {
+    renderApp("/routes/7/edit", backend(fullDetail));
+    const cards = await screen.findAllByRole("listitem", { name: /^구간 \d$/ });
+    fireEvent.click(within(cards[1]!).getByRole("button", { name: "아래로" }));
+    fireEvent.click(screen.getByRole("button", { name: "구간 저장" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("경로는 도보 구간으로 시작하고 도보 구간으로 끝나야 합니다.");
+    expect(alert).toHaveTextContent(
+      "도보와 대중교통이 번갈아 와야 합니다 (구간 1·2이 둘 다 도보).",
+    );
+  });
+});
+
+describe("trip GPS overlay", () => {
+  it("draws the track in recordedAt order with start/end and the route's stops", async () => {
+    const { fetch } = renderApp(`/trips/${trip.id}?routeId=7&date=${trip.tripDate}`, (req) => {
+      const url = new URL(req.url);
+      if (url.pathname === "/api/v1/commute-trips") return json([trip]);
+      if (url.pathname === "/api/v1/commute-routes/7") return json(detail);
+      if (url.pathname === `/api/v1/commute-trips/${trip.id}/gps-traces`)
+        return json([
+          { recordedAt: "2026-09-10T22:30:00Z", lat: 37.2, lng: 127.07 },
+          { recordedAt: "2026-09-10T22:31:00Z", lat: 37.201, lng: 127.072, accuracyM: 8 },
+          { recordedAt: "2026-09-10T22:32:00Z", lat: 37.202, lng: 127.075 },
+        ]);
+      throw new Error(`unexpected ${req.url}`);
+    });
+
+    expect(await screen.findByText(/포인트 3개 · 07:30:00 → 07:32:00/)).toBeInTheDocument();
+    const lines = await screen.findByRole("list", { name: "GPS 트랙 지도 선" });
+    expect(within(lines).getByText("gps 3점")).toBeInTheDocument();
+    const markers = screen.getByRole("list", { name: "GPS 트랙 지도 마커" });
+    expect(within(markers).getByText("GPS 시작 07:30:00")).toBeInTheDocument();
+    expect(within(markers).getByText("GPS 끝 07:32:00")).toBeInTheDocument();
+    expect(within(markers).getByText(/^승차 동탄/)).toBeInTheDocument();
+    expect(calls(fetch, "GET", `/api/v1/commute-trips/${trip.id}/gps-traces`)).toHaveLength(1);
+  });
+});
