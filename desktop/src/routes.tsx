@@ -4,6 +4,8 @@ import { Layout } from "./pages/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { RouteDetailPage } from "./pages/RouteDetailPage";
 import { RouteListPage } from "./pages/RouteListPage";
+import { TripDetailPage } from "./pages/TripDetailPage";
+import { TripListPage } from "./pages/TripListPage";
 
 export const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage /> },
@@ -15,6 +17,8 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <RouteListPage /> },
           { path: "routes/:id", element: <RouteDetailPage /> },
+          { path: "trips", element: <TripListPage /> },
+          { path: "trips/:id", element: <TripDetailPage /> },
         ],
       },
     ],

@@ -10,6 +10,11 @@ export type ApiClient = ReturnType<typeof createClient<paths>>;
 export type CommuteRoute = components["schemas"]["CommuteRouteResponse"];
 export type CommuteRouteDetail = components["schemas"]["CommuteRouteDetailResponse"];
 export type RouteLeg = components["schemas"]["RouteLegResponse"];
+export type CommuteTrip = components["schemas"]["CommuteTripResponse"];
+export type BoardingAttempt = components["schemas"]["BoardingAttemptResponse"];
+export type AttemptResult = BoardingAttempt["result"];
+export type UpdateCommuteTripRequest = components["schemas"]["UpdateCommuteTripRequest"];
+export type UpdateBoardingAttemptRequest = components["schemas"]["UpdateBoardingAttemptRequest"];
 
 export interface ApiClientOptions {
   /** 기본은 같은 출처. 개발/미리보기 서버가 /api를 backend로 넘긴다 (vite.config.ts). */
