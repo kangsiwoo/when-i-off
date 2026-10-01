@@ -1,8 +1,7 @@
 # analytics
 
-Python 3.12 배치 모듈. 지금 있는 것은 **`recommend`(최적 출발 시각 계산) 콜드스타트 버전**뿐이다
-(#22). `derive-walking-segments`/`calibrate`는 원재료(trip/attempt/GPS 실측)가 아직 0건이라
-#6에 남아 있다.
+Python 3.12 배치 모듈. 지금 있는 것은 **`recommend`(최적 출발 시각 계산) 콜드스타트 버전**(#22)과
+그 캘리브레이션의 첫 단계인 **`derive-walking-segments`**(#44)다. `calibrate`는 #6에 남아 있다.
 
 ```
 whenioff_analytics/
@@ -53,6 +52,40 @@ departure_recommendations id=1 (created)
 **멱등성**: `(commute_route_id, target_date, target_arrival_at, model_version)`당 한 행을 유지한다.
 값이 그대로면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). V1 스키마에 이 조합의
 UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다.
+
+## `derive-walking-segments`
+
+```bash
+uv run wio-analytics derive-walking-segments --from 2026-09-01 --to 2026-09-30
+```
+
+- `--from` / `--to`: `trip_date` 범위 (YYYY-MM-DD, 양 끝 포함). 생략하면 그쪽은 열려 있다(기본 전체)
+- `--dry-run`: 계산만 하고 쓰지 않는다
+
+```
+trips 2 (trip_date 2030-01-01..2030-01-31)
+  derived  2 (gps 1, great-circle 1)
+  skipped  2 (missing_end 2)
+walking_segments: created 0, updated 0, unchanged 2
+```
+
+trip마다 WALK 구간 하나당 `walking_segments` 한 행을 만든다. 시작/끝은 DATA_MODEL의 규칙 그대로
+**인접 사건**에서 가져온다 — 앞 구간의 탄 시도(`CAUGHT`) 하차(없으면 `left_home_at`) → 뒤 구간의
+첫 시도(`attempt_seq = 1`) 정류장 도착(없으면 `arrived_destination_at`). 도보만 있는 경로는 집 →
+목적지 전체가 WALK 하나다.
+
+- **건너뛰기**: 양 끝 중 하나가 없으면(`missing_start` / `missing_end`), 끝 ≤ 시작이면
+  (`non_positive_duration`, 초 단위로 반올림해 1초 미만 포함). 하차는 `CAUGHT` 시도에서만 읽으므로
+  `UNKNOWN`뿐인 구간 뒤의 WALK도 `missing_start`다
+- **거리**: 그 시간 창의 그 trip `gps_traces`를 시각순으로 이은 haversine 누적. `accuracy_m > 100`
+  (iOS 업로드 필터와 같은 기준, #4)인 점은 빼고, `accuracy_m`이 비어 있는 점은 남긴다. 쓸 만한
+  점이 둘 미만이면 recommend와 같은 fallback(`planned_distance_m`, 없으면 구간 양 끝 좌표의
+  대권거리)이다. 요약의 `gps` / `planned` / `great-circle`이 어느 쪽을 썼는지다
+- **멱등성**: `(commute_trip_id, route_leg_id)` UNIQUE에 `ON CONFLICT DO UPDATE`. 값이 그대로인
+  행은 건드리지 않아(`unchanged`) 다시 돌려도 결과가 같다. 이상치 속도도 저장한다 — 제외는
+  `calibrate`의 몫이다
+- 입력이 고쳐져 이제는 건너뛰는 구간의 **예전 행은 지운다** (`deleted`). 이번에 읽은 trip
+  범위(`--from`/`--to`) 안에서만이다. 남겨 두면 `calibrate`가 이미 틀렸다고 판명된 실측을 계속 쓴다
 
 ## 계산
 
@@ -109,6 +142,7 @@ uv run mypy
 uv run pytest -q
 ```
 
-통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다. DB가 필요한 것은 `io` 계층뿐이고,
+통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다 (도보 구간 파생은
+`tests/test_walking_segments.py`). DB가 필요한 것은 `io` 계층뿐이고,
 시간표 전개와 방향 판정은 가짜 커서로 테스트한다
 (`tests/test_schedule_window.py`, `tests/test_leg_direction.py`).

@@ -110,9 +110,25 @@ EARTH_RADIUS_M = 6_371_008.8
 
 
 def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """`planned_distance_m`이 비어 있는 WALK 구간의 거리 fallback."""
+    """두 좌표의 대권거리(m). WALK 거리 fallback과 GPS 누적 거리에 쓴다."""
     p1, p2 = math.radians(lat1), math.radians(lat2)
     d_lat = p2 - p1
     d_lng = math.radians(lng2 - lng1)
     a = math.sin(d_lat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(d_lng / 2) ** 2
     return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(a))
+
+
+def planned_walk_distance_m(
+    planned_distance_m: float | None,
+    start: tuple[float, float] | None,
+    end: tuple[float, float] | None,
+) -> float | None:
+    """실측이 없을 때의 WALK 거리: 계획 거리, 없으면 구간 양 끝 좌표의 대권거리. 둘 다 없으면 `None`.
+
+    recommend(도보 시간 prior)와 derive-walking-segments(GPS 부족 fallback)가 같은 규칙을 쓴다.
+    """
+    if planned_distance_m is not None:
+        return planned_distance_m
+    if start is None or end is None:
+        return None
+    return haversine_m(start[0], start[1], end[0], end[1])
