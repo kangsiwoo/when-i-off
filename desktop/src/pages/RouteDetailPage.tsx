@@ -9,6 +9,7 @@ import {
   legTypeLabel,
   modeLabel,
 } from "../format";
+import { RouteTabs } from "./RouteTabs";
 import { ErrorMessage, Loading } from "./Status";
 
 export function RouteDetailPage() {
@@ -32,6 +33,7 @@ function RouteDetail({ id }: { id: number }) {
         <Link to="/">← 경로 목록</Link>
       </p>
       <h1>{route.name}</h1>
+      <RouteTabs id={route.id} />
       <dl className="facts">
         <dt>방향</dt>
         <dd>{directionLabel(route.direction)}</dd>

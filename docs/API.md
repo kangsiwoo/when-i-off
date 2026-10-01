@@ -329,7 +329,48 @@ transit_line_id,transit_stop_id,day_type,direction_code,scheduled_time
 
 | 상태 | Method | Path | 설명 |
 |---|---|---|---|
-| 계약 | GET | `/route-legs/{id}/walking-profile` | 해당 구간의 도보 속도 프로필과 샘플 수 |
-| 계약 | GET | `/transit-lines/{id}/bias?stopId=` | 해당 노선/정류장의 예측 오차 보정치와 샘플 수 |
+| ✔ | GET | `/commute-routes/{id}/calibration` | 경로의 구간별 보정값(도보 속도·예측 오차·차내 시간)과 샘플 수 |
 
 샘플 수가 적으면 "아직 데이터가 부족해서 추천 신뢰도가 낮다"는 걸 UI에서 보여주기 위함.
+처음 계약은 구간·노선마다 따로 부르는 두 개(`/route-legs/{id}/walking-profile`,
+`/transit-lines/{id}/bias?stopId=`)였는데, 화면이 경로 하나를 그리려면 요청이 구간 수만큼 들어 #60에서 경로 단위
+하나로 바꿨다. 보정 테이블은 analytics `calibrate`(#45)가 쓰고 backend는 **읽기만** 한다.
+
+```json
+{
+  "routeId": 1,
+  "minSamples": 5,
+  "globalWalkingProfile": { "avgSpeedMps": 1.25, "stddevSpeedMps": 0.2, "sampleCount": 30, "updatedAt": "2026-09-30T18:00:00Z" },
+  "legs": [
+    { "routeLegId": 1, "seqOrder": 1, "legType": "WALK", "plannedDistanceM": 650.0, "plannedTravelSec": 480,
+      "walkingProfile": { "avgSpeedMps": 1.4, "stddevSpeedMps": 0.1, "sampleCount": 3, "updatedAt": "2026-09-30T18:00:00Z" },
+      "predictionRows": [], "travelTimeRows": [] },
+    { "routeLegId": 2, "seqOrder": 2, "legType": "TRANSIT", "plannedTravelSec": 1200,
+      "transitLineId": 1, "transitLineName": "GTX-A", "boardStopId": 4, "boardStopName": "동탄",
+      "alightStopId": 1, "alightStopName": "수서",
+      "predictionRows": [
+        { "dayType": "WEEKDAY", "timeBandStart": "07:30", "timeBandEnd": "08:00",
+          "biasSec": 20, "stddevSec": 45, "sampleCount": 12, "updatedAt": "2026-09-30T18:00:00Z" }
+      ],
+      "travelTimeRows": [
+        { "dayType": "WEEKDAY", "timeBandStart": "23:30", "timeBandEnd": "24:00",
+          "meanSec": 1180, "stddevSec": 60, "sampleCount": 2, "updatedAt": "2026-09-30T18:00:00Z" }
+      ] }
+  ]
+}
+```
+
+- 경로가 없거나 내 것이 아니면 `404`(다른 경로 조회와 같다). 구간은 `seqOrder` 순
+- `minSamples`는 analytics `model/lookup.py`의 `MIN_CALIBRATION_SAMPLES`와 같은 값이다. 샘플이 그보다 적은
+  행은 추천에 쓰이지 않고 한 단계 위로 내려간다 — 도보: 구간 행 → `globalWalkingProfile` → 기본값 1.2 ± 0.15 m/s,
+  예측 오차·차내 시간: 그 day_type·밴드 행 → 같은 노선·정류장(쌍)의 모든 행을 합친 값 → 기본값(0 ± 90초 /
+  `plannedTravelSec` ± 15%) ([ALGORITHM.md](./ALGORITHM.md) 5절). **어느 단계가 쓰일지는 화면이 판단한다**
+  (desktop `src/calibration/chain.ts`) — 서버는 행을 있는 그대로 준다
+- WALK 구간: `walkingProfile`은 그 구간의 `user_walking_profile` 행, `globalWalkingProfile`(최상위에 한 번)은
+  사용자 전역 행(`route_leg_id IS NULL`). 없으면 키째로 빠진다
+- TRANSIT 구간: `predictionRows`는 (노선, 승차 정류장)의 모든 day_type × 밴드 행, `travelTimeRows`는
+  (노선, 승차역, 하차역)의 모든 행. day_type(`WEEKDAY` → `SATURDAY` → `SUNDAY_HOLIDAY`) → 밴드 시작 순.
+  행이 없으면 빈 배열(404가 아니다). WALK 구간은 두 배열이 항상 비어 있다
+- `biasSec`은 실제 − 예측(초, 양수면 늦게 옴). `meanSec`은 승차역 출발 → 하차역 도착(초)
+- **밴드 표기**: KST 벽시계 30분 `[timeBandStart, timeBandEnd)`를 `"HH:mm"` 문자열로 준다. 마지막 밴드의 끝은
+  DB에 `23:59:59.999999`(`TIME`은 24:00을 못 담는다, analytics `LAST_BAND_END`)로 있지만 응답에서는 `"24:00"`이다

@@ -381,3 +381,70 @@ tbody tr:last-child td {
   gap: 1rem;
   margin-bottom: 0.25rem;
 }
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: -0.25rem 0 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs a {
+  padding: 0.4rem 0.9rem;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tabs a:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+
+.tabs a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.calibration-leg {
+  margin-top: 1.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.calibration-leg h2 {
+  margin-top: 1rem;
+}
+
+.badge-low {
+  background: var(--warn);
+  color: var(--warn-text);
+  margin-left: 0.25rem;
+}
+
+tr.low-sample td {
+  background: var(--warn);
+}
+
+tr.low-sample td:not(:last-child) {
+  color: var(--muted);
+}
+
+.empty {
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.used-value {
+  margin: 0.5rem 0 0;
+}
