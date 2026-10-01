@@ -164,6 +164,8 @@ public struct UpsertBoardingAttemptRequest: Codable, Sendable, Equatable {
     /// 놓치고 다음 차를 타면 2, 3…으로 보낸다 (건너뛰면 400).
     public var attemptSeq: Int?
     public var arrivedAtStopAt: Date?
+    /// 보통 `nil`로 둔다. 비어 있으면 서버가 기준 시각(첫 시도는 `arrivedAtStopAt`, 뒤 시도는 앞 시도의
+    /// `vehicleActualDepartureAt`)의 실시간 예측·시간표로 채운다 (#54). 보내면 그 값이 저장된다.
     public var vehicleScheduledOrPredictedAt: Date?
     public var vehicleActualDepartureAt: Date?
     public var alightedAt: Date?

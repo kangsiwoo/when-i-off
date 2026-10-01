@@ -185,6 +185,11 @@ UNIQUE 제약이 없는 것은 의도다. import는 (노선, 정류장, `day_typ
 이 값은 `boarding_attempts.vehicle_actual_departure_at`과 비교해서 "이 노선/시간대는 예측이
 평균 90초 늦다" 같은 보정치를 계산하는 원재료다. 최신값만 덮어쓰지 않고 누적하는 이유가 이것.
 
+한 번의 폴링 조회(노선 × 정류장)가 돌려준 차량들은 같은 `observed_at`으로 들어간다. 그래서
+"관측 묶음" = `(transit_line_id, stop_id, observed_at)`이 같은 행들이다. 탑승 시도의 예측 스냅샷은
+기준 시각 2분 이내의 가장 최근 묶음에서 기준 이후 가장 이른 `predicted_arrival_at`을 고른다 (#54).
+조회는 `idx_arrival_obs_lookup (transit_line_id, stop_id, observed_at)`을 탄다.
+
 ### `traffic_signals` — 한 행 = 교차로
 KLID `crsrd_map_info`의 **교차로(intersection)** 하나가 한 행이다. 횡단보도 하나가 아니다.
 좌표(`lat`/`lng`)는 교차로 중심점(`mapCtptIntLat/Lot`)이고 `crsrd_id`+`stdg_cd`가 외부 키다.
@@ -241,7 +246,11 @@ fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 �
 - `attempt_seq`: 그 구간에서 몇 번째로 시도한 차인가 (1부터, 건너뛰지 않음)
 - `arrived_at_stop_at`: 승차 정류장/역 도착 (geofence 진입)
 - `vehicle_scheduled_or_predicted_at`: 그 순간 시스템이 알려준 예정 시각
-  (스냅샷 — 나중에 재현 가능하도록 값을 복사해 둔다)
+  (스냅샷 — 나중에 재현 가능하도록 값을 복사해 둔다). 앱이 보내지 않으면 서버가 채운다 (#54):
+  기준 시각(첫 시도는 `arrived_at_stop_at`, 뒤 시도는 앞 시도의 `vehicle_actual_departure_at`)에
+  `transit_arrival_observations`의 2분 이내 최근 관측 묶음 → 없으면 같은 방향 `transit_schedules`의
+  다음 출발 → 없으면 NULL. 한 번 채운 값은 서버가 바꾸지 않는다. 출처는 남기지 않는다
+  (자세한 규칙은 API.md "예측 스냅샷은 서버가 채운다")
 - `vehicle_actual_departure_at`: 실제로 그 차가 떠난 시각 (탔으면 탑승 시각, 놓쳤으면
   목격한 출발 시각 — 가능한 경우만)
 - `alighted_at`: 하차 정류장/역 도착 (geofence 진입)

@@ -96,7 +96,7 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
 | ✔ | PATCH | `/commute-trips/{id}` | `leftHomeAt`, `arrivedDestinationAt` 갱신. 이미 기록된 attempt가 새 범위 밖이 되면 400 |
 | ✔ | GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts 포함, 히스토리 화면용). `to < from`이면 400 |
 | ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도(차 한 대) **upsert** (아래) |
-| ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`). id로 한 건만 |
+| ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`). id로 한 건만. 예측 스냅샷 채움은 upsert와 같다 |
 | ✔ | POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (아래) |
 
 ### trip 생성의 재전송 (#37)
@@ -151,8 +151,29 @@ POST …/boarding-attempts {routeLegId: 2, attemptSeq: 2,
   앞의 값이 지워지지 않는다. 값을 지우는 API는 없다 (실측 기록은 지우지 않는 게 원칙)
 - `routeLegId`는 그 trip의 경로에 속한 `TRANSIT` 구간이어야 한다. 아니면 400
 - `alightedAt < vehicleActualDepartureAt`이면 400
-- `vehicleScheduledOrPredictedAt`는 앱이 그 순간 서버에서 받은 예측 시각의 **스냅샷**이다.
-  Phase 3 후속에서 생략 시 backend가 최신 `transit_arrival_observations`로 채우는 것을 계획
+- `vehicleScheduledOrPredictedAt`는 그 순간 시스템이 알던 "다음 차" 시각의 **스냅샷**이다.
+  앱은 보통 보내지 않는다 — 비어 있으면 서버가 채운다(아래)
+
+### 예측 스냅샷은 서버가 채운다 (#54)
+upsert(`POST …/boarding-attempts`)와 `PATCH /boarding-attempts/{id}` 모두, 처리 뒤 attempt의
+`vehicleScheduledOrPredictedAt`이 비어 있고 기준 시각이 있으면 서버가 채운다. 응답 본문에 채운 값이 실린다.
+
+- **기준 시각**: 첫 시도(`attemptSeq = 1`)는 `arrivedAtStopAt`, 뒤 시도(n > 1)는 앞 시도(n − 1)의
+  `vehicleActualDepartureAt`(앞 차가 떠난 순간의 다음 차). 없으면 비워 두고, 그 값이 들어오는 다음
+  upsert/PATCH에서 채운다. 앞 시도에 출발 시각이 나중에 들어오면 그 요청에서 바로 다음 시도도 채운다
+- **고르는 순서**
+  1. 실시간: 그 구간의 (노선, 승차 정류장) `transit_arrival_observations` 중 `observed_at`이
+     `[기준 − 2분, 기준]`(양 끝 포함)인 **가장 최근 관측 묶음**(같은 `observed_at` — 폴러가 한 번 조회한
+     차량들)에서 기준 시각 이후(같은 시각 포함) 가장 이른 `predicted_arrival_at`. 기준 시각 뒤의 관측은
+     그때 몰랐던 값이라 쓰지 않고, 허용 오차는 두지 않는다. 최근 묶음에 기준 이후 차가 없으면 더 오래된
+     묶음으로 내려가지 않고 2로 간다
+  2. 정적 시간표: 구간 방향(승차·하차 정류장으로 판정)으로 기준 시각 이후(같은 시각 포함) 첫 출발.
+     day_type·자정 경계는 `GET /transit-lines/{id}/schedules/next`와 같다
+  3. 둘 다 없으면 `null`
+- **서버는 값이 있으면 바꾸지 않는다.** 한 번 채운 값은 기준 시각을 고치거나 새 관측이 쌓여도 그대로다
+  (그 순간의 스냅샷). 앱이 값을 보내면 다른 필드처럼 그 값이 저장된다 — 앱이 보낸 값이 우선이다
+- 관측은 기준 시각 이전 것만 보고 시간표는 고정이라, 늦게 채워도 그 순간 계산했을 때와 같은 값이다
+- 값이 어느 출처(관측/시간표)에서 왔는지는 저장하지 않는다
 
 ### GPS 배치 업로드
 - 요청: `{ "tripId": 123 | null, "points": [ {recordedAt, lat, lng, speedMps?, accuracyM?}, … ] }`

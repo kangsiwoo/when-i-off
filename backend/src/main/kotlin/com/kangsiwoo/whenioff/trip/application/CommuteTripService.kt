@@ -8,6 +8,7 @@ import com.kangsiwoo.whenioff.route.domain.CommuteRouteRepository
 import com.kangsiwoo.whenioff.route.domain.LegType
 import com.kangsiwoo.whenioff.route.domain.RouteLeg
 import com.kangsiwoo.whenioff.route.domain.RouteLegRepository
+import com.kangsiwoo.whenioff.transit.application.NextVehicleSnapshotResolver
 import com.kangsiwoo.whenioff.trip.api.BoardingAttemptChanges
 import com.kangsiwoo.whenioff.trip.api.BoardingAttemptResponse
 import com.kangsiwoo.whenioff.trip.api.CommuteTripResponse
@@ -48,6 +49,7 @@ class CommuteTripService(
     private val routeLegRepository: RouteLegRepository,
     private val commuteTripRepository: CommuteTripRepository,
     private val boardingAttemptRepository: BoardingAttemptRepository,
+    private val nextVehicleSnapshotResolver: NextVehicleSnapshotResolver,
 ) {
     fun create(
         userId: Long,
@@ -237,7 +239,45 @@ class CommuteTripService(
         changes.notes?.let { notes = it }
         requireOrdered(vehicleActualDepartureAt, alightedAt, "alightedAt must not be before vehicleActualDepartureAt")
         requireWithinTrip(commuteTrip, this)
-        requireAfterEarlierAttempts(this)
+        val legAttempts = legAttemptsWith(this)
+        requireAfterEarlierAttempts(legAttempts)
+        // 이 시도의 기준 시각이 생겼을 수도, 이 시도의 출발이 다음 시도의 기준 시각이 됐을 수도 있다.
+        legAttempts
+            .filter { it === this || it.attemptSeq == attemptSeq + 1 }
+            .forEach { fillPredictedSnapshot(it, legAttempts) }
+    }
+
+    /** 같은 구간의 시도들(`attempt`의 변경분 포함)을 attemptSeq 순으로. */
+    private fun legAttemptsWith(attempt: BoardingAttempt): List<BoardingAttempt> =
+        boardingAttemptRepository
+            .findByCommuteTripIdAndRouteLegIdOrderByAttemptSeqAsc(attempt.commuteTrip.id!!, attempt.routeLeg.id!!)
+            .filter { it !== attempt }
+            .plus(attempt)
+            .sortedBy { it.attemptSeq }
+
+    /**
+     * `vehicleScheduledOrPredictedAt`이 비어 있으면 기준 시각에 시스템이 알려 줬을 "다음 차"로 채운다 (#54).
+     * 기준 시각은 첫 시도면 `arrivedAtStopAt`, 뒤 시도면 앞 시도의 `vehicleActualDepartureAt`이다.
+     * 기준 시각이 없으면 두었다가 그 값이 들어오는 upsert/PATCH에서 채운다.
+     *
+     * 이미 값이 있으면(앱이 보냈거나 서버가 채웠거나) 건드리지 않는다 — 그 순간의 스냅샷이라서다.
+     */
+    private fun fillPredictedSnapshot(
+        attempt: BoardingAttempt,
+        legAttempts: List<BoardingAttempt>,
+    ) {
+        if (attempt.vehicleScheduledOrPredictedAt != null) return
+        val reference =
+            if (attempt.attemptSeq == 1) {
+                attempt.arrivedAtStopAt
+            } else {
+                legAttempts.find { it.attemptSeq == attempt.attemptSeq - 1 }?.vehicleActualDepartureAt
+            } ?: return
+        val leg = attempt.routeLeg
+        val lineId = leg.transitLine?.id ?: return
+        val boardStopId = leg.boardStop?.id ?: return
+        attempt.vehicleScheduledOrPredictedAt =
+            nextVehicleSnapshotResolver.resolve(lineId, boardStopId, leg.alightStop?.id, reference)
     }
 
     /**
@@ -248,13 +288,7 @@ class CommuteTripService(
      * 뒤 시도의 `arrivedAtStopAt`은 검사하지 않는다 (#42). 정류장에 처음 도착한 시각을 그대로 실어 보내는
      * 것은 자연스러운 값이고, 도보 구간은 첫 시도의 도착만 쓰므로 막아서 지키는 데이터가 없다.
      */
-    private fun requireAfterEarlierAttempts(attempt: BoardingAttempt) {
-        val legAttempts =
-            boardingAttemptRepository
-                .findByCommuteTripIdAndRouteLegIdOrderByAttemptSeqAsc(attempt.commuteTrip.id!!, attempt.routeLeg.id!!)
-                .filter { it !== attempt }
-                .plus(attempt)
-                .sortedBy { it.attemptSeq }
+    private fun requireAfterEarlierAttempts(legAttempts: List<BoardingAttempt>) {
         for ((i, earlier) in legAttempts.withIndex()) {
             val departed = earlier.vehicleActualDepartureAt ?: continue
             for (later in legAttempts.drop(i + 1)) {
