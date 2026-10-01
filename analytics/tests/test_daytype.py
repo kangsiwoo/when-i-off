@@ -46,6 +46,14 @@ def test_constitution_day_is_a_holiday_again_from_2026() -> None:
     assert resolve_day_type(date(2026, 7, 20)) is DayType.WEEKDAY
 
 
+def test_2027_holidays_including_saturday_substitutes() -> None:
+    # 목록이 해마다 손으로 늘어나므로(#49) 새 해의 함정만 고정해 둔다.
+    assert resolve_day_type(date(2027, 2, 9)) is DayType.SUNDAY_HOLIDAY  # 설날(일) 대체
+    assert resolve_day_type(date(2027, 5, 3)) is DayType.SUNDAY_HOLIDAY  # 노동절(토) 대체
+    assert resolve_day_type(date(2027, 12, 27)) is DayType.SUNDAY_HOLIDAY  # 성탄절(토) 대체
+    assert resolve_day_type(date(2027, 6, 7)) is DayType.WEEKDAY  # 현충일(일)은 대체 없음
+
+
 def test_day_type_changes_across_midnight() -> None:
     # 금→토, 일→월, 공휴일 전날(한글날은 금요일) — 자정을 넘기면 시간표가 바뀐다.
     assert resolve_day_type(date(2026, 9, 18)) is DayType.WEEKDAY

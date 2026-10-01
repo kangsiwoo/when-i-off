@@ -40,4 +40,17 @@ class DayTypeResolverTest {
         assertEquals(DayType.SUNDAY_HOLIDAY, resolver.resolve(LocalDate.parse("2026-07-17")))
         assertEquals(DayType.WEEKDAY, resolver.resolve(LocalDate.parse("2026-07-20")))
     }
+
+    @Test
+    fun `2027 holidays including saturday substitutes are listed`() {
+        // 목록이 해마다 손으로 늘어나므로(#49) 새 해의 함정만 고정해 둔다.
+        // 설날(2/7)이 일요일 → 2/9(화) 대체공휴일
+        assertEquals(DayType.SUNDAY_HOLIDAY, resolver.resolve(LocalDate.parse("2027-02-09")))
+        // 노동절(5/1, 토)은 2027년부터 공휴일이고 토요일도 대체 대상 → 5/3(월)
+        assertEquals(DayType.SUNDAY_HOLIDAY, resolver.resolve(LocalDate.parse("2027-05-03")))
+        // 성탄절(12/25, 토) → 12/27(월). 성탄절 대체공휴일의 첫 사례
+        assertEquals(DayType.SUNDAY_HOLIDAY, resolver.resolve(LocalDate.parse("2027-12-27")))
+        // 현충일(6/6, 일)은 대체 대상이 아니다
+        assertEquals(DayType.WEEKDAY, resolver.resolve(LocalDate.parse("2027-06-07")))
+    }
 }
