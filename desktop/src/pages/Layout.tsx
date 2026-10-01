@@ -20,6 +20,7 @@ export function Layout() {
         </Link>
         <nav>
           <Link to="/">경로</Link>
+          <Link to="/trips">이동 기록</Link>
         </nav>
         <button type="button" className="link-button" onClick={logout}>
           로그아웃

@@ -1,4 +1,4 @@
-import type { CommuteRoute, RouteLeg } from "./api/client";
+import type { AttemptResult, CommuteRoute, RouteLeg } from "./api/client";
 
 const DIRECTION: Record<CommuteRoute["direction"], string> = {
   TO_WORK: "출근",
@@ -18,6 +18,13 @@ const MODE: Record<TransitMode, string> = {
   GTX: "GTX",
 };
 
+const RESULT: Record<AttemptResult, string> = {
+  CAUGHT: "탐",
+  MISSED: "놓침",
+  UNKNOWN: "모름",
+};
+
+export const resultLabel = (r: AttemptResult) => RESULT[r];
 export const directionLabel = (d: CommuteRoute["direction"]) => DIRECTION[d];
 export const legTypeLabel = (t: RouteLeg["legType"]) => LEG_TYPE[t];
 export const modeLabel = (m: TransitMode) => MODE[m];
@@ -42,4 +49,17 @@ export function formatDuration(sec: number | null | undefined): string {
   const rest = sec % 60;
   if (min === 0) return `${rest}초`;
   return rest === 0 ? `${min}분` : `${min}분 ${rest}초`;
+}
+
+/** 예측 대비 차이처럼 부호가 있는 초. 0이 아니면 항상 부호를 붙인다. */
+export function formatSignedSec(sec: number): string {
+  if (sec === 0) return "±0초";
+  return `${sec > 0 ? "+" : "−"}${formatDuration(Math.abs(sec))}`;
+}
+
+/** TRANSIT 구간 한 줄 이름: `GTX-A 동탄 → 수서`. */
+export function transitLegLabel(leg: RouteLeg | undefined, legId: number): string {
+  if (!leg) return `구간 #${legId}`;
+  const line = leg.transitLine?.name ?? "노선 ?";
+  return `${line} ${leg.boardStop?.name ?? "?"} → ${leg.alightStop?.name ?? "?"}`;
 }

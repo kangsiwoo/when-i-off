@@ -1,7 +1,8 @@
 # desktop
 
-TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)까지 있다 (#56).
-지도 위 경로/구간/정류장/신호등 편집, trip 히스토리, 캘리브레이션 상태, 추천 vs 실제 비교는 이 골격 위에 올린다.
+TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)(#56)와
+이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58)이 있다.
+지도 위 경로/구간/정류장/신호등 편집, 캘리브레이션 상태, 추천 vs 실제 비교는 이 골격 위에 올린다.
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
 스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch,
@@ -66,13 +67,28 @@ npm run gen:api
 - **backend-ci** `OpenAPI spec is up to date`: `exportOpenApi`를 돌려 `desktop/openapi.json`에 diff가 있으면 실패
 - **desktop-ci** `Generated API types are up to date`: `gen:api`를 돌려 `src/api/schema.d.ts`에 diff가 있으면 실패
 
+## 이동 기록 (#58)
+
+- `/trips?routeId=&from=&to=`: `GET /commute-trips` 필터를 주소에 둔다. 행마다 날짜, 집 나섬 → 도착, 총 소요,
+  결과(TRANSIT 구간 중 탄 구간 수, 놓친 차 수)
+- `/trips/:id?routeId=&date=`: trip 단건 조회 API가 없어 목록 조회를 그 경로·날짜로 좁혀 꺼낸다
+  (`tripDate`는 PATCH로 바뀌지 않는다). 타임라인은 시각이 아니라 구간 `seqOrder` → `attemptSeq` 순서다.
+  시도마다 예측 스냅샷과 `실제 − 예측`(초)을 보여 준다
+- 보정은 바뀐 필드만 PATCH로 보낸다. 서버는 `null`을 "그대로"로 보고 시각을 지우는 API가 없으므로 기록된 시각
+  칸을 비우면 막는다. 400(#37/#38 시각 순서 규칙)은 `detail`을 그대로 보여 주고, 저장하면 `["commute-trips"]`
+  캐시를 무효화해 목록·상세를 다시 받는다
+- 시각 표시·입력은 모두 KST다. `datetime-local` 값은 브라우저 시간대가 아니라 KST 벽시계로 해석한다(`src/kst.ts`)
+
 ## 구조
 
 ```
 src/
   api/        schema.d.ts(생성), client.ts(openapi-fetch + 토큰/401 미들웨어), queries.ts(TanStack Query 훅)
   auth/       token.ts(localStorage), RequireAuth.tsx
-  pages/      LoginPage, Layout, RouteListPage, RouteDetailPage
+  pages/      LoginPage, Layout, RouteListPage, RouteDetailPage,
+              TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm)
+  trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
+  kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표
   context.ts  라우터 · QueryClient · API 클라이언트 묶음 (테스트는 메모리 라우터와 가짜 fetch를 넣는다)
 ```
