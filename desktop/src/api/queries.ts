@@ -29,6 +29,21 @@ export function useCommuteRouteDetails(ids: number[]) {
   return useQueries({ queries: ids.map((id) => routeQuery(api, id)) });
 }
 
+/** 경로의 보정값·샘플 수 (#60). 읽기 전용이라 무효화하지 않는다 — 보정은 analytics 배치가 쓴다. */
+export function useRouteCalibration(id: number) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["commute-routes", id, "calibration"],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/commute-routes/{id}/calibration", {
+          params: { path: { id } },
+          signal,
+        }),
+      ),
+  });
+}
+
 /** `GET /commute-trips`의 필터. 날짜는 KST 기준 trip 날짜(`yyyy-MM-dd`). */
 export interface TripFilter {
   routeId?: number;

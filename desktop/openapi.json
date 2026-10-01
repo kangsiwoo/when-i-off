@@ -571,6 +571,108 @@
         ],
         "type": "object"
       },
+      "LegCalibrationResponse": {
+        "properties": {
+          "alightStopId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "alightStopName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "boardStopId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "boardStopName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "legType": {
+            "enum": [
+              "WALK",
+              "TRANSIT"
+            ],
+            "type": "string"
+          },
+          "plannedDistanceM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "plannedTravelSec": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "predictionRows": {
+            "items": {
+              "$ref": "#/components/schemas/PredictionCalibrationRowResponse"
+            },
+            "type": "array"
+          },
+          "routeLegId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "seqOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "transitLineId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "transitLineName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "travelTimeRows": {
+            "items": {
+              "$ref": "#/components/schemas/TravelTimeCalibrationRowResponse"
+            },
+            "type": "array"
+          },
+          "walkingProfile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WalkingProfileResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "legType",
+          "predictionRows",
+          "routeLegId",
+          "seqOrder",
+          "travelTimeRows"
+        ],
+        "type": "object"
+      },
       "NextDeparturesResponse": {
         "properties": {
           "departures": {
@@ -596,6 +698,50 @@
           "directionCode",
           "stopId",
           "transitLineId"
+        ],
+        "type": "object"
+      },
+      "PredictionCalibrationRowResponse": {
+        "properties": {
+          "biasSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "dayType": {
+            "enum": [
+              "WEEKDAY",
+              "SATURDAY",
+              "SUNDAY_HOLIDAY"
+            ],
+            "type": "string"
+          },
+          "sampleCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "stddevSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "timeBandEnd": {
+            "type": "string"
+          },
+          "timeBandStart": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "biasSec",
+          "dayType",
+          "sampleCount",
+          "stddevSec",
+          "timeBandEnd",
+          "timeBandStart",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -625,6 +771,40 @@
         },
         "required": [
           "crossings"
+        ],
+        "type": "object"
+      },
+      "RouteCalibrationResponse": {
+        "properties": {
+          "globalWalkingProfile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WalkingProfileResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/LegCalibrationResponse"
+            },
+            "type": "array"
+          },
+          "minSamples": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "routeId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "legs",
+          "minSamples",
+          "routeId"
         ],
         "type": "object"
       },
@@ -1134,6 +1314,50 @@
         ],
         "type": "object"
       },
+      "TravelTimeCalibrationRowResponse": {
+        "properties": {
+          "dayType": {
+            "enum": [
+              "WEEKDAY",
+              "SATURDAY",
+              "SUNDAY_HOLIDAY"
+            ],
+            "type": "string"
+          },
+          "meanSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sampleCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "stddevSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "timeBandEnd": {
+            "type": "string"
+          },
+          "timeBandStart": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dayType",
+          "meanSec",
+          "sampleCount",
+          "stddevSec",
+          "timeBandEnd",
+          "timeBandStart",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "UpdateBoardingAttemptRequest": {
         "properties": {
           "alightedAt": {
@@ -1268,6 +1492,33 @@
         "required": [
           "attemptSeq",
           "routeLegId"
+        ],
+        "type": "object"
+      },
+      "WalkingProfileResponse": {
+        "properties": {
+          "avgSpeedMps": {
+            "format": "double",
+            "type": "number"
+          },
+          "sampleCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "stddevSpeedMps": {
+            "format": "double",
+            "type": "number"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "avgSpeedMps",
+          "sampleCount",
+          "stddevSpeedMps",
+          "updatedAt"
         ],
         "type": "object"
       }
@@ -1497,6 +1748,37 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/CommuteRouteDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-route-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{id}/calibration": {
+      "get": {
+        "operationId": "calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteCalibrationResponse"
                 }
               }
             },

@@ -1,6 +1,7 @@
 package com.kangsiwoo.whenioff.route.api
 
 import com.kangsiwoo.whenioff.route.application.CommuteRouteService
+import com.kangsiwoo.whenioff.route.application.RouteCalibrationService
 import com.kangsiwoo.whenioff.route.application.RouteLegService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController
 class CommuteRouteController(
     private val commuteRouteService: CommuteRouteService,
     private val routeLegService: RouteLegService,
+    private val routeCalibrationService: RouteCalibrationService,
 ) {
     @GetMapping
     fun list(): List<CommuteRouteResponse> = commuteRouteService.list()
@@ -38,4 +40,10 @@ class CommuteRouteController(
         @PathVariable id: Long,
         @Valid @RequestBody request: ReplaceRouteLegsRequest,
     ): CommuteRouteDetailResponse = routeLegService.replaceLegs(id, request.legs)
+
+    /** 경로의 보정값과 샘플 수 (#60). 내 경로가 아니거나 없으면 404. 읽기 전용. */
+    @GetMapping("/{id}/calibration")
+    fun calibration(
+        @PathVariable id: Long,
+    ): RouteCalibrationResponse = routeCalibrationService.calibration(id)
 }

@@ -1,4 +1,10 @@
-import type { BoardingAttempt, CommuteRoute, CommuteRouteDetail, CommuteTrip } from "../api/client";
+import type {
+  BoardingAttempt,
+  CommuteRoute,
+  CommuteRouteDetail,
+  CommuteTrip,
+  RouteCalibration,
+} from "../api/client";
 
 export const route: CommuteRoute = {
   id: 7,
@@ -101,4 +107,66 @@ export const trip: CommuteTrip = {
   // 응답 순서가 어긋나도 attemptSeq로 정렬한다.
   boardingAttempts: [caughtAttempt, missedAttempt],
   createdAt: "2026-09-10T22:30:00Z",
+};
+
+/** `detail`의 두 구간에 대한 보정 상태. 도보 구간 행은 샘플 3개(신뢰도 낮음) → 전역 행이 쓰인다. */
+export const calibration: RouteCalibration = {
+  routeId: 7,
+  minSamples: 5,
+  globalWalkingProfile: {
+    avgSpeedMps: 1.25,
+    stddevSpeedMps: 0.2,
+    sampleCount: 30,
+    updatedAt: "2026-09-30T18:00:00Z",
+  },
+  legs: [
+    {
+      routeLegId: 12,
+      seqOrder: 2,
+      legType: "TRANSIT",
+      plannedTravelSec: 1200,
+      transitLineId: 3,
+      transitLineName: "GTX-A",
+      boardStopId: 4,
+      boardStopName: "동탄",
+      alightStopId: 5,
+      alightStopName: "수서",
+      predictionRows: [
+        {
+          dayType: "WEEKDAY",
+          timeBandStart: "07:30",
+          timeBandEnd: "08:00",
+          biasSec: 20,
+          stddevSec: 45,
+          sampleCount: 12,
+          updatedAt: "2026-09-30T18:00:00Z",
+        },
+        {
+          dayType: "SATURDAY",
+          timeBandStart: "23:30",
+          timeBandEnd: "24:00",
+          biasSec: -10,
+          stddevSec: 30,
+          sampleCount: 2,
+          updatedAt: "2026-09-30T18:00:00Z",
+        },
+      ],
+      travelTimeRows: [],
+    },
+    {
+      routeLegId: 11,
+      seqOrder: 1,
+      legType: "WALK",
+      plannedDistanceM: 650,
+      plannedTravelSec: 480,
+      walkingProfile: {
+        avgSpeedMps: 1.4,
+        stddevSpeedMps: 0.1,
+        sampleCount: 3,
+        updatedAt: "2026-09-30T18:00:00Z",
+      },
+      predictionRows: [],
+      travelTimeRows: [],
+    },
+  ],
 };

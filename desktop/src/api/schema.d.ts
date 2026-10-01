@@ -100,6 +100,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/commute-routes/{id}/calibration": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["calibration"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/commute-routes/{id}/legs": {
     parameters: {
       query?: never;
@@ -504,6 +520,30 @@ export interface components {
       intersections: components["schemas"]["SyncCountsResponse"];
       stdgCd: string;
     };
+    LegCalibrationResponse: {
+      /** Format: int64 */
+      alightStopId?: number | null;
+      alightStopName?: string | null;
+      /** Format: int64 */
+      boardStopId?: number | null;
+      boardStopName?: string | null;
+      /** @enum {string} */
+      legType: "WALK" | "TRANSIT";
+      /** Format: double */
+      plannedDistanceM?: number | null;
+      /** Format: int32 */
+      plannedTravelSec?: number | null;
+      predictionRows: components["schemas"]["PredictionCalibrationRowResponse"][];
+      /** Format: int64 */
+      routeLegId: number;
+      /** Format: int32 */
+      seqOrder: number;
+      /** Format: int64 */
+      transitLineId?: number | null;
+      transitLineName?: string | null;
+      travelTimeRows: components["schemas"]["TravelTimeCalibrationRowResponse"][];
+      walkingProfile?: components["schemas"]["WalkingProfileResponse"] | null;
+    };
     NextDeparturesResponse: {
       departures: components["schemas"]["ScheduledDepartureResponse"][];
       directionCode: string;
@@ -512,11 +552,33 @@ export interface components {
       /** Format: int64 */
       transitLineId: number;
     };
+    PredictionCalibrationRowResponse: {
+      /** Format: int32 */
+      biasSec: number;
+      /** @enum {string} */
+      dayType: "WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY";
+      /** Format: int32 */
+      sampleCount: number;
+      /** Format: int32 */
+      stddevSec: number;
+      timeBandEnd: string;
+      timeBandStart: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
     ReplaceRouteLegsRequest: {
       legs: components["schemas"]["RouteLegRequest"][];
     };
     ReplaceSignalCrossingsRequest: {
       crossings: components["schemas"]["SignalCrossingRequest"][];
+    };
+    RouteCalibrationResponse: {
+      globalWalkingProfile?: components["schemas"]["WalkingProfileResponse"] | null;
+      legs: components["schemas"]["LegCalibrationResponse"][];
+      /** Format: int32 */
+      minSamples: number;
+      /** Format: int64 */
+      routeId: number;
     };
     RouteLegRequest: {
       /** Format: int64 */
@@ -657,6 +719,20 @@ export interface components {
       name: string;
       stdgCd?: string | null;
     };
+    TravelTimeCalibrationRowResponse: {
+      /** @enum {string} */
+      dayType: "WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY";
+      /** Format: int32 */
+      meanSec: number;
+      /** Format: int32 */
+      sampleCount: number;
+      /** Format: int32 */
+      stddevSec: number;
+      timeBandEnd: string;
+      timeBandStart: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
     UpdateBoardingAttemptRequest: {
       /** Format: date-time */
       alightedAt?: string | null;
@@ -692,6 +768,16 @@ export interface components {
       vehicleActualDepartureAt?: string | null;
       /** Format: date-time */
       vehicleScheduledOrPredictedAt?: string | null;
+    };
+    WalkingProfileResponse: {
+      /** Format: double */
+      avgSpeedMps: number;
+      /** Format: int32 */
+      sampleCount: number;
+      /** Format: double */
+      stddevSpeedMps: number;
+      /** Format: date-time */
+      updatedAt: string;
     };
   };
   responses: never;
@@ -862,6 +948,28 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["CommuteRouteDetailResponse"];
+        };
+      };
+    };
+  };
+  calibration: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["RouteCalibrationResponse"];
         };
       };
     };

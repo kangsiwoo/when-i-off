@@ -1,4 +1,4 @@
-import type { AttemptResult, CommuteRoute, RouteLeg } from "./api/client";
+import type { AttemptResult, CommuteRoute, DayType, RouteLeg } from "./api/client";
 
 const DIRECTION: Record<CommuteRoute["direction"], string> = {
   TO_WORK: "출근",
@@ -24,6 +24,13 @@ const RESULT: Record<AttemptResult, string> = {
   UNKNOWN: "모름",
 };
 
+const DAY_TYPE: Record<DayType, string> = {
+  WEEKDAY: "평일",
+  SATURDAY: "토요일",
+  SUNDAY_HOLIDAY: "일요일·공휴일",
+};
+
+export const dayTypeLabel = (d: DayType) => DAY_TYPE[d];
 export const resultLabel = (r: AttemptResult) => RESULT[r];
 export const directionLabel = (d: CommuteRoute["direction"]) => DIRECTION[d];
 export const legTypeLabel = (t: RouteLeg["legType"]) => LEG_TYPE[t];
@@ -62,4 +69,15 @@ export function transitLegLabel(leg: RouteLeg | undefined, legId: number): strin
   if (!leg) return `구간 #${legId}`;
   const line = leg.transitLine?.name ?? "노선 ?";
   return `${line} ${leg.boardStop?.name ?? "?"} → ${leg.alightStop?.name ?? "?"}`;
+}
+
+/** 도보 속도 `1.31 ± 0.12 m/s`. */
+export function formatSpeed(mean: number, stddev: number): string {
+  return `${mean.toFixed(2)} ± ${stddev.toFixed(2)} m/s`;
+}
+
+/** 평균 ± σ(초). `signed`면 평균에 부호를 붙인다 (예측 오차 = 실제 − 예측). */
+export function formatSecSpread(mean: number, stddev: number, signed = false): string {
+  const m = Math.round(mean);
+  return `${signed ? formatSignedSec(m) : formatDuration(m)} ± ${formatDuration(Math.round(stddev))}`;
 }

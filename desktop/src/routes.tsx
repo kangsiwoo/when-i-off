@@ -2,6 +2,7 @@ import { Navigate, type RouteObject } from "react-router";
 import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./pages/Layout";
 import { LoginPage } from "./pages/LoginPage";
+import { RouteCalibrationPage } from "./pages/RouteCalibrationPage";
 import { RouteDetailPage } from "./pages/RouteDetailPage";
 import { RouteListPage } from "./pages/RouteListPage";
 import { TripDetailPage } from "./pages/TripDetailPage";
@@ -17,6 +18,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <RouteListPage /> },
           { path: "routes/:id", element: <RouteDetailPage /> },
+          { path: "routes/:id/calibration", element: <RouteCalibrationPage /> },
           { path: "trips", element: <TripListPage /> },
           { path: "trips/:id", element: <TripDetailPage /> },
         ],
