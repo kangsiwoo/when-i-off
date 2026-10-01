@@ -10,6 +10,7 @@ import {
   unwrap,
   type CreateCommuteRouteRequest,
   type RouteLegRequest,
+  type SignalCrossingRequest,
   type TransitMode,
   type UpdateBoardingAttemptRequest,
   type UpdateCommuteTripRequest,
@@ -162,6 +163,21 @@ export function useReplaceLegs(id: number) {
   });
 }
 
+export function useReplaceCrossings(routeId: number, legId: number) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (crossings: SignalCrossingRequest[]) =>
+      unwrap(
+        await api.PUT("/api/v1/route-legs/{id}/signal-crossings", {
+          params: { path: { id: legId } },
+          body: { crossings },
+        }),
+      ),
+    onSuccess: () => invalidateRoute(queryClient, routeId),
+  });
+}
+
 export function useTransitLineSearch(keyword: string, mode: TransitMode | undefined) {
   const api = useApi();
   return useQuery({
@@ -195,6 +211,26 @@ export function useNearbyStops(at: NearbyQuery | null, mode: TransitMode | undef
         }),
       ),
     enabled: at != null,
+  });
+}
+
+export function useNearbySignals(at: NearbyQuery | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["traffic-signals", "nearby", at],
+    queryFn: async ({ signal }) =>
+      unwrap(await api.GET("/api/v1/traffic-signals/nearby", { params: { query: at! }, signal })),
+    enabled: at != null,
+  });
+}
+
+export function useCreateSignal() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { lat: number; lng: number; name?: string }) =>
+      unwrap(await api.POST("/api/v1/traffic-signals", { body })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["traffic-signals"] }),
   });
 }
 

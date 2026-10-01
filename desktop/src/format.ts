@@ -1,4 +1,4 @@
-import type { AttemptResult, CommuteRoute, DayType, RouteLeg } from "./api/client";
+import type { AttemptResult, CommuteRoute, DayType, RouteLeg, TrafficSignal } from "./api/client";
 
 const DIRECTION: Record<CommuteRoute["direction"], string> = {
   TO_WORK: "출근",
@@ -81,3 +81,6 @@ export function formatSecSpread(mean: number, stddev: number, signed = false): s
   const m = Math.round(mean);
   return `${signed ? formatSignedSec(m) : formatDuration(m)} ± ${formatDuration(Math.round(stddev))}`;
 }
+
+/** 교차로 이름. 수동 등록은 이름이 없을 수 있다. */
+export const signalName = (s: TrafficSignal | undefined, id: number) => s?.name ?? `교차로 #${id}`;

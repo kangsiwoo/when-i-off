@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import type { CommuteRouteDetail, TransitStop } from "../api/client";
-import { useCommuteRoute, useNearbyStops, useReplaceLegs } from "../api/queries";
+import type { CommuteRouteDetail, SignalCrossing, TransitStop } from "../api/client";
+import { useCommuteRoute, useNearbySignals, useNearbyStops, useReplaceLegs } from "../api/queries";
 import {
   draftsFromLegs,
   moveDraft,
@@ -9,15 +9,18 @@ import {
   newWalk,
   toLegRequests,
   validateDrafts,
+  type CrossingDraft,
   type LegDraft,
   type TransitDraft,
   type WalkDraft,
 } from "../legs/legRules";
-import { walkDistanceM, type LatLng } from "../map/geo";
+import { signalName } from "../format";
+import { haversineM, midpoint, walkDistanceM, type LatLng } from "../map/geo";
 import { LazyMap } from "../map/LazyMap";
 import type { MapLine, MapMarker } from "../map/types";
 import { TransitLegCard, WalkLegCard, type PickTarget, type StopWhich } from "./LegCards";
 import { RouteTabs } from "./RouteTabs";
+import { SignalCrossingsEditor } from "./SignalCrossingsEditor";
 import { ErrorMessage, Loading, SaveError } from "./Status";
 
 const STOP_RADIUS_M = 800;
@@ -41,7 +44,7 @@ function RouteEdit({ id }: { id: number }) {
       </p>
       <h1>{data.route.name}</h1>
       <RouteTabs id={id} />
-      {/* 초안은 처음 한 번만 서버 값에서 만든다 — 상세가 다시 와도 편집 중인 값을 덮지 않는다. */}
+      {/* 초안은 처음 한 번만 서버 값에서 만든다 — 다른 저장(교차로 등)으로 상세가 다시 와도 편집 중인 값을 덮지 않는다. */}
       <LegEditor detail={data} />
     </section>
   );
@@ -80,10 +83,13 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
   const [stopSearch, setStopSearch] = useState<StopSearch>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  const [crossings, setCrossings] = useState<{ key: string; items: CrossingDraft[] } | null>(null);
+  const [newSignalAt, setNewSignalAt] = useState<LatLng | null>(null);
   const [fitKey] = useState(() => `route-${route.id}`);
 
   const dirty = JSON.stringify(toLegRequests(drafts)) !== baseline;
   const selectedDraft = drafts.find((d) => d.key === selected);
+  const selectedWalk = selectedDraft?.legType === "WALK" ? selectedDraft : undefined;
 
   const edit = (next: LegDraft[]) => {
     setSaved(false);
@@ -97,13 +103,32 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
   const updateTransit = (key: string, f: (d: TransitDraft) => TransitDraft) =>
     update(key, (d) => (d.legType === "TRANSIT" ? f(d) : d));
 
-  // --- 근처 정류장 ---
+  // --- 근처 정류장 / 교차로 ---
   const stopDraft = drafts.find((d) => d.key === stopSearch?.key);
   const stopMode = stopDraft?.legType === "TRANSIT" ? stopDraft.line?.mode : undefined;
   const nearbyStops = useNearbyStops(
     stopSearch ? { ...stopSearch.at, radiusM: STOP_RADIUS_M } : null,
     stopMode,
   );
+  const signalArea = useMemo(() => {
+    if (!selectedWalk?.id || !selectedWalk.start || !selectedWalk.end) return null;
+    const { start, end } = selectedWalk;
+    // 구간을 덮는 원: 가운데에서 반 길이 + 여유 150 m.
+    return { ...midpoint(start, end), radiusM: Math.round(haversineM(start, end) / 2 + 150) };
+  }, [selectedWalk]);
+  const nearbySignals = useNearbySignals(signalArea);
+  const crossingItems: CrossingDraft[] =
+    crossings && crossings.key === selected
+      ? crossings.items
+      : (selectedWalk?.signalCrossings ?? []).map(
+          ({ trafficSignalId, approachDir, signalKind }) => ({
+            trafficSignalId,
+            approachDir,
+            signalKind,
+          }),
+        );
+  const setCrossingItems = (items: CrossingDraft[]) =>
+    selected && setCrossings({ key: selected, items });
 
   // --- 동작 ---
   const indexOf = (key: string) => drafts.findIndex((d) => d.key === key);
@@ -112,8 +137,10 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
     if (!pick) return;
     if (pick.target === "walk-start" || pick.target === "walk-end") {
       updateWalk(pick.key, (d) => withPoint(d, pick.target === "walk-start" ? "start" : "end", p));
-    } else {
+    } else if (pick.target === "board" || pick.target === "alight") {
       setStopSearch({ key: pick.key, which: pick.target, at: p });
+    } else {
+      setNewSignalAt(p);
     }
     setPick(null);
   };
@@ -191,9 +218,20 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
         setDrafts(next);
         setBaseline(JSON.stringify(toLegRequests(next)));
         setSelected(next[selectedIndex]?.key ?? null);
+        setCrossings(null);
         setSaved(true);
       },
     });
+  };
+
+  const onCrossingsSaved = (key: string, stored: SignalCrossing[]) => {
+    // 교차로는 따로 저장되므로 초안과 기준선 양쪽에 반영한다 (구간 변경 여부와 무관).
+    setDrafts((ds) =>
+      ds.map((d) =>
+        d.key === key && d.legType === "WALK" ? { ...d, signalCrossings: stored } : d,
+      ),
+    );
+    setCrossings(null);
   };
 
   // --- 지도 ---
@@ -265,10 +303,37 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
         });
       }
     }
+    if (selectedWalk?.id != null && nearbySignals.data) {
+      for (const s of nearbySignals.data) {
+        const crossed = crossingItems.some((c) => c.trafficSignalId === s.id);
+        markers.push({
+          id: `signal-${s.id}`,
+          position: { lat: s.lat, lng: s.lng },
+          kind: crossed ? "signal-crossed" : "signal",
+          tooltip: `${signalName(s, s.id)}${crossed ? " (지정됨)" : " — 눌러서 추가"}`,
+          onClick: crossed
+            ? undefined
+            : () =>
+                setCrossingItems([
+                  ...crossingItems,
+                  { trafficSignalId: s.id, approachDir: "nt", signalKind: "Pd" },
+                ]),
+        });
+      }
+    }
+    if (newSignalAt) {
+      markers.push({
+        id: "new-signal",
+        position: newSignalAt,
+        kind: "signal",
+        text: "+",
+        tooltip: "새 교차로",
+      });
+    }
     return { markers, lines };
   }
 
-  // 구간을 고르면 그 구간으로 맞춘다 (도보 끝점을 찍기 좋게). 아무것도 안 골랐거나 점이 없으면 경로 전체.
+  // 구간을 고르면 그 구간으로 맞춘다 (도보 끝점·교차로를 찍기 좋게). 아무것도 안 골랐거나 점이 없으면 경로 전체.
   const selectedPoints: LatLng[] = !selectedDraft
     ? []
     : selectedDraft.legType === "WALK"
@@ -323,7 +388,26 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
                     )
                   }
                   onInsertTransit={() => insertTransitAfter(d.key)}
-                />
+                >
+                  {d.key === selected &&
+                    (d.id == null ? (
+                      <p className="muted small">신호등 교차로는 구간을 저장한 뒤 지정합니다.</p>
+                    ) : (
+                      <SignalCrossingsEditor
+                        routeId={route.id}
+                        legId={d.id}
+                        items={crossingItems}
+                        setItems={setCrossingItems}
+                        signals={nearbySignals.data}
+                        signalsPending={nearbySignals.isFetching}
+                        picking={picking === "signal"}
+                        onPick={() => togglePick(d.key, "signal")}
+                        newSignalAt={newSignalAt}
+                        clearNewSignal={() => setNewSignalAt(null)}
+                        onSaved={(c) => onCrossingsSaved(d.key, c)}
+                      />
+                    ))}
+                </WalkLegCard>
               );
             }
             return (
