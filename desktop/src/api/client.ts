@@ -25,6 +25,7 @@ export type DepartureRecommendation = components["schemas"]["DepartureRecommenda
 export type RecommendationHistoryDay = components["schemas"]["RecommendationHistoryDayResponse"];
 export type RecommendationHistoryTrip = components["schemas"]["RecommendationHistoryTripResponse"];
 export type CreateCommuteRouteRequest = components["schemas"]["CreateCommuteRouteRequest"];
+export type UpdateCommuteRouteRequest = components["schemas"]["UpdateCommuteRouteRequest"];
 export type RouteLegRequest = components["schemas"]["RouteLegRequest"];
 export type TransitLine = components["schemas"]["TransitLineResponse"];
 export type TransitStop = components["schemas"]["TransitStopResponse"];

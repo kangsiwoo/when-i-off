@@ -130,6 +130,16 @@ npm run gen:api
   정류장 도착·하차 시각)을 마커로 단다
 - 화면 테스트는 `src/test/setup.ts`에서 `MapView`를 `src/test/MockMap.tsx`(마커·선 목록 + 클릭/끌기 버튼)로 바꾼다
 
+## 경로별 기본 목표 도착 시각 (#68)
+
+- `/routes/new`와 경로 상세의 "설정" 폼에서 **목표 도착 시각(KST, `HH:mm`)**과 **추천할 날**(평일 / 토요일 /
+  일요일·공휴일 체크박스, 기본 평일)을 정한다. analytics `recommend --all-active-routes`(cron 한 줄)가 사용 중인 경로마다
+  이 시각의 −120분 ~ +30분 동안 추천을 다시 계산한다. 시각을 비우면 그 경로는 일괄 추천에서 빠진다
+- 설정 폼은 이름·사용 여부도 고친다. `PATCH /commute-routes/{id}`로 **바뀐 필드만** 보내고(서버는 `null`을 "그대로"로 본다),
+  시각을 지울 때는 `clearDefaultTargetArrivalTime: true`를 보낸다. 날을 하나도 고르지 않으면 보내기 전에 막는다
+  (서버도 400). 규칙은 `src/target/defaultTarget.ts`(순수 로직), 입력 칸은 `pages/TargetFields.tsx`
+- 저장 응답을 상세 캐시의 `route`에 바로 넣고 목록·상세를 다시 받는다
+
 ## 구조
 
 ```
@@ -139,11 +149,13 @@ src/
   pages/      LoginPage, Layout, RouteListPage, RouteDetailPage,
               TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
               RouteCreatePage, RouteEditPage(+ LegCards, SignalCrossingsEditor), TripGpsMap,
+              RouteSettingsForm(+ TargetFields),
               RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
   recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
   legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증, crossing 코드) — 화면 없는 순수 로직
   map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선)
+  target/     defaultTarget.ts(기본 목표 도착 시각·추천할 날 초안 ↔ 생성 필드/PATCH 본문, 검증) — 화면 없는 순수 로직
   trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표

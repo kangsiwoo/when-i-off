@@ -16,6 +16,8 @@ export const route: CommuteRoute = {
   destinationLat: 37.49,
   destinationLng: 127.1,
   isActive: true,
+  defaultTargetArrivalTime: "09:00:00",
+  defaultTargetDayTypes: ["WEEKDAY"],
   createdAt: "2026-09-10T00:00:00Z",
 };
 

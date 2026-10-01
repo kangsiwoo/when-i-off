@@ -93,7 +93,15 @@ CREATE TABLE commute_routes (
     destination_lat DOUBLE PRECISION NOT NULL,
     destination_lng DOUBLE PRECISION NOT NULL,
     is_active       BOOLEAN NOT NULL DEFAULT true,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 일괄 추천(recommend --all-active-routes, V6 #68)의 기본 목표: KST 벽시계, NULL이면 일괄 추천에서 빠진다
+    default_target_arrival_time TIME,
+    -- 그날의 day_type(공휴일 = SUNDAY_HOLIDAY)이 이 집합에 있을 때만 일괄 추천한다
+    default_target_day_types    day_type[] NOT NULL DEFAULT '{WEEKDAY}'
+        CONSTRAINT chk_commute_routes_default_target_day_types CHECK (
+            cardinality(default_target_day_types) >= 1
+            AND array_position(default_target_day_types, NULL) IS NULL
+        )
 );
 
 CREATE INDEX idx_commute_routes_user ON commute_routes(user_id);

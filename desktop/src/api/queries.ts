@@ -8,11 +8,13 @@ import {
 import { useApi } from "./ApiContext";
 import {
   unwrap,
+  type CommuteRouteDetail,
   type CreateCommuteRouteRequest,
   type RouteLegRequest,
   type SignalCrossingRequest,
   type TransitMode,
   type UpdateBoardingAttemptRequest,
+  type UpdateCommuteRouteRequest,
   type UpdateCommuteTripRequest,
 } from "./client";
 
@@ -143,6 +145,28 @@ export function useCreateRoute() {
 /** 경로의 상세·보정 상태 등 그 경로 아래 캐시를 모두 다시 받게 한다. */
 function invalidateRoute(queryClient: ReturnType<typeof useQueryClient>, id: number) {
   return queryClient.invalidateQueries({ queryKey: ["commute-routes", id] });
+}
+
+/**
+ * 이름·사용 여부·기본 목표 도착 시각·대상 day_type 일부 수정 (#68). 응답(경로 한 건)을 상세 캐시의 `route`에
+ * 바로 반영하고 목록·상세를 다시 받는다.
+ */
+export function useUpdateRoute(id: number) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: UpdateCommuteRouteRequest) =>
+      unwrap(await api.PATCH("/api/v1/commute-routes/{id}", { params: { path: { id } }, body })),
+    onSuccess: (route) => {
+      queryClient.setQueryData<CommuteRouteDetail>(["commute-routes", id], (prev) =>
+        prev ? { ...prev, route } : prev,
+      );
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["commute-routes"], exact: true }),
+        invalidateRoute(queryClient, id),
+      ]);
+    },
+  });
 }
 
 export function useReplaceLegs(id: number) {

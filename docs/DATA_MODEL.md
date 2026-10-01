@@ -116,6 +116,14 @@ PostgreSQL의 UNIQUE는 NULL을 서로 다른 값으로 취급하므로 수동 �
 사용자당 여러 개 가질 수 있다. `is_active`인 경로의 노선·교차로가 속한 지자체만 실시간 폴링
 대상이 된다 (호출 한도 때문, ARCHITECTURE.md 참고).
 
+**기본 목표 도착 시각** (V6, #68): `default_target_arrival_time`(TIME, KST 벽시계, NULL 가능)과
+`default_target_day_types`(`day_type[]`, 기본 `{WEEKDAY}`, 비어 있을 수 없음). analytics의
+`recommend --all-active-routes`가 활성 경로마다 그날 날짜 + 이 시각을 목표로 계산한다. 목표 시각이 없거나
+그날의 `day_type`(시간표·보정 테이블과 같은 공휴일 목록으로 판정, 공휴일은 `SUNDAY_HOLIDAY`)이 집합에 없으면
+건너뛴다. 요일 마스크 대신 `day_type` 집합을 쓰는 것은 시간표와 같은 달력을 쓰기 위해서다 — "평일 출근"
+경로는 공휴일에 돌지 않는다. JPA는 enum 배열을 `varchar[]`로 바인딩하므로 엔티티가 쓰기에 `?::day_type[]`
+캐스트를 붙인다(`@ColumnTransformer`).
+
 ### `route_legs`
 `commute_route`를 구성하는 개별 구간을 순서(`seq_order`)대로 나열한 것.
 - `WALK`: 시작/끝 좌표, 계획 거리

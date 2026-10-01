@@ -55,6 +55,42 @@ departure_recommendations id=2 (created)
 구간마다 쓴 입력과 그 출처(`calibrated` / `inherited` / `default`, 아래 "계산")를 찍는다. TRANSIT
 구간은 고른 차량에 쓴 예측 오차(bias±σ)와 차내 시간(평균±σ)이다.
 
+### 활성 경로 일괄 (`--all-active-routes`, #68)
+
+```bash
+uv run wio-analytics recommend --all-active-routes --only-in-window          # cron용
+uv run wio-analytics recommend --all-active-routes --date 2026-10-06         # 그날 목표로 전부 (backfill)
+uv run wio-analytics recommend --all-active-routes --only-in-window --now 2026-10-06T07:40 --dry-run
+```
+
+`commute_routes.is_active`인 경로마다 그 경로의 **기본 목표 도착 시각**(`default_target_arrival_time`,
+KST 벽시계)을 운행일에 붙여 목표로 삼는다. 경로 하나 모드(`--route-id` + `--target-arrival-at`)와는 함께 쓸 수
+없다(종료 코드 2). 경로·날짜 선택은 `model/targets.py`의 순수 함수다.
+
+- **건너뛰기**: 목표 시각이 없는 경로(`no_target_time`), 운행일의 `day_type`(공유 공휴일 목록으로 판정, 공휴일은
+  `SUNDAY_HOLIDAY`)이 경로의 `default_target_day_types`에 없는 경로(`day_type_excluded`), `--only-in-window`일 때
+  지금이 창 밖인 경로(`outside_window`)
+- **창**: [목표 − 120분, 목표 + 30분], 양 끝 포함. cron이 10분마다 불러도 창 밖이면 아무것도 안 한다
+- **`--date`**: 운행일(YYYY-MM-DD). 생략하면 `now`의 **KST 날짜**다 — 호스트 시계가 UTC여도 07:00 KST는 그날이다.
+  `--only-in-window`이고 `--date`가 없으면 전날·다음 날의 목표도 후보로 본다: 목표 00:30의 창은 전날 22:30에
+  열리고 목표 23:50의 창은 다음 날 00:20에 닫힌다. `day_type`은 언제나 **목표가 속한 날짜**로 정한다
+- **`--now`**: 창 판정과 기본 날짜에 쓸 "지금"(ISO-8601, 타임존 없으면 KST). 테스트·backfill용이고, 없으면 시스템 시계다
+- **경로별 실패**: 후보 차량이 없거나(`NoCandidateVehiclesError`) 구간이 불완전한 경로 등은 그 경로만 `error:`로
+  찍고 다음 경로로 간다. 경로마다 따로 커밋한다
+- **종료 코드**: 계산을 **시도한** 경로가 있고 그 전부가 실패했을 때만 1. 전부 건너뛰었으면(창 밖 등) 0, 하나라도
+  성공했으면 0이다. DB 연결 실패 같은 예상 밖 오류는 그대로 터진다
+
+```
+all active routes: 2 at 2026-10-06 07:40:00 KST (only in window), date 2026-10-06
+route 1 (집 → 회사 (GTX-A)), p=0.95
+  target arrival        2026-10-06 09:00:00 KST
+  leave home at         2026-10-06 08:01:19 KST (2026-10-05T23:01:19.090571+00:00)
+  ...
+departure_recommendations id=62 (created)
+route 7 (E2E 퇴근 (수서→성남)): skipped no_target_time: no default target arrival time
+done: computed 1, failed 0, skipped 1
+```
+
 **멱등성**: `(commute_route_id, target_date, target_arrival_at, model_version)`당 한 행을 유지한다.
 값이 그대로면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). V1 스키마에 이 조합의
 UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다. `model_version`이 키에 들어 있어 v2가 같은
@@ -148,6 +184,7 @@ docker compose --profile batch build analytics
 docker compose run --rm analytics derive-walking-segments
 docker compose run --rm analytics calibrate
 docker compose run --rm analytics recommend --route-id 1 --target-arrival-at 2026-10-05T09:00:00
+docker compose run --rm analytics recommend --all-active-routes --only-in-window
 ```
 
 DB는 compose 안에서 서비스 이름(`postgres`)으로 붙는다. 이미지는 `uv.lock` 그대로 개발 의존성 없이
@@ -155,9 +192,10 @@ DB는 compose 안에서 서비스 이름(`postgres`)으로 붙는다. 이미지�
 
 정기 실행은 호스트 crontab으로 한다: [`cron.example`](cron.example).
 - 새벽 03:00 `derive-walking-segments` → `calibrate` (순서가 중요하다 — calibrate는 파생된 도보 구간을 읽는다)
-- 출근 목표 −120분부터 +30분까지 10분마다 `recommend` (실시간 예측이 바뀌므로 다시 계산한다)
-- 시각은 KST. `CRON_TZ`는 "언제 돌지"만 바꾸므로 목표 날짜는 `TZ=Asia/Seoul date`로 뽑는다
-- 경로별 기본 목표 시각 컬럼(#7)이 생기기 전까지는 경로 id와 목표 시각을 crontab에 적는다
+- 05:00~23:59 사이 10분마다 `recommend --all-active-routes --only-in-window` 한 줄. 경로마다 기본 목표 시각의
+  −120분 ~ +30분 창 안일 때만 다시 계산한다 (실시간 예측이 바뀌므로). 경로를 더하거나 목표 시각을 바꿔도 crontab은
+  그대로다 — 목표 시각·대상 day_type은 desktop의 경로 화면(또는 `PATCH /commute-routes/{id}`)에서 정한다
+- 시각은 KST. `CRON_TZ`는 "언제 돌지"만 바꾸고, 운행일·창은 recommend가 KST로 판정한다
 
 ## 계산
 
@@ -233,6 +271,7 @@ uv run pytest -q
 
 통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다 (도보 구간 파생은
 `tests/test_walking_segments.py`, 보정 테이블은 `tests/test_calibration.py`, recommend의
-보정값 조회는 `tests/test_lookup.py`). DB가 필요한 것은 `io` 계층뿐이고,
+보정값 조회는 `tests/test_lookup.py`, 일괄 추천의 경로·날짜·창 선택은 `tests/test_targets.py`,
+그 CLI의 인자 규칙·경로별 실패·종료 코드는 가짜 연결로 `tests/test_recommend_cli.py`). DB가 필요한 것은 `io` 계층뿐이고,
 시간표 전개와 방향 판정은 가짜 커서로 테스트한다
 (`tests/test_schedule_window.py`, `tests/test_leg_direction.py`).
