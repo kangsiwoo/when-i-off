@@ -129,7 +129,8 @@ V_board ~ N( predicted_at + bias ,  σ_pred² )
   (`source='TAGO_ARVL'`, [ADR 0001](./adr/0001-tago-bus-arrival-prediction.md)).
   `has_realtime_api=false`(예: GTX)이거나 예측이 없으면 `transit_schedules`의 시간표값.
 - `bias`, `σ_pred`: `transit_prediction_calibration`에서 노선×정류장×요일유형×시간대로
-  조회. 샘플 부족 시 노선 단위로 롤업, 그것도 없으면 `bias=0, σ=90초`. 외부 예측이 실제보다
+  조회. 샘플 5회 미만이면 같은 노선·정류장의 모든 요일유형·시간대를 합친(pool) 값, 그것도 5회
+  미만이면 `bias=0, σ=90초`. 외부 예측이 실제보다
   이르거나 늦은 체계적 경향을 이 값이 흡수한다.
 
 **차내 이동시간 `D`**
@@ -138,8 +139,9 @@ V_board ~ N( predicted_at + bias ,  σ_pred² )
 D ~ N( mean_sec , σ_travel² )      -- transit_travel_time_calibration
 ```
 
-샘플이 없으면 `route_legs.planned_travel_sec`을 평균으로, 표준편차는 평균의 15% 같은
-보수적 기본값을 쓴다.
+노선×승차역×하차역×요일유형×시간대로 조회하고, 샘플 5회 미만이면 같은 노선·역 쌍을 합친 값,
+그것도 부족하면 `route_legs.planned_travel_sec`을 평균으로, 표준편차는 평균의 15%인 보수적
+기본값을 쓴다.
 
 **하차역 도착 시각**
 
@@ -208,7 +210,7 @@ def recommend_departure(route, target_arrival_at, p=0.95):
 | 대상 | 원재료 | 방법 |
 |---|---|---|
 | `user_walking_profile` | `walking_segments` (0.3 m/s 미만·3.0 m/s 초과 제외) | 최근 30회 윈도우(`started_at` 기준)의 평균/표준편차. 전역 행도 모든 구간에서 최근 30회. 구간별 행은 `sample_count ≥ 5`부터 사용, 그 전엔 전역 행 |
-| `transit_prediction_calibration` | attempt(차 한 대, 놓친 차 포함)마다 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 노선 × 승차 정류장 × 예측 시각의 KST `day_type` × 30분 밴드별 평균/표준편차(전체 샘플). 샘플 5회 미만이면 노선 단위 값을 상속 |
+| `transit_prediction_calibration` | attempt(차 한 대, 놓친 차 포함)마다 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 노선 × 승차 정류장 × 예측 시각의 KST `day_type` × 30분 밴드별 평균/표준편차(전체 샘플). 샘플 5회 미만이면 같은 노선·정류장을 합친 값을 상속 |
 | `transit_travel_time_calibration` | 탄 attempt(`CAUGHT`)의 `alighted_at − vehicle_actual_departure_at` (0초 이하 제외) | 노선 × 승차역 × 하차역 × 출발 시각의 KST `day_type` × 30분 밴드. 나머지 동일 |
 | `walking_segments` | trip/attempt의 인접 사건 시각 + `gps_traces` | DATA_MODEL.md의 규칙으로 파생 |
 | `traffic_signal_cycles` (`PUBLIC_API`) | `traffic_signal_states` 누적 | 커버 교차로는 실시간 상태의 현시 전환 시각에서 `R`, `C`를 추정해 주기 행을 갱신 → 지평선 밖 계산과 폴링이 꺼진 시간대에도 실측 기반 주기를 쓴다. **현재는 커버 교차로가 없어 돌지 않는다** (#30) |
@@ -221,6 +223,20 @@ def recommend_departure(route, target_arrival_at, p=0.95):
   15%)이고, 어느 쪽이든 하한(도보 0.05 m/s, 예측 오차·차내 시간 15초) 아래로 내리지 않는다. 같은 값
   몇 개가 σ = 0을 만들어 분위수가 한 점으로 무너지는 것을 막는다.
 - 샘플 1개 그룹도 저장하고(`sample_count`), 상속은 읽는 쪽이 한다. 입력이 사라진 그룹의 행은 지운다.
+
+recommend의 조회 (`model_version` v2, #46). 앞 단계의 샘플이 5개 미만이면 다음 단계로 간다.
+
+| 입력 | 1단계 (calibrated) | 2단계 (inherited) | 3단계 (default) |
+|---|---|---|---|
+| 도보 속도 | 그 구간 행 | 사용자 전역 행 | 1.2 m/s ± 0.15 |
+| 예측 오차 | (노선, 승차 정류장, day_type, 밴드) | 같은 노선·정류장의 모든 행을 합친 값 | bias 0, σ 90초 |
+| 차내 시간 | (노선, 승차역, 하차역, day_type, 밴드) | 같은 노선·역 쌍의 모든 행을 합친 값 | `planned_travel_sec`, σ 15% |
+
+- 밴드와 `day_type`은 **후보 차량마다** 그 차의 시각으로 정한다 — 예측 오차는 예측(시간표) 시각, 차내
+  시간은 출발 시각의 기댓값(예측 + bias). calibrate가 그룹을 만든 기준과 같다.
+- **합치기**는 σ의 평균이 아니라 모든 샘플을 한데 모은 표본표준편차다:
+  `σ² = (Σ(nᵢ−1)σᵢ² + Σnᵢ(μᵢ−μ)²) / (N−1)`, `μ = Σnᵢμᵢ / N`.
+- 고른 σ도 위 하한 아래로 내리지 않는다. 어느 단계의 값을 썼는지(출처)는 recommend 출력에 구간마다 남는다.
 
 콜드스타트(기록 없음)는 `bias=0`, `σ_pred=90초`, 도보 속도 1.2 m/s ± 0.15 같은 보수적
 기본값으로 "일단 안전하게" 추천하고, 기록이 쌓일수록 분포가 좁아져 출발 시각이 뒤로 밀린다.

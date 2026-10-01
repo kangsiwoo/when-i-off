@@ -1,4 +1,4 @@
-"""`calibrate`의 입력(도보 실측·탑승 시도) 읽기와 세 보정 테이블 upsert.
+"""`calibrate`의 입력(도보 실측·탑승 시도) 읽기와 세 보정 테이블 upsert, 그리고 recommend가 쓸 행 읽기.
 
 `calibrate`는 매번 **전체 데이터**로 다시 계산한다. 그래서 이번 결과에 없는 그룹의 행(입력이
 사라지거나 고쳐져 더는 나오지 않는 그룹)은 테이블 전체에서 지운다 — 다시 돌린 결과가 처음부터
@@ -13,6 +13,7 @@ from typing import Any
 
 from psycopg import sql
 
+from whenioff_analytics.daytype import DayType
 from whenioff_analytics.io.db import Connection
 from whenioff_analytics.io.walking import UpsertCounts
 from whenioff_analytics.model.calibration import (
@@ -98,6 +99,78 @@ _TRAVEL_KEYS_SQL = """
 SELECT id, transit_line_id, board_stop_id, alight_stop_id, day_type::text, time_band_start, time_band_end
 FROM transit_travel_time_calibration
 """
+
+
+# recommend용 읽기. 키의 앞부분만 걸어 그 노선·정류장(역 쌍)의 모든 day_type·밴드를 한 번에 읽는다 —
+# 후보 차량마다 밴드가 달라서 고르는 일과 상위 그룹으로 합치는 일은 메모리에서 한다(model/lookup.py).
+_PROFILES_FOR_USER_SQL = """
+SELECT user_id, route_leg_id, avg_speed_mps, stddev_speed_mps, sample_count
+FROM user_walking_profile
+WHERE user_id = %s
+"""
+_PREDICTION_ROWS_SQL = """
+SELECT transit_line_id, stop_id, day_type::text, time_band_start, time_band_end, bias_sec, stddev_sec,
+       sample_count
+FROM transit_prediction_calibration
+WHERE transit_line_id = %s AND stop_id = %s
+"""
+_TRAVEL_ROWS_SQL = """
+SELECT transit_line_id, board_stop_id, alight_stop_id, day_type::text, time_band_start, time_band_end,
+       mean_sec, stddev_sec, sample_count
+FROM transit_travel_time_calibration
+WHERE transit_line_id = %s AND board_stop_id = %s AND alight_stop_id = %s
+"""
+
+
+def load_walking_profiles_for_user(conn: Connection, user_id: int) -> list[WalkingProfile]:
+    """그 사용자의 구간 행과 전역 행(`route_leg_id` NULL)."""
+    with conn.cursor() as cur:
+        cur.execute(_PROFILES_FOR_USER_SQL, (user_id,))
+        return [
+            WalkingProfile(
+                user_id=int(row[0]),
+                route_leg_id=None if row[1] is None else int(row[1]),
+                avg_speed_mps=float(row[2]),
+                stddev_speed_mps=float(row[3]),
+                sample_count=int(row[4]),
+            )
+            for row in cur.fetchall()
+        ]
+
+
+def load_prediction_rows(conn: Connection, transit_line_id: int, stop_id: int) -> list[PredictionCalibration]:
+    with conn.cursor() as cur:
+        cur.execute(_PREDICTION_ROWS_SQL, (transit_line_id, stop_id))
+        return [
+            PredictionCalibration(
+                transit_line_id=int(row[0]),
+                stop_id=int(row[1]),
+                band=BandKey(DayType(row[2]), row[3], row[4]),
+                bias_sec=int(row[5]),
+                stddev_sec=int(row[6]),
+                sample_count=int(row[7]),
+            )
+            for row in cur.fetchall()
+        ]
+
+
+def load_travel_time_rows(
+    conn: Connection, transit_line_id: int, board_stop_id: int, alight_stop_id: int
+) -> list[TravelTimeCalibration]:
+    with conn.cursor() as cur:
+        cur.execute(_TRAVEL_ROWS_SQL, (transit_line_id, board_stop_id, alight_stop_id))
+        return [
+            TravelTimeCalibration(
+                transit_line_id=int(row[0]),
+                board_stop_id=int(row[1]),
+                alight_stop_id=int(row[2]),
+                band=BandKey(DayType(row[3]), row[4], row[5]),
+                mean_sec=int(row[6]),
+                stddev_sec=int(row[7]),
+                sample_count=int(row[8]),
+            )
+            for row in cur.fetchall()
+        ]
 
 
 def load_walk_samples(conn: Connection) -> list[WalkSample]:

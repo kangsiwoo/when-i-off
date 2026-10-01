@@ -7,18 +7,24 @@ from datetime import datetime, time, timedelta
 
 from whenioff_analytics import defaults
 from whenioff_analytics.daytype import kst_date_of, kst_time_of, resolve_day_type
+from whenioff_analytics.io.calibration import (
+    load_prediction_rows,
+    load_travel_time_rows,
+    load_walking_profiles_for_user,
+)
 from whenioff_analytics.io.db import Connection
 from whenioff_analytics.io.line_stops import resolve_leg_direction
 from whenioff_analytics.io.recommendations import RecommendationRow, SaveOutcome, save_recommendation
 from whenioff_analytics.io.routes import CommuteRoute, RouteLeg, load_route
 from whenioff_analytics.io.schedules import load_scheduled_departures
 from whenioff_analytics.io.signals import CycleBand, load_signal_cycles, select_cycle
-from whenioff_analytics.model.distributions import (
-    Moments,
-    Normal,
-    TimeNormal,
-    planned_walk_distance_m,
-    walk_time,
+from whenioff_analytics.model.calibration import WalkingProfile
+from whenioff_analytics.model.distributions import Moments, planned_walk_distance_m, walk_time
+from whenioff_analytics.model.lookup import (
+    Resolved,
+    ResolvedCandidate,
+    resolve_candidate,
+    resolve_walking_speed,
 )
 from whenioff_analytics.model.recommend import (
     Leg,
@@ -46,12 +52,29 @@ class IncompleteLegError(Exception):
 
 
 @dataclass(frozen=True)
+class LegInputs:
+    """구간 하나의 입력 출처. WALK는 `walking_speed`, TRANSIT은 `candidates`(후보 순서 그대로)."""
+
+    route_leg_id: int
+    walking_speed: Resolved | None = None
+    candidates: tuple[ResolvedCandidate, ...] = ()
+
+
+@dataclass(frozen=True)
 class RecommendationResult:
     route: CommuteRoute
     target_arrival_at: datetime
     probability: float
     legs: tuple[Leg, ...]
+    inputs: tuple[LegInputs, ...]
+    """`legs`와 같은 순서."""
     recommendation: Recommendation
+
+    def candidate_inputs(self, route_leg_id: int, candidate: VehicleCandidate) -> ResolvedCandidate:
+        for leg, inputs in zip(self.legs, self.inputs, strict=True):
+            if isinstance(leg, TransitLeg) and leg.route_leg_id == route_leg_id:
+                return inputs.candidates[leg.candidates.index(candidate)]
+        raise KeyError(route_leg_id)
 
 
 def compute_recommendation(
@@ -64,13 +87,15 @@ def compute_recommendation(
     route = load_route(conn, route_id)
     if not route.legs:
         raise IncompleteLegError(route_id, "commute route has no legs")
-    legs = _build_legs(conn, route, target_arrival_at, lookback_hours)
+    built = _build_legs(conn, route, target_arrival_at, lookback_hours)
+    legs = tuple(leg for leg, _ in built)
     recommendation = recommend_departure(legs, target_arrival_at, probability)
     return RecommendationResult(
         route=route,
         target_arrival_at=target_arrival_at,
         probability=probability,
         legs=legs,
+        inputs=tuple(inputs for _, inputs in built),
         recommendation=recommendation,
     )
 
@@ -96,30 +121,35 @@ def _build_legs(
     route: CommuteRoute,
     target_arrival_at: datetime,
     lookback_hours: float,
-) -> tuple[Leg, ...]:
+) -> list[tuple[Leg, LegInputs]]:
     # 신호 주기는 요일유형 × 시간대별이라 "언제 그 횡단보도에 서는가"가 필요하지만, 그 시각은
-    # 역산이 끝나야 나온다. v1은 목표 도착 시각의 시간대로 한 번에 고른다 — 통근 한 번은
+    # 역산이 끝나야 나온다. 지금은 목표 도착 시각의 시간대로 한 번에 고른다 — 통근 한 번은
     # 시간대 하나에 대체로 들어가고, 어긋나도 주기 모델의 기대 대기(수십 초) 차이라서 작다.
     day_type = resolve_day_type(kst_date_of(target_arrival_at))
     band_time = kst_time_of(target_arrival_at)
     signal_ids = [c.traffic_signal_id for leg in route.legs for c in leg.crossings]
     cycles = load_signal_cycles(conn, signal_ids, day_type)
+    profiles = load_walking_profiles_for_user(conn, route.user_id)
 
-    legs: list[Leg] = []
+    legs: list[tuple[Leg, LegInputs]] = []
     for leg in route.legs:
         if leg.leg_type == "WALK":
-            waits = tuple(
-                _crossing_wait(cycles, crossing.traffic_signal_id, band_time) for crossing in leg.crossings
-            )
-            legs.append(
-                WalkLeg(
-                    route_leg_id=leg.id,
-                    duration=walk_time(_walk_distance_m(leg), defaults.WALKING_SPEED, waits),
-                )
-            )
+            legs.append(_walk_leg(leg, profiles, cycles, band_time))
         else:
             legs.append(_transit_leg(conn, leg, target_arrival_at, lookback_hours))
-    return tuple(legs)
+    return legs
+
+
+def _walk_leg(
+    leg: RouteLeg,
+    profiles: list[WalkingProfile],
+    cycles: dict[int, tuple[CycleBand, ...]],
+    band_time: time,
+) -> tuple[WalkLeg, LegInputs]:
+    waits = tuple(_crossing_wait(cycles, crossing.traffic_signal_id, band_time) for crossing in leg.crossings)
+    speed = resolve_walking_speed(profiles, leg.id)
+    walk = WalkLeg(route_leg_id=leg.id, duration=walk_time(_walk_distance_m(leg), speed.value, waits))
+    return walk, LegInputs(route_leg_id=leg.id, walking_speed=speed)
 
 
 def _crossing_wait(
@@ -143,9 +173,14 @@ def _transit_leg(
     leg: RouteLeg,
     target_arrival_at: datetime,
     lookback_hours: float,
-) -> TransitLeg:
-    if leg.transit_line_id is None or leg.board_stop_id is None or leg.planned_travel_sec is None:
-        raise IncompleteLegError(leg.id, "TRANSIT leg is missing line, stop or planned_travel_sec")
+) -> tuple[TransitLeg, LegInputs]:
+    if (
+        leg.transit_line_id is None
+        or leg.board_stop_id is None
+        or leg.alight_stop_id is None
+        or leg.planned_travel_sec is None
+    ):
+        raise IncompleteLegError(leg.id, "TRANSIT leg is missing line, stops or planned_travel_sec")
 
     # 같은 정류장에 상·하행이 같이 서므로 방향을 먼저 정한다. 안 그러면 반대 방향 차가 후보에
     # 섞여 출발 시각이 통째로 틀린다 (#26).
@@ -162,28 +197,27 @@ def _transit_leg(
     if not departures:
         raise NoCandidateVehiclesError(leg.id, window_start, target_arrival_at)
 
-    travel = Normal(
-        mean=float(leg.planned_travel_sec),
-        stddev=float(leg.planned_travel_sec) * defaults.TRAVEL_TIME_CV,
+    # 보정 행은 구간마다 한 번 읽고, 차량마다 그 차의 day_type·밴드로 메모리에서 고른다.
+    prediction_rows = load_prediction_rows(conn, leg.transit_line_id, leg.board_stop_id)
+    travel_rows = load_travel_time_rows(conn, leg.transit_line_id, leg.board_stop_id, leg.alight_stop_id)
+
+    resolved = tuple(
+        resolve_candidate(
+            label=f"{departure.service_date} {departure.scheduled_time.isoformat()} KST",
+            predicted_at=departure.departure_at,
+            prediction_rows=prediction_rows,
+            travel_rows=travel_rows,
+            planned_travel_sec=float(leg.planned_travel_sec),
+        )
+        for departure in departures
     )
-    candidates = []
-    for departure in departures:
-        board = TimeNormal(
-            mean_at=departure.departure_at + timedelta(seconds=defaults.PREDICTION_BIAS_SEC),
-            stddev_sec=defaults.PREDICTION_STDDEV_SEC,
-        )
-        candidates.append(
-            VehicleCandidate(
-                label=f"{departure.service_date} {departure.scheduled_time.isoformat()} KST",
-                board=board,
-                alight=board.shifted_by(travel),
-            )
-        )
-    return TransitLeg(route_leg_id=leg.id, candidates=tuple(candidates))
+    transit = TransitLeg(route_leg_id=leg.id, candidates=tuple(r.candidate for r in resolved))
+    return transit, LegInputs(route_leg_id=leg.id, candidates=resolved)
 
 
 __all__ = [
     "IncompleteLegError",
+    "LegInputs",
     "NoCandidateVehiclesError",
     "RecommendationResult",
     "compute_recommendation",
