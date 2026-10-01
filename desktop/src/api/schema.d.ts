@@ -97,7 +97,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
-    patch?: never;
+    patch: operations["update_1"];
     trace?: never;
   };
   "/api/v1/commute-routes/{id}/calibration": {
@@ -430,6 +430,8 @@ export interface components {
     CommuteRouteResponse: {
       /** Format: date-time */
       createdAt: string;
+      defaultTargetArrivalTime?: string | null;
+      defaultTargetDayTypes: ("WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY")[];
       /** Format: double */
       destinationLat: number;
       /** Format: double */
@@ -461,6 +463,8 @@ export interface components {
       tripDate: string;
     };
     CreateCommuteRouteRequest: {
+      defaultTargetArrivalTime?: string | null;
+      defaultTargetDayTypes?: ("WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY")[] | null;
       /** Format: double */
       destinationLat: number;
       /** Format: double */
@@ -807,6 +811,13 @@ export interface components {
       /** Format: date-time */
       vehicleScheduledOrPredictedAt?: string | null;
     };
+    UpdateCommuteRouteRequest: {
+      clearDefaultTargetArrivalTime?: boolean | null;
+      defaultTargetArrivalTime?: string | null;
+      defaultTargetDayTypes?: ("WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY")[] | null;
+      isActive?: boolean | null;
+      name?: string | null;
+    };
     UpdateCommuteTripRequest: {
       /** Format: date-time */
       arrivedDestinationAt?: string | null;
@@ -1009,6 +1020,32 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["CommuteRouteDetailResponse"];
+        };
+      };
+    };
+  };
+  update_1: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateCommuteRouteRequest"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["CommuteRouteResponse"];
         };
       };
     };

@@ -134,6 +134,23 @@
             "format": "date-time",
             "type": "string"
           },
+          "defaultTargetArrivalTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultTargetDayTypes": {
+            "items": {
+              "enum": [
+                "WEEKDAY",
+                "SATURDAY",
+                "SUNDAY_HOLIDAY"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "destinationLat": {
             "format": "double",
             "type": "number"
@@ -170,6 +187,7 @@
         },
         "required": [
           "createdAt",
+          "defaultTargetDayTypes",
           "destinationLat",
           "destinationLng",
           "direction",
@@ -231,6 +249,29 @@
       },
       "CreateCommuteRouteRequest": {
         "properties": {
+          "defaultTargetArrivalTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultTargetDayTypes": {
+            "items": {
+              "enum": [
+                "WEEKDAY",
+                "SATURDAY",
+                "SUNDAY_HOLIDAY"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2147483647,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ],
+            "uniqueItems": true
+          },
           "destinationLat": {
             "format": "double",
             "maximum": 90.0,
@@ -1507,6 +1548,53 @@
         },
         "type": "object"
       },
+      "UpdateCommuteRouteRequest": {
+        "properties": {
+          "clearDefaultTargetArrivalTime": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "defaultTargetArrivalTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "defaultTargetDayTypes": {
+            "items": {
+              "enum": [
+                "WEEKDAY",
+                "SATURDAY",
+                "SUNDAY_HOLIDAY"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2147483647,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ],
+            "uniqueItems": true
+          },
+          "isActive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "pattern": "(?s).*\\S.*",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "UpdateCommuteTripRequest": {
         "properties": {
           "arrivedDestinationAt": {
@@ -1845,6 +1933,45 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/CommuteRouteDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-route-controller"
+        ]
+      },
+      "patch": {
+        "operationId": "update_1",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCommuteRouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommuteRouteResponse"
                 }
               }
             },

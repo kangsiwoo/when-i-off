@@ -103,6 +103,9 @@ describe("route create", () => {
     fireEvent.click(screen.getByRole("button", { name: "지도 클릭" }));
     fireEvent.click(screen.getByRole("button", { name: "끌기: 도착" }));
     fireEvent.change(screen.getByLabelText("방향"), { target: { value: "TO_HOME" } });
+    // 기본 목표 도착 시각과 추천할 날 (#68). 평일은 기본으로 켜져 있다.
+    fireEvent.change(screen.getByLabelText("목표 도착 시각 (KST)"), { target: { value: "18:40" } });
+    fireEvent.click(screen.getByLabelText("토요일"));
     fireEvent.click(screen.getByRole("button", { name: "만들고 구간 편집" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/routes/21/edit"));
@@ -114,9 +117,24 @@ describe("route create", () => {
       destinationLat: 37.251,
       destinationLng: 127.08,
       isActive: true,
+      defaultTargetArrivalTime: "18:40",
+      defaultTargetDayTypes: ["WEEKDAY", "SATURDAY"],
     });
     // 구간이 없는 경로는 출발 → 도착 도보 한 구간으로 시작한다 (직선거리 미리 채움).
     expect(await screen.findByLabelText("계획 거리 (m)")).toHaveValue(111);
+  });
+});
+
+describe("route create: default target", () => {
+  it("refuses to create a route with no day selected", async () => {
+    const { fetch } = renderApp("/routes/new", backend({ route, legs: [] }));
+    fireEvent.change(await screen.findByLabelText("이름"), { target: { value: "x" } });
+    fireEvent.click(await screen.findByRole("button", { name: "지도 클릭" }));
+    fireEvent.click(screen.getByRole("button", { name: "지도 클릭" }));
+    fireEvent.click(screen.getByLabelText("평일"));
+    fireEvent.click(screen.getByRole("button", { name: "만들고 구간 편집" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("추천할 날을 하나 이상 고르세요.");
+    expect(calls(fetch, "POST", "/api/v1/commute-routes")).toHaveLength(0);
   });
 });
 

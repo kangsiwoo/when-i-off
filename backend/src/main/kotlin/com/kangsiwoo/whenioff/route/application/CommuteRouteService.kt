@@ -1,11 +1,14 @@
 package com.kangsiwoo.whenioff.route.application
 
+import com.kangsiwoo.whenioff.common.api.BadRequestException
 import com.kangsiwoo.whenioff.common.api.NotFoundException
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
+import com.kangsiwoo.whenioff.common.domain.DayType
 import com.kangsiwoo.whenioff.route.api.CommuteRouteDetailResponse
 import com.kangsiwoo.whenioff.route.api.CommuteRouteResponse
 import com.kangsiwoo.whenioff.route.api.CreateCommuteRouteRequest
 import com.kangsiwoo.whenioff.route.api.RouteLegResponse
+import com.kangsiwoo.whenioff.route.api.UpdateCommuteRouteRequest
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import com.kangsiwoo.whenioff.route.domain.CommuteRouteRepository
 import com.kangsiwoo.whenioff.route.domain.RouteLegRepository
@@ -38,8 +41,34 @@ class CommuteRouteService(
                 destinationLat = request.destinationLat,
                 destinationLng = request.destinationLng,
                 isActive = request.isActive,
+                defaultTargetArrivalTime = request.defaultTargetArrivalTime,
+                defaultTargetDayTypes =
+                    (
+                        request.defaultTargetDayTypes ?: setOf(
+                            DayType.WEEKDAY,
+                        )
+                    ).sorted().toTypedArray(),
             )
         return CommuteRouteResponse.from(commuteRouteRepository.save(route))
+    }
+
+    /** 일부 수정 (#68). null 필드는 그대로 둔다. */
+    fun update(
+        routeId: Long,
+        request: UpdateCommuteRouteRequest,
+    ): CommuteRouteResponse {
+        if (request.clearDefaultTargetArrivalTime == true && request.defaultTargetArrivalTime != null) {
+            throw BadRequestException(
+                "defaultTargetArrivalTime and clearDefaultTargetArrivalTime are mutually exclusive",
+            )
+        }
+        val route = findOwned(routeId)
+        request.name?.let { route.name = it.trim() }
+        request.isActive?.let { route.isActive = it }
+        request.defaultTargetArrivalTime?.let { route.defaultTargetArrivalTime = it }
+        if (request.clearDefaultTargetArrivalTime == true) route.defaultTargetArrivalTime = null
+        request.defaultTargetDayTypes?.let { route.defaultTargetDayTypes = it.sorted().toTypedArray() }
+        return CommuteRouteResponse.from(commuteRouteRepository.saveAndFlush(route))
     }
 
     @Transactional(readOnly = true)

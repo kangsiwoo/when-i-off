@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from whenioff_analytics.daytype import DayType
 from whenioff_analytics.io.db import Connection
+from whenioff_analytics.model.targets import RouteTarget
 
 
 class RouteNotFoundError(Exception):
@@ -125,6 +127,30 @@ def load_route(conn: Connection, route_id: int) -> CommuteRoute:
         for row in leg_rows
     )
     return CommuteRoute(id=int(head[0]), user_id=int(head[1]), name=str(head[2]), legs=legs)
+
+
+_ACTIVE_TARGETS_SQL = """
+SELECT id, name, default_target_arrival_time, default_target_day_types::text[]
+FROM commute_routes
+WHERE is_active
+ORDER BY id
+"""
+
+
+def load_active_route_targets(conn: Connection) -> list[RouteTarget]:
+    """활성 경로 전부의 기본 목표 (#68). 목표 시각이 없는 경로도 돌려준다 — 건너뛰는 판정은 model의 몫이다."""
+    with conn.cursor() as cur:
+        cur.execute(_ACTIVE_TARGETS_SQL)
+        rows = cur.fetchall()
+    return [
+        RouteTarget(
+            route_id=int(row[0]),
+            name=str(row[1]),
+            arrival_time=row[2],
+            day_types=frozenset(DayType(value) for value in row[3]),
+        )
+        for row in rows
+    ]
 
 
 def _opt_float(value: Any) -> float | None:

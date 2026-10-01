@@ -5,7 +5,9 @@ import { useCreateRoute } from "../api/queries";
 import { formatLatLng, isValidLatLng, type LatLng } from "../map/geo";
 import { LazyMap } from "../map/LazyMap";
 import type { MapMarker } from "../map/types";
+import { DEFAULT_TARGET, targetCreateFields, validateTarget } from "../target/defaultTarget";
 import { SaveStatus } from "./Status";
+import { TargetFields } from "./TargetFields";
 
 type Target = "origin" | "destination";
 const TARGET_LABEL: Record<Target, string> = { origin: "출발(집)", destination: "도착" };
@@ -21,6 +23,7 @@ export function RouteCreatePage() {
     destination: null,
   });
   const [target, setTarget] = useState<Target>("origin");
+  const [defaultTarget, setDefaultTarget] = useState(DEFAULT_TARGET);
   const [problem, setProblem] = useState<string | null>(null);
 
   const place = (t: Target, p: LatLng) => setPoints((prev) => ({ ...prev, [t]: p }));
@@ -54,6 +57,8 @@ export function RouteCreatePage() {
     if (!isValidLatLng(origin) || !isValidLatLng(destination)) {
       return setProblem("좌표가 WGS84 범위를 벗어났습니다.");
     }
+    const targetProblem = validateTarget(defaultTarget);
+    if (targetProblem) return setProblem(targetProblem);
     setProblem(null);
     create.mutate(
       {
@@ -64,6 +69,7 @@ export function RouteCreatePage() {
         destinationLat: destination.lat,
         destinationLng: destination.lng,
         isActive: true,
+        ...targetCreateFields(defaultTarget),
       },
       { onSuccess: (route) => void navigate(`/routes/${route.id}/edit`) },
     );
@@ -96,6 +102,7 @@ export function RouteCreatePage() {
             <option value="TO_HOME">퇴근</option>
           </select>
         </div>
+        <TargetFields idPrefix="create" value={defaultTarget} onChange={setDefaultTarget} />
         <fieldset className="segmented">
           <legend>지도 클릭으로 찍을 곳</legend>
           {(["origin", "destination"] as const).map((t) => (

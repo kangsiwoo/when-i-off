@@ -1,5 +1,6 @@
 package com.kangsiwoo.whenioff.route.api
 
+import com.kangsiwoo.whenioff.common.domain.DayType
 import com.kangsiwoo.whenioff.route.domain.CommuteDirection
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import com.kangsiwoo.whenioff.route.domain.LegType
@@ -12,8 +13,11 @@ import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
+import jakarta.validation.constraints.Size
 import java.time.Instant
+import java.time.LocalTime
 
 data class CreateCommuteRouteRequest(
     @field:NotBlank val name: String,
@@ -23,6 +27,22 @@ data class CreateCommuteRouteRequest(
     @field:DecimalMin("-90.0") @field:DecimalMax("90.0") val destinationLat: Double,
     @field:DecimalMin("-180.0") @field:DecimalMax("180.0") val destinationLng: Double,
     val isActive: Boolean = true,
+    /** 일괄 추천(#68)의 기본 목표 도착 시각, KST 벽시계 (`09:00` / `09:00:00`). 없으면 일괄 추천에서 빠진다. */
+    val defaultTargetArrivalTime: LocalTime? = null,
+    /** 일괄 추천을 돌릴 day_type 집합. 생략하면 `[WEEKDAY]`, 빈 배열은 400. */
+    @field:Size(min = 1) val defaultTargetDayTypes: Set<DayType>? = null,
+)
+
+/**
+ * 경로 일부 수정 (#68). 필드가 null(생략)이면 그대로 둔다. 목표 시각은 null이 "그대로"라서
+ * 지우려면 `clearDefaultTargetArrivalTime: true`를 보낸다 (시각과 같이 보내면 400).
+ */
+data class UpdateCommuteRouteRequest(
+    @field:Pattern(regexp = "(?s).*\\S.*", message = "must not be blank") val name: String? = null,
+    val isActive: Boolean? = null,
+    val defaultTargetArrivalTime: LocalTime? = null,
+    val clearDefaultTargetArrivalTime: Boolean? = null,
+    @field:Size(min = 1) val defaultTargetDayTypes: Set<DayType>? = null,
 )
 
 data class CommuteRouteResponse(
@@ -34,6 +54,10 @@ data class CommuteRouteResponse(
     val destinationLat: Double,
     val destinationLng: Double,
     val isActive: Boolean,
+    /** KST 벽시계 (`HH:mm:ss`). 없으면 키째로 빠진다. */
+    val defaultTargetArrivalTime: LocalTime?,
+    /** enum 선언 순서(WEEKDAY, SATURDAY, SUNDAY_HOLIDAY)로 정렬. */
+    val defaultTargetDayTypes: List<DayType>,
     val createdAt: Instant,
 ) {
     companion object {
@@ -47,6 +71,8 @@ data class CommuteRouteResponse(
                 destinationLat = route.destinationLat,
                 destinationLng = route.destinationLng,
                 isActive = route.isActive,
+                defaultTargetArrivalTime = route.defaultTargetArrivalTime,
+                defaultTargetDayTypes = route.defaultTargetDayTypes.toSortedSet().toList(),
                 createdAt = route.createdAt,
             )
     }

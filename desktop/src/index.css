@@ -362,6 +362,18 @@ tbody tr:last-child td {
   opacity: 0.5;
 }
 
+.form .checkbox {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding-bottom: 0.4rem;
+}
+
+.form .form-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .attempts {
   list-style: none;
   padding: 0;

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 
@@ -19,6 +19,7 @@ from whenioff_analytics.io.calibration import (
     save_walking_profiles,
 )
 from whenioff_analytics.io.db import connect
+from whenioff_analytics.io.routes import RouteNotFoundError, load_active_route_targets
 from whenioff_analytics.io.walking import UpsertCounts, load_trip_events, save_walking_segments
 from whenioff_analytics.model.calibration import (
     prediction_calibrations,
@@ -27,6 +28,7 @@ from whenioff_analytics.model.calibration import (
 )
 from whenioff_analytics.model.lookup import Provenance, Resolved
 from whenioff_analytics.model.recommend import NoFeasibleVehicleError, WalkLeg
+from whenioff_analytics.model.targets import Skipped, plan_targets
 from whenioff_analytics.model.walking import SkippedSegment, WalkingSegment, derive_walking_segments
 from whenioff_analytics.service import (
     IncompleteLegError,
@@ -56,11 +58,33 @@ def _local(moment: datetime) -> str:
 
 @app.command()
 def recommend(
-    route_id: Annotated[int, typer.Option("--route-id", help="commute_routes.id")],
+    route_id: Annotated[int | None, typer.Option("--route-id", help="commute_routes.id (경로 하나)")] = None,
     target_arrival_at: Annotated[
-        str,
+        str | None,
         typer.Option("--target-arrival-at", help="목표 도착 시각 (ISO-8601, 타임존 없으면 KST)"),
-    ],
+    ] = None,
+    all_active_routes: Annotated[
+        bool,
+        typer.Option(
+            "--all-active-routes",
+            help="활성 경로마다 경로의 기본 목표 도착 시각으로 계산 (--route-id/--target-arrival-at 대신)",
+        ),
+    ] = False,
+    on_date: Annotated[
+        str | None,
+        typer.Option("--date", help="--all-active-routes의 운행일 (YYYY-MM-DD). 없으면 오늘(KST)"),
+    ] = None,
+    only_in_window: Annotated[
+        bool,
+        typer.Option("--only-in-window", help="목표 −120분 ~ +30분 창 안인 경로만 계산 (cron용)"),
+    ] = False,
+    now_at: Annotated[
+        str | None,
+        typer.Option(
+            "--now",
+            help="창 판정·기본 날짜의 '지금' (ISO-8601, 타임존 없으면 KST). 테스트·backfill용",
+        ),
+    ] = None,
     probability: Annotated[
         float, typer.Option("--probability", "-p", help="구간별 목표 성공확률")
     ] = defaults.DEFAULT_PROBABILITY,
@@ -69,16 +93,30 @@ def recommend(
     ] = defaults.DEFAULT_LOOKBACK_HOURS,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="계산만 하고 DB에 쓰지 않는다")] = False,
 ) -> None:
-    """목표 도착 시각을 맞추려면 언제 집을 나서야 하는지 계산해 기록한다."""
-    target = parse_moment(target_arrival_at)
+    """목표 도착 시각을 맞추려면 언제 집을 나서야 하는지 계산해 기록한다.
+
+    경로 하나(`--route-id` + `--target-arrival-at`) 또는 활성 경로 전부(`--all-active-routes`).
+    """
     if not 0.0 < probability < 1.0:
-        typer.echo("--probability must be in (0, 1)", err=True)
-        raise typer.Exit(2)
+        _usage("--probability must be in (0, 1)")
+    if all_active_routes:
+        if route_id is not None or target_arrival_at is not None:
+            _usage("--all-active-routes cannot be combined with --route-id/--target-arrival-at")
+        now = _parse_moment_option(now_at, "--now") or datetime.now(UTC)
+        service_date = _parse_date(on_date, "--date")
+        _recommend_all(now, service_date, only_in_window, probability, lookback_hours, dry_run)
+        return
+    if on_date is not None or only_in_window or now_at is not None:
+        _usage("--date/--only-in-window/--now need --all-active-routes")
+    if route_id is None or target_arrival_at is None:
+        _usage("give --route-id and --target-arrival-at, or --all-active-routes")
+    target = _parse_moment_option(target_arrival_at, "--target-arrival-at")
+    assert target is not None
 
     with connect() as conn:
         try:
             result = compute_recommendation(conn, route_id, target, probability, lookback_hours)
-        except (NoFeasibleVehicleError, NoCandidateVehiclesError, IncompleteLegError) as error:
+        except RECOMMEND_ERRORS as error:
             conn.rollback()
             typer.echo(f"error: {error}", err=True)
             raise typer.Exit(1) from error
@@ -89,6 +127,74 @@ def recommend(
             return
         outcome, row_id = store(conn, result)
     typer.echo(f"departure_recommendations id={row_id} ({outcome})")
+
+
+RECOMMEND_ERRORS = (NoFeasibleVehicleError, NoCandidateVehiclesError, IncompleteLegError, RouteNotFoundError)
+"""경로 하나의 계산이 실패한 것. 일괄 모드에서는 그 경로만 실패로 세고 다음 경로로 간다."""
+
+
+def _recommend_all(
+    now: datetime,
+    service_date: date | None,
+    only_in_window: bool,
+    probability: float,
+    lookback_hours: float,
+    dry_run: bool,
+) -> None:
+    """활성 경로마다 기본 목표로 계산한다 (#68).
+
+    경로마다 따로 커밋해 한 경로의 실패가 다른 경로를 막지 않는다.
+
+    종료 코드: 계산을 시도한 경로가 있고 그 **전부**가 실패했을 때만 1. 시도한 경로가 없으면(전부 건너뜀) 0.
+    """
+    with connect() as conn:
+        routes = load_active_route_targets(conn)
+        conn.rollback()
+        plans = plan_targets(routes, now, service_date, only_in_window)
+        mode = " (only in window)" if only_in_window else ""
+        typer.echo(f"all active routes: {len(routes)} at {_local(now)}{mode}, date {service_date or 'auto'}")
+        ok = failed = 0
+        for plan in plans:
+            if isinstance(plan, Skipped):
+                typer.echo(
+                    f"route {plan.route.route_id} ({plan.route.name}): skipped {plan.reason}: {plan.detail}"
+                )
+                continue
+            try:
+                with conn.transaction():
+                    result = compute_recommendation(
+                        conn, plan.route.route_id, plan.target_arrival_at, probability, lookback_hours
+                    )
+                    _report(result)
+                    if dry_run:
+                        typer.echo("dry-run: nothing written")
+                    else:
+                        outcome, row_id = store(conn, result)
+                        typer.echo(f"departure_recommendations id={row_id} ({outcome})")
+            except RECOMMEND_ERRORS as error:
+                failed += 1
+                typer.echo(f"route {plan.route.route_id} ({plan.route.name}): error: {error}", err=True)
+                continue
+            ok += 1
+        skipped = sum(isinstance(plan, Skipped) for plan in plans)
+        typer.echo(f"done: computed {ok}, failed {failed}, skipped {skipped}")
+    if failed > 0 and ok == 0:
+        raise typer.Exit(1)
+
+
+def _usage(message: str) -> NoReturn:
+    typer.echo(message, err=True)
+    raise typer.Exit(2)
+
+
+def _parse_moment_option(raw: str | None, option: str) -> datetime | None:
+    if raw is None:
+        return None
+    try:
+        return parse_moment(raw)
+    except ValueError as error:
+        typer.echo(f"{option} must be ISO-8601, got {raw!r}", err=True)
+        raise typer.Exit(2) from error
 
 
 def _report(result: RecommendationResult) -> None:

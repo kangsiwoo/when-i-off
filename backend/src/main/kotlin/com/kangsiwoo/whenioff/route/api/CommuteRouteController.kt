@@ -6,6 +6,7 @@ import com.kangsiwoo.whenioff.route.application.RouteLegService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -34,6 +35,13 @@ class CommuteRouteController(
     fun detail(
         @PathVariable id: Long,
     ): CommuteRouteDetailResponse = commuteRouteService.detail(id)
+
+    /** 이름·사용 여부·기본 목표 도착 시각·대상 day_type 일부 수정 (#68). 내 경로가 아니거나 없으면 404. */
+    @PatchMapping("/{id}")
+    fun update(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: UpdateCommuteRouteRequest,
+    ): CommuteRouteResponse = commuteRouteService.update(id, request)
 
     @PutMapping("/{id}/legs")
     fun replaceLegs(

@@ -43,8 +43,9 @@
 | 상태 | Method | Path | 설명 |
 |---|---|---|---|
 | ✔ | GET | `/commute-routes` | 내 출퇴근 경로 목록 |
-| ✔ | POST | `/commute-routes` | 경로 생성 (이름, 방향, 출발/도착 좌표) → `201` |
+| ✔ | POST | `/commute-routes` | 경로 생성 (이름, 방향, 출발/도착 좌표, 기본 목표 도착 시각·대상 day_type) → `201` |
 | ✔ | GET | `/commute-routes/{id}` | 경로 상세 (구간 + 구간별 신호등 crossing, TRANSIT 구간의 노선·정류장 — 아래 "경로 상세의 TRANSIT 구간") |
+| ✔ | PATCH | `/commute-routes/{id}` | 이름·사용 여부·기본 목표 도착 시각·대상 day_type 일부 수정 (아래 "기본 목표 도착 시각") |
 | ✔ | PUT | `/commute-routes/{id}/legs` | 구간 목록 교체 (순서 재정렬 포함, 아래 "구간 교체의 의미"). WALK/TRANSIT 필드 규칙은 DB CHECK와 동일, 좌표는 WGS84 범위 검증 |
 | ✔ | PUT | `/route-legs/{id}/signal-crossings` | WALK 구간의 교차로 순서 전체 교체. 항목: `trafficSignalId`, `approachDir`(`nt…nw`), `signalKind`(`Bs,Bc,Lt,Pd,St,Ut`, 기본 `Pd`) |
 | ✔ | POST | `/transit-lines` | 노선 수동 등록 (`mode`, `name`, `stdgCd?`, `externalId?`, `hasRealtimeApi`) |
@@ -54,6 +55,25 @@
 | ✔ | GET | `/transit-lines/{id}/schedules/next?stopId=&direction=&at=&limit=` | 정적 시간표 기준 다음 출발 N대 (아래 "정적 시간표") |
 | ✔ | POST | `/traffic-signals` | 교차로 수동 등록 (좌표 + 이름) |
 | ✔ | GET | `/traffic-signals/nearby?lat=&lng=&radiusM=` | 근처 교차로 |
+
+### 기본 목표 도착 시각 (#68)
+경로는 일괄 추천(analytics `recommend --all-active-routes`, cron 한 줄)이 쓸 기본 목표를 갖는다.
+
+- `defaultTargetArrivalTime`: KST 벽시계 `HH:mm[:ss]`, 응답은 `HH:mm:ss`. 없으면 응답에서 **키째로 빠지고**
+  그 경로는 일괄 추천에서 빠진다
+- `defaultTargetDayTypes`: `WEEKDAY` / `SATURDAY` / `SUNDAY_HOLIDAY`의 집합. 그날의 day_type(공휴일은
+  `SUNDAY_HOLIDAY`)이 들어 있을 때만 돈다. 생성 시 생략하면 `["WEEKDAY"]`, 빈 배열은 400. 응답은 enum 순서로 정렬
+- 목록·생성·상세(`route`) 응답 모두 두 필드를 준다
+
+`PATCH /commute-routes/{id}` 본문은 바꿀 필드만 보낸다 (`null`/생략 = 그대로, trip PATCH와 같은 규칙):
+
+```json
+{ "name": "평일 출근", "isActive": true, "defaultTargetArrivalTime": "09:00", "defaultTargetDayTypes": ["WEEKDAY"] }
+```
+
+- 목표 시각은 `null`이 "그대로"라서 지우려면 `"clearDefaultTargetArrivalTime": true`를 보낸다. 시각과 같이 보내면 400
+- `name`이 공백뿐이면 400, 앞뒤 공백은 잘라 저장한다. 내 경로가 아니거나 없으면 404
+- 응답은 `GET /commute-routes` 목록 항목과 같은 모양
 
 ### 경로 상세의 TRANSIT 구간
 TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노선과 승하차 정류장 객체**를 준다 (#36).

@@ -5,12 +5,14 @@ import {
   directionLabel,
   formatDistance,
   formatDuration,
+  dayTypeLabel,
   formatKst,
   legTypeLabel,
   modeLabel,
 } from "../format";
 import { LazyMap } from "../map/LazyMap";
 import { routeOverlay } from "../map/overlay";
+import { RouteSettingsForm } from "./RouteSettingsForm";
 import { RouteTabs } from "./RouteTabs";
 import { ErrorMessage, Loading } from "./Status";
 
@@ -49,9 +51,18 @@ function RouteDetail({ id }: { id: number }) {
         <dd>
           {route.destinationLat.toFixed(5)}, {route.destinationLng.toFixed(5)}
         </dd>
+        <dt>기본 목표</dt>
+        <dd>
+          {route.defaultTargetArrivalTime
+            ? `${route.defaultTargetArrivalTime.slice(0, 5)} 도착 · ${route.defaultTargetDayTypes.map(dayTypeLabel).join(", ")}`
+            : "없음 (일괄 추천 안 함)"}
+        </dd>
         <dt>등록</dt>
         <dd>{formatKst(route.createdAt)}</dd>
       </dl>
+
+      <h2>설정</h2>
+      <RouteSettingsForm key={route.id} route={route} />
 
       <h2>지도</h2>
       <LazyMap label="경로 지도" {...routeOverlay(route, legs)} fitKey={`route-${route.id}`} />
