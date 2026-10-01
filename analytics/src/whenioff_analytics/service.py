@@ -13,7 +13,13 @@ from whenioff_analytics.io.recommendations import RecommendationRow, SaveOutcome
 from whenioff_analytics.io.routes import CommuteRoute, RouteLeg, load_route
 from whenioff_analytics.io.schedules import load_scheduled_departures
 from whenioff_analytics.io.signals import CycleBand, load_signal_cycles, select_cycle
-from whenioff_analytics.model.distributions import Moments, Normal, TimeNormal, haversine_m, walk_time
+from whenioff_analytics.model.distributions import (
+    Moments,
+    Normal,
+    TimeNormal,
+    planned_walk_distance_m,
+    walk_time,
+)
 from whenioff_analytics.model.recommend import (
     Leg,
     Recommendation,
@@ -125,12 +131,11 @@ def _crossing_wait(
 
 
 def _walk_distance_m(leg: RouteLeg) -> float:
-    """실측(`walking_segments`)은 아직 없다. 계획 거리, 없으면 구간 양 끝 좌표의 대권거리."""
-    if leg.planned_distance_m is not None:
-        return leg.planned_distance_m
-    if leg.start_lat is None or leg.start_lng is None or leg.end_lat is None or leg.end_lng is None:
+    """실측(`walking_segments`)은 아직 쓰지 않는다. 계획 거리, 없으면 구간 양 끝 좌표의 대권거리."""
+    distance = planned_walk_distance_m(leg.planned_distance_m, leg.start, leg.end)
+    if distance is None:
         raise IncompleteLegError(leg.id, "WALK leg has neither planned_distance_m nor endpoints")
-    return haversine_m(leg.start_lat, leg.start_lng, leg.end_lat, leg.end_lng)
+    return distance
 
 
 def _transit_leg(

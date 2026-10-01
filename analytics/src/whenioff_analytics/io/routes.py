@@ -41,6 +41,14 @@ class RouteLeg:
     planned_travel_sec: int | None
     crossings: tuple[SignalCrossing, ...]
 
+    @property
+    def start(self) -> tuple[float, float] | None:
+        return to_point(self.start_lat, self.start_lng)
+
+    @property
+    def end(self) -> tuple[float, float] | None:
+        return to_point(self.end_lat, self.end_lng)
+
 
 @dataclass(frozen=True)
 class CommuteRoute:
@@ -129,3 +137,7 @@ def _opt_int(value: Any) -> int | None:
 
 def _opt_str(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def to_point(lat: float | None, lng: float | None) -> tuple[float, float] | None:
+    return None if lat is None or lng is None else (lat, lng)

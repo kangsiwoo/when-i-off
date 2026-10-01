@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections import Counter
+from collections.abc import Iterable
+from datetime import date, datetime
 from typing import Annotated
 
 import typer
@@ -10,7 +12,9 @@ import typer
 from whenioff_analytics import defaults
 from whenioff_analytics.daytype import KST, UTC, kst_date_of
 from whenioff_analytics.io.db import connect
+from whenioff_analytics.io.walking import load_trip_events, save_walking_segments
 from whenioff_analytics.model.recommend import NoFeasibleVehicleError, TransitLeg
+from whenioff_analytics.model.walking import SkippedSegment, WalkingSegment, derive_walking_segments
 from whenioff_analytics.service import (
     IncompleteLegError,
     NoCandidateVehiclesError,
@@ -96,6 +100,60 @@ def _report(result: RecommendationResult) -> None:
         typer.echo(
             f"      catch p={chosen.catch_probability:.4f}, arrive-in-time p={chosen.arrive_probability:.4f}"
         )
+
+
+def _parse_date(raw: str | None, option: str) -> date | None:
+    if raw is None:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as error:
+        typer.echo(f"{option} must be YYYY-MM-DD, got {raw!r}", err=True)
+        raise typer.Exit(2) from error
+
+
+@app.command("derive-walking-segments")
+def derive_walking_segments_command(
+    date_from: Annotated[
+        str | None, typer.Option("--from", help="이 trip_date부터 (YYYY-MM-DD, 포함). 없으면 처음부터")
+    ] = None,
+    date_to: Annotated[
+        str | None, typer.Option("--to", help="이 trip_date까지 (YYYY-MM-DD, 포함). 없으면 끝까지")
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="계산만 하고 DB에 쓰지 않는다")] = False,
+) -> None:
+    """trip·탑승 시도·GPS에서 WALK 구간 실측을 파생해 `walking_segments`에 upsert한다."""
+    start, end = _parse_date(date_from, "--from"), _parse_date(date_to, "--to")
+    if start is not None and end is not None and start > end:
+        typer.echo("--from must not be after --to", err=True)
+        raise typer.Exit(2)
+
+    with connect() as conn:
+        trips = load_trip_events(conn, start, end)
+        segments: list[WalkingSegment] = []
+        skipped: list[SkippedSegment] = []
+        for trip in trips:
+            derived, missed = derive_walking_segments(trip)
+            segments += derived
+            skipped += missed
+
+        window = f"{start or ''}..{end or ''}" if start or end else "all"
+        typer.echo(f"trips {len(trips)} (trip_date {window})")
+        typer.echo(f"  derived  {len(segments)}{_breakdown(s.distance_source for s in segments)}")
+        typer.echo(f"  skipped  {len(skipped)}{_breakdown(s.reason for s in skipped)}")
+        if dry_run:
+            conn.rollback()
+            typer.echo("dry-run: nothing written")
+            return
+        counts = save_walking_segments(conn, segments)
+    typer.echo(
+        f"walking_segments: created {counts.created}, updated {counts.updated}, unchanged {counts.unchanged}"
+    )
+
+
+def _breakdown(values: Iterable[str]) -> str:
+    counted = Counter(values)
+    return f" ({', '.join(f'{key} {n}' for key, n in sorted(counted.items()))})" if counted else ""
 
 
 if __name__ == "__main__":

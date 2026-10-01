@@ -273,9 +273,18 @@ trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 
 - 중간 WALK(환승): 앞 구간의 탄 시도(`CAUGHT`)의 `alighted_at` → 뒤 구간의 첫 시도의 `arrived_at_stop_at`
 - 마지막 WALK: 마지막 구간의 탄 시도의 `alighted_at` → `trip.arrived_destination_at`
 
+- 도보만 있는 경로(WALK 하나): `trip.left_home_at` → `trip.arrived_destination_at`
+
+경로는 WALK로 시작하고 끝나며 WALK/TRANSIT이 번갈아 오므로(backend가 강제) 위 셋은 "앞 구간이 끝난
+사건 → 뒤 구간이 시작된 사건"의 특수한 경우다. 양 끝 중 하나라도 없거나 끝 ≤ 시작이면 그 구간은
+파생하지 않는다.
+
 정류장에서 다음 차를 기다린 시간은 도보가 아니다. 그래서 역 도착은 항상 첫 시도에서 가져온다.
 
-거리는 `gps_traces`로 계산하거나, GPS가 부실하면 `route_legs.planned_distance_m`을 쓴다.
+거리는 그 시간 창의 `gps_traces`(`accuracy_m > 100`인 점 제외)를 이은 haversine 누적이고, 쓸 만한
+점이 둘 미만이면 `route_legs.planned_distance_m`, 그것도 없으면 구간 양 끝 좌표의 대권거리를 쓴다.
+`(commute_trip_id, route_leg_id)`당 한 행으로 upsert하며 이상치 속도도 그대로 둔다 (제외는
+`calibrate`). 배치: `wio-analytics derive-walking-segments` (analytics/README.md).
 
 ### `user_walking_profile`
 `walking_segments`를 누적 집계한 사용자의 평균 도보 속도(표준편차, 샘플 수 포함).
