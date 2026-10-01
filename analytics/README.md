@@ -192,7 +192,7 @@ DB는 compose 안에서 서비스 이름(`postgres`)으로 붙는다. 이미지�
 
 정기 실행은 호스트 crontab으로 한다: [`cron.example`](cron.example).
 - 새벽 03:00 `derive-walking-segments` → `calibrate` (순서가 중요하다 — calibrate는 파생된 도보 구간을 읽는다)
-- 05:00~23:59 사이 10분마다 `recommend --all-active-routes --only-in-window` 한 줄. 경로마다 기본 목표 시각의
+- 하루 종일 10분마다 `recommend --all-active-routes --only-in-window` 한 줄. 경로마다 기본 목표 시각의
   −120분 ~ +30분 창 안일 때만 다시 계산한다 (실시간 예측이 바뀌므로). 경로를 더하거나 목표 시각을 바꿔도 crontab은
   그대로다 — 목표 시각·대상 day_type은 desktop의 경로 화면(또는 `PATCH /commute-routes/{id}`)에서 정한다
 - 시각은 KST. `CRON_TZ`는 "언제 돌지"만 바꾸고, 운행일·창은 recommend가 KST로 판정한다

@@ -14,5 +14,6 @@ RUN="docker compose -f /srv/when-i-off/docker-compose.yml run --rm -T analytics"
 # 출퇴근 추천: 10분마다 활성 경로를 모두 보고, 경로의 기본 목표 도착 시각(commute_routes, #68) −120분 ~ +30분
 # 창 안인 경로만 다시 계산한다 (실시간 예측이 바뀌므로). 창 밖이거나 그날의 day_type이 경로의 대상이 아니면
 # 아무것도 안 한다. 날짜·창은 recommend가 KST로 판정하므로 명령에 `date`를 넣을 필요가 없다.
-# 05:00~23:59만 부른다 — 목표가 07:00 이전이거나 자정 근처인 경로가 있으면 시간 범위를 넓힌다.
-*/10 5-23 * * *  cd $WIO && $RUN recommend --all-active-routes --only-in-window >> /var/log/wio-analytics.log 2>&1
+# 하루 종일 부른다. 창 밖이면 DB만 한 번 읽고 끝나서 싸고, 시간대를 좁히면 이른 출근(06:30 목표 → 창 04:30)이나
+# 자정 근처 목표의 창을 놓친다.
+*/10 * * * *  cd $WIO && $RUN recommend --all-active-routes --only-in-window >> /var/log/wio-analytics.log 2>&1
