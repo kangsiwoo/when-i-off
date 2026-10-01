@@ -57,8 +57,50 @@ cd backend
 | `wio.polling.enabled` | | `false` | 실시간 폴링 스케줄러 on/off |
 | `wio.polling.interval-ms` | | 60000 | 폴링 간격 |
 | `wio.polling.windows` | | `06:30-09:30,17:30-20:30` | 폴링하는 시간대 (KST) |
+| `wio.retention.enabled` | `WIO_RETENTION_ENABLED` | `false` | 보관 정책 정리 스케줄 on/off (아래 "보관 정책과 백업") |
+| `wio.retention.cron` | `WIO_RETENTION_CRON` | `0 30 4 * * *` | 정리 시각 (Spring 6필드 cron, KST). analytics 03:00 배치 뒤 |
+| `wio.retention.dry-run` | `WIO_RETENTION_DRY_RUN` | `false` | 지울 행 수만 로그로 남기고 지우지 않는다 |
+| `wio.retention.gps-days` | | 90 | 도보 구간이 파생된 trip의 GPS, trip 없는 상시 수집분 |
+| `wio.retention.gps-underived-days` | | 365 | 도보 구간이 하나도 파생되지 않은 trip의 GPS 상한 (`gps-days` 이상) |
+| `wio.retention.observation-days` | | 365 | `transit_arrival_observations` |
+| `wio.retention.signal-state-days` | | 30 | `traffic_signal_states` |
+| `wio.retention.batch-size` | | 5000 | DELETE 한 문(=한 커밋)이 지우는 최대 행 수 |
 
 키는 환경변수로만 받는다. 값은 커밋·로그·채팅에 남기지 않는다.
+
+## 보관 정책과 백업
+
+폴링·GPS 원본은 매일 쌓인다. 기본으로는 아무것도 지우지 않고, 켜면 매일 04:30(KST)에 오래된 행을 지운다.
+무엇을 언제 지우는지는 [DATA_MODEL.md "보관 정책"](../docs/DATA_MODEL.md#보관-정책)이 진실이다.
+
+```bash
+# 처음엔 dry-run으로 지울 양만 본다 (시작 로그에 설정, 실행 때 규칙별 건수)
+WIO_RETENTION_ENABLED=true WIO_RETENTION_DRY_RUN=true docker compose up -d backend
+docker compose logs backend | grep retention
+#   retention scheduled: cron '0 30 4 * * *' (KST), dry-run true, gps 90d (underived trips 365d), ...
+#   retention dry-run gps_traces[derived-trip] older than 90d (< 2026-07-03T19:30:00Z): would delete 1234
+# 확인했으면 .env에 WIO_RETENTION_ENABLED=true만 두고 다시 올린다
+```
+
+- 규칙마다 `deleted N in k batch(es)` 로그, 끝에 테이블별 합계 한 줄. Micrometer 카운터
+  `wio.retention.deleted{table,rule}`도 올린다 (`/actuator/metrics`는 인증 없이 열리므로 기본 노출하지 않는다.
+  보려면 `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics`로 잠깐 연다)
+- 지금 바로 한 번 돌려 보려면 관리 API 대신 cron을 당긴다: `WIO_RETENTION_CRON='0 */1 * * * *'`(매분) — 확인 뒤 되돌린다
+- 중간에 실패해도 배치마다 커밋하므로 그때까지 지운 행은 남고, 다음 실행이 이어서 지운다
+
+**백업**: [`ops/backup/pg_dump.sh`](../ops/backup/pg_dump.sh)가 `pg_dump -Fc` 한 파일을 만들고 최신 N개만 남긴다.
+설정은 전부 환경변수(`WIO_BACKUP_DIR`, `WIO_BACKUP_KEEP`=14, `WIO_BACKUP_MODE`=`compose`|`host` 등, 스크립트 머리말)다.
+비밀번호는 스크립트·cron에 쓰지 않는다 — compose 모드는 컨테이너 안 로컬 소켓이라 필요 없고, host 모드는
+`PGPASSWORD`/`~/.pgpass`를 읽는다. cron 예시는 [`ops/backup/cron.example`](../ops/backup/cron.example)(04:00, 정리 전).
+
+```bash
+WIO_BACKUP_DIR=/var/backups/when-i-off ops/backup/pg_dump.sh            # compose의 postgres 컨테이너에서 덤프
+PGHOST=localhost WIO_BACKUP_MODE=host WIO_BACKUP_DIR=~/wio-backups ops/backup/pg_dump.sh
+
+pg_restore --list /var/backups/when-i-off/when_i_off-20261001T190000Z.dump | head   # 덤프 확인
+# 복구 (빈 DB 또는 덮어쓰기). compose면: docker compose exec -T postgres pg_restore -U wio -d when_i_off --clean --if-exists < 파일
+pg_restore -h localhost -U wio -d when_i_off --clean --if-exists --no-owner /var/backups/when-i-off/<파일>.dump
+```
 
 ## 테스트
 

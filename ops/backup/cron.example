@@ -1,0 +1,8 @@
+# when-i-off DB 백업 — 호스트 crontab 예시 (`crontab -e`에 붙여 넣고 경로를 고친다). 시각은 KST.
+# 04:00: analytics 새벽 배치(03:00, analytics/cron.example)가 끝난 뒤, backend 보관 정책 정리(04:30,
+# wio.retention.cron) 전이다 — 그날 지워질 행도 마지막 백업에는 남는다.
+# 비밀번호는 여기에 쓰지 않는다. compose 모드는 필요 없고, host 모드는 ~/.pgpass를 쓴다.
+CRON_TZ=Asia/Seoul
+WIO=/srv/when-i-off
+
+0 4 * * *  WIO_BACKUP_DIR=/var/backups/when-i-off WIO_BACKUP_KEEP=14 $WIO/ops/backup/pg_dump.sh >> /var/log/wio-backup.log 2>&1

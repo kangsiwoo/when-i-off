@@ -133,7 +133,7 @@ when-i-off/
 - 앱 알림: 추천 시각에 "지금 나가세요" (로컬 알림으로 시작, 필요하면 APNs)
 - 추천 대비 실제 결과 자동 평가 → `model_version`별 성공률 추적
 - 데이터 보관: `gps_traces`는 90일 후 삭제(`walking_segments`로 요약 완료된 것만),
-  `transit_arrival_observations`는 1년
+  `transit_arrival_observations`는 1년 — backend 스케줄로 구현(#74, DATA_MODEL "보관 정책")
 - 이 시점에 앱의 실시간 폴링이 늘어 공공 API 한도가 문제 되면 Redis(짧은 TTL 캐시) 검토
 
 ## 리스크 / 미리 알아둘 것

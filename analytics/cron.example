@@ -10,7 +10,9 @@ RUN="docker compose -f /srv/when-i-off/docker-compose.yml run --rm -T analytics"
 
 # 새벽 03:00 — 어제까지의 실측으로 도보 구간을 파생하고 보정 테이블을 다시 계산한 뒤(순서가 중요하다),
 # 추천 성과를 model_version별로 평가한다 (#72). evaluate는 앞 둘의 결과를 읽지 않지만 같은 새벽 배치에 묶는다.
-0 3 * * *  cd $WIO && $RUN derive-walking-segments >> /var/log/wio-analytics.log 2>&1 && $RUN calibrate >> /var/log/wio-analytics.log 2>&1 && $RUN evaluate >> /var/log/wio-analytics.log 2>&1
+# 도보 파생은 최근 30일 trip만 다시 한다. backend 보관 정책(#74)이 파생된 trip의 GPS를 90일 뒤 지우므로,
+# 그보다 오래된 trip을 재파생하면 거리가 GPS 대신 fallback으로 덮어써진다 (DATA_MODEL "보관 정책").
+0 3 * * *  cd $WIO && $RUN derive-walking-segments --from $(TZ=Asia/Seoul date -d '30 days ago' +\%F) >> /var/log/wio-analytics.log 2>&1 && $RUN calibrate >> /var/log/wio-analytics.log 2>&1 && $RUN evaluate >> /var/log/wio-analytics.log 2>&1
 
 # 출퇴근 추천: 10분마다 활성 경로를 모두 보고, 경로의 기본 목표 도착 시각(commute_routes, #68) −120분 ~ +30분
 # 창 안인 경로만 다시 계산한다 (실시간 예측이 바뀌므로). 창 밖이거나 그날의 day_type이 경로의 대상이 아니면

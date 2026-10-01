@@ -64,6 +64,16 @@ wio:
     enabled: false
     interval-ms: 60000
     windows: 06:30-09:30,17:30-20:30
+  # 오래된 GPS·관측 정리 (#74). 폴링처럼 기본 꺼짐 — WIO_RETENTION_ENABLED=true로 켠다.
+  retention:
+    enabled: false
+    cron: "0 30 4 * * *"   # KST. analytics 03:00 배치 뒤
+    dry-run: false
+    gps-days: 90
+    gps-underived-days: 365
+    observation-days: 365
+    signal-state-days: 30
+    batch-size: 5000
 
 ---
 spring:
@@ -87,6 +97,8 @@ spring:
 wio:
   api-token: test-token
   polling:
+    enabled: false
+  retention:
     enabled: false
 logging:
   level:
