@@ -138,6 +138,27 @@ transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
   `(user_id, route_leg_id)`는 `UNIQUE NULLS NOT DISTINCT`라 전역 행도 같은 `ON CONFLICT`로 잡힌다
   (PostgreSQL 15+)
 
+## 컨테이너와 스케줄
+
+배치는 상주 서비스가 아니라서 compose의 `analytics` 서비스는 `profiles: [batch]`로 두었다(`up`으로는 뜨지
+않는다). 필요할 때 한 번씩 돌린다.
+
+```bash
+docker compose --profile batch build analytics
+docker compose run --rm analytics derive-walking-segments
+docker compose run --rm analytics calibrate
+docker compose run --rm analytics recommend --route-id 1 --target-arrival-at 2026-10-05T09:00:00
+```
+
+DB는 compose 안에서 서비스 이름(`postgres`)으로 붙는다. 이미지는 `uv.lock` 그대로 개발 의존성 없이
+설치하고, 비루트 사용자로 돈다.
+
+정기 실행은 호스트 crontab으로 한다: [`cron.example`](cron.example).
+- 새벽 03:00 `derive-walking-segments` → `calibrate` (순서가 중요하다 — calibrate는 파생된 도보 구간을 읽는다)
+- 출근 목표 −120분부터 +30분까지 10분마다 `recommend` (실시간 예측이 바뀌므로 다시 계산한다)
+- 시각은 KST. `CRON_TZ`는 "언제 돌지"만 바꾸므로 목표 날짜는 `TZ=Asia/Seoul date`로 뽑는다
+- 경로별 기본 목표 시각 컬럼(#7)이 생기기 전까지는 경로 id와 목표 시각을 crontab에 적는다
+
 ## 계산
 
 `docs/ALGORITHM.md` 2·3절 그대로다. `MODEL_VERSION`은 **v2** — v1(콜드스타트 기본값만)에서 보정

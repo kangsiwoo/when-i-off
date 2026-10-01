@@ -1,0 +1,17 @@
+# when-i-off analytics 배치 — 호스트 crontab 예시 (`crontab -e`에 붙여 넣고 경로·경로 id·목표 시각을 고친다).
+# 배치는 compose의 `analytics` 서비스(profile: batch)로 돈다. 모두 idempotent라 겹치거나 다시 돌려도 결과가 같다.
+#
+# 시각은 KST다. cronie/Vixie cron은 CRON_TZ를 읽는다 — 지원하지 않는 cron이면 호스트 TZ를 Asia/Seoul로 둔다.
+# crontab에서 `%`는 줄바꿈이라 `\%`로 쓴다. CRON_TZ는 "언제 돌지"만 바꾸고 명령 안의 `date`에는 안 먹으므로
+# 목표 날짜는 `TZ=Asia/Seoul date`로 뽑는다 — 호스트가 UTC면 07:00 KST가 아직 전날이다.
+CRON_TZ=Asia/Seoul
+WIO=/srv/when-i-off
+RUN="docker compose -f /srv/when-i-off/docker-compose.yml run --rm -T analytics"
+
+# 새벽 03:00 — 어제까지의 실측으로 도보 구간을 파생하고 보정 테이블을 다시 계산한다 (순서가 중요하다).
+0 3 * * *  cd $WIO && $RUN derive-walking-segments >> /var/log/wio-analytics.log 2>&1 && $RUN calibrate >> /var/log/wio-analytics.log 2>&1
+
+# 평일 출근: 목표 도착 09:00 → 07:00~09:30에 10분마다 (목표 −120분 ~ +30분). 실시간 예측이 바뀌므로 다시 계산한다.
+# 경로별 기본 목표 시각 컬럼(Phase 5, #7)이 생기기 전까지는 경로 id와 목표 시각을 여기 적는다.
+*/10 7-8 * * 1-5  cd $WIO && $RUN recommend --route-id 1 --target-arrival-at "$(TZ=Asia/Seoul date +\%F)T09:00:00" >> /var/log/wio-analytics.log 2>&1
+0-30/10 9 * * 1-5  cd $WIO && $RUN recommend --route-id 1 --target-arrival-at "$(TZ=Asia/Seoul date +\%F)T09:00:00" >> /var/log/wio-analytics.log 2>&1
