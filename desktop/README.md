@@ -2,7 +2,7 @@
 
 TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)(#56)와
 이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58), 경로별 캘리브레이션 상태(#60), 추천 vs 실제(#62)가
-있다. 지도 위 경로 등록·구간/정류장 편집과 trip GPS 트랙(#64)도 있다. 신호등 교차로 편집은 후속 작업이다.
+있다. 지도 위 경로 등록·구간/정류장/신호등 편집과 trip GPS 트랙(#64)도 있다.
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
 스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch · Recharts(차트),
@@ -122,8 +122,9 @@ npm run gen:api
     고른 정류장으로 옮긴다. 노선별 정류장 목록 API는 없어서 근처 검색만 쓴다
   - 저장 전에 서버 규칙을 먼저 검사한다(`src/legs/legRules.ts`: `RouteLegService`·`RouteLegRequest` 검증을 그대로 옮김 —
     서버를 바꾸면 같이 바꾼다). 서버만 아는 것(실측 기록이 붙은 구간 삭제 → 409 등)은 `detail`을 그대로 보여 준다
-  - 신호등 교차로(`PUT /route-legs/{id}/signal-crossings`, `/traffic-signals/nearby`, `POST /traffic-signals`) 편집은 아직 없다
-    (후속 이슈). 경로 상세 표의 "신호등" 열에서 개수만 본다
+  - 신호등: 선택한 **저장된** 도보 구간에서 근처 교차로(`/traffic-signals/nearby`, 구간을 덮는 원)를 목록·지도 마커로 골라
+    순서·접근 방향·신호 종류를 정하고 `PUT /route-legs/{id}/signal-crossings`로 따로 저장한다. "지도에서 교차로 등록"은
+    지도를 누른 자리에 `POST /traffic-signals`로 만들고 바로 추가한다
 - 경로 상세에 읽기 전용 지도(도보 선, 대중교통 점선과 승하차 정류장)
 - trip 상세 "GPS 트랙": `GET /commute-trips/{id}/gps-traces`를 시각순 폴리라인으로 그리고 시작/끝, 경로의 승하차 정류장(그 trip의
   정류장 도착·하차 시각)을 마커로 단다
@@ -137,11 +138,11 @@ src/
   auth/       token.ts(localStorage), RequireAuth.tsx
   pages/      LoginPage, Layout, RouteListPage, RouteDetailPage,
               TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
-              RouteCreatePage, RouteEditPage(+ LegCards), TripGpsMap,
+              RouteCreatePage, RouteEditPage(+ LegCards, SignalCrossingsEditor), TripGpsMap,
               RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
   recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
-  legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증) — 화면 없는 순수 로직
+  legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증, crossing 코드) — 화면 없는 순수 로직
   map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선)
   trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다

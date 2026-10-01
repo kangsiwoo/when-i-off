@@ -6,7 +6,9 @@ import {
   moveDraft,
   newTransit,
   newWalk,
+  toCrossingRequests,
   toLegRequests,
+  validateCrossingRequests,
   validateDrafts,
   validateLegRequests,
   type LegDraft,
@@ -201,5 +203,33 @@ describe("drafts", () => {
     expect(moveDraft(["a", "b", "c"], 1, -1)).toEqual(["b", "a", "c"]);
     expect(moveDraft(["a", "b", "c"], 2, 1)).toEqual(["a", "b", "c"]);
     expect(moveDraft(["a", "b", "c"], 0, -1)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("signal crossings (RouteLegService.replaceSignalCrossings, SignalCodes)", () => {
+  it("numbers crossings from 1 and accepts known codes", () => {
+    const reqs = toCrossingRequests([
+      { trafficSignalId: 9, approachDir: "nt", signalKind: "Pd" },
+      { trafficSignalId: 10, approachDir: "sw", signalKind: "St" },
+    ]);
+    expect(reqs.map((r) => r.seqOrder)).toEqual([1, 2]);
+    expect(validateCrossingRequests(reqs)).toEqual([]);
+    expect(validateCrossingRequests([])).toEqual([]);
+  });
+
+  it("rejects unknown codes and gaps", () => {
+    expect(
+      validateCrossingRequests([
+        { trafficSignalId: 9, seqOrder: 2, approachDir: "north", signalKind: "Pd" },
+      ]),
+    ).toEqual([
+      "교차로 순서는 1부터 빠짐없이 이어져야 합니다 (받은 순서 2).",
+      "교차로 2: 접근 방향은 nt, et, st, wt, ne, se, sw, nw 중 하나여야 합니다.",
+    ]);
+    expect(
+      validateCrossingRequests([
+        { trafficSignalId: 9, seqOrder: 1, approachDir: "nt", signalKind: "pd" },
+      ]),
+    ).toEqual(["교차로 1: 신호 종류는 Bs, Bc, Lt, Pd, St, Ut 중 하나여야 합니다."]);
   });
 });

@@ -29,6 +29,9 @@ export type RouteLegRequest = components["schemas"]["RouteLegRequest"];
 export type TransitLine = components["schemas"]["TransitLineResponse"];
 export type TransitStop = components["schemas"]["TransitStopResponse"];
 export type TransitMode = TransitLine["mode"];
+export type TrafficSignal = components["schemas"]["TrafficSignalResponse"];
+export type SignalCrossing = components["schemas"]["SignalCrossingResponse"];
+export type SignalCrossingRequest = components["schemas"]["SignalCrossingRequest"];
 export type GpsTrace = components["schemas"]["GpsTraceResponse"];
 
 export interface ApiClientOptions {

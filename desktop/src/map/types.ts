@@ -7,8 +7,11 @@ export type MarkerKind =
   | "walk-end"
   | "stop"
   | "candidate"
+  | "signal"
+  | "signal-crossed"
   | "gps-start"
-  | "gps-end";
+  | "gps-end"
+  | "gps-point";
 
 export interface MapMarker {
   id: string;

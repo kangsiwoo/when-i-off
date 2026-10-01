@@ -34,7 +34,7 @@ function icon(marker: MapMarker) {
   return L.divIcon({
     className: `map-pin map-pin-${marker.kind}${marker.selected ? " map-pin-selected" : ""}`,
     html: `<span>${escapeHtml(marker.text ?? "")}</span>`,
-    iconSize: [24, 24],
+    iconSize: marker.kind === "gps-point" ? [8, 8] : [24, 24],
   });
 }
 

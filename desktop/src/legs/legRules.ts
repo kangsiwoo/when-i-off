@@ -5,13 +5,22 @@
  * - backend/src/main/kotlin/com/kangsiwoo/whenioff/route/application/RouteLegService.kt
  *   `validateSequence` / `requireContiguous` / `matchExisting`(id 중복) / `applyWalk` / `applyTransit`
  * - backend/src/main/kotlin/com/kangsiwoo/whenioff/route/api/RouteDtos.kt
- *   `RouteLegRequest`의 `@Positive`·`@DecimalMin/Max`, `ReplaceRouteLegsRequest.legs`의 `@NotEmpty`
+ *   `RouteLegRequest`의 `@Positive`·`@DecimalMin/Max`, `ReplaceRouteLegsRequest.legs`의 `@NotEmpty`,
+ *   `SignalCrossingRequest`
+ * - backend/src/main/kotlin/com/kangsiwoo/whenioff/signal/domain/SignalCodes.kt (교차로 코드)
  * - DB `route_legs.chk_leg_fields` (V1__init_schema.sql)
  *
  * 서버만 알 수 있는 것(실측 기록이 붙은 구간의 삭제·종류 변경 → 409, 이 경로의 구간이 아닌 id,
  * 없는 노선·정류장 id)은 여기서 검사하지 않는다. 그 응답의 `detail`은 화면이 그대로 보여 준다.
  */
-import type { RouteLeg, RouteLegRequest, TransitLine, TransitStop } from "../api/client";
+import type {
+  RouteLeg,
+  RouteLegRequest,
+  SignalCrossing,
+  SignalCrossingRequest,
+  TransitLine,
+  TransitStop,
+} from "../api/client";
 import { isValidLatLng, walkDistanceM, type LatLng } from "../map/geo";
 
 export interface WalkDraft {
@@ -24,6 +33,7 @@ export interface WalkDraft {
   plannedDistanceM: number | null;
   /** 사용자가 거리를 직접 고쳤으면 끝점을 옮겨도 직선거리로 덮지 않는다. */
   distanceEdited: boolean;
+  signalCrossings: SignalCrossing[];
 }
 
 export interface TransitDraft {
@@ -49,6 +59,7 @@ export function newWalk(start: LatLng | null, end: LatLng | null): WalkDraft {
     end,
     plannedDistanceM: start && end ? walkDistanceM(start, end) : null,
     distanceEdited: false,
+    signalCrossings: [],
   };
 }
 
@@ -84,6 +95,7 @@ export function draftsFromLegs(legs: RouteLeg[]): LegDraft[] {
           plannedDistanceM: leg.plannedDistanceM ?? null,
           // 저장된 값은 사용자가 정한 값으로 본다 — 끝점을 끌어도 덮지 않는다.
           distanceEdited: leg.plannedDistanceM != null,
+          signalCrossings: [...leg.signalCrossings].sort((a, b) => a.seqOrder - b.seqOrder),
         };
       }
       return {
@@ -246,4 +258,56 @@ export function moveDraft<T>(list: T[], index: number, delta: -1 | 1): T[] {
   const next = [...list];
   [next[index], next[to]] = [next[to]!, next[index]!];
   return next;
+}
+
+// --- 신호등 crossing (PUT /route-legs/{id}/signal-crossings) ---
+
+/** SignalCodes.APPROACH_DIRS — 교차로 기준 접근 방향. */
+export const APPROACH_DIRS = ["nt", "et", "st", "wt", "ne", "se", "sw", "nw"] as const;
+/** SignalCodes.SIGNAL_KINDS — 신호 종류. 보행자는 `Pd`(기본값). */
+export const SIGNAL_KINDS = ["Bs", "Bc", "Lt", "Pd", "St", "Ut"] as const;
+
+export const APPROACH_DIR_LABEL: Record<(typeof APPROACH_DIRS)[number], string> = {
+  nt: "북",
+  et: "동",
+  st: "남",
+  wt: "서",
+  ne: "북동",
+  se: "남동",
+  sw: "남서",
+  nw: "북서",
+};
+
+export interface CrossingDraft {
+  trafficSignalId: number;
+  approachDir: string;
+  signalKind: string;
+}
+
+/** 화면 순서대로 seqOrder 1부터. */
+export function toCrossingRequests(drafts: CrossingDraft[]): SignalCrossingRequest[] {
+  return drafts.map((d, i) => ({ ...d, seqOrder: i + 1 }));
+}
+
+/** RouteLegService.replaceSignalCrossings의 검사 (WALK 구간 여부는 화면이 WALK에만 편집을 연다). */
+export function validateCrossingRequests(requests: SignalCrossingRequest[]): string[] {
+  const errors: string[] = [];
+  const ordered = [...requests].sort((a, b) => a.seqOrder - b.seqOrder);
+  const seqs = ordered.map((r) => r.seqOrder);
+  if (seqs.some((s, i) => s !== i + 1)) {
+    errors.push(`교차로 순서는 1부터 빠짐없이 이어져야 합니다 (받은 순서 ${seqs.join(", ")}).`);
+  }
+  for (const r of ordered) {
+    if (!(APPROACH_DIRS as readonly string[]).includes(r.approachDir)) {
+      errors.push(
+        `교차로 ${r.seqOrder}: 접근 방향은 ${APPROACH_DIRS.join(", ")} 중 하나여야 합니다.`,
+      );
+    }
+    if (!(SIGNAL_KINDS as readonly string[]).includes(r.signalKind)) {
+      errors.push(
+        `교차로 ${r.seqOrder}: 신호 종류는 ${SIGNAL_KINDS.join(", ")} 중 하나여야 합니다.`,
+      );
+    }
+  }
+  return errors;
 }

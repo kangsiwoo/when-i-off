@@ -651,6 +651,7 @@ tr.low-sample td:not(:last-child) {
   --pin-walk: #2e7d32;
   --pin-stop: #1565c0;
   --pin-home: #1c2024;
+  --pin-signal: #b45309;
   --pin-gps: #eb6834;
   --pin-ring: #ffffff;
 }
@@ -821,6 +822,24 @@ button:disabled {
   cursor: pointer;
 }
 
+.map-pin.map-pin-signal,
+.map-pin.map-pin-signal-crossed {
+  border-radius: 4px;
+  transform: rotate(45deg);
+  background: var(--pin-ring);
+  border: 3px solid var(--pin-signal);
+}
+
+.map-pin.map-pin-signal-crossed {
+  background: var(--pin-signal);
+}
+
+.map-pin.map-pin-signal span,
+.map-pin.map-pin-signal-crossed span {
+  transform: rotate(-45deg);
+  color: var(--pin-signal);
+}
+
 .map-pin.map-pin-gps-start,
 .map-pin.map-pin-gps-end {
   background: var(--pin-gps);
@@ -935,7 +954,45 @@ button:disabled {
   margin: 0.25rem 0;
 }
 
+.crossings {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.crossings h3 {
+  margin-top: 0.25rem;
+}
+
+.crossing-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.crossing-list li > * {
+  margin-right: 0.4rem;
+}
+
+.crossing-list select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.crossing-actions,
+.new-signal,
 .editor-actions {
-  margin: 0.75rem 0 0.5rem;
+  margin-top: 0.75rem;
   align-items: center;
+}
+
+.editor-actions {
+  margin-bottom: 0.5rem;
 }

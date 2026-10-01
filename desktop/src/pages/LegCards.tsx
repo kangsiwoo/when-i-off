@@ -5,7 +5,7 @@ import { formatDistance, modeLabel } from "../format";
 import type { TransitDraft, WalkDraft } from "../legs/legRules";
 import { formatLatLng } from "../map/geo";
 
-export type PickTarget = "walk-start" | "walk-end" | "board" | "alight";
+export type PickTarget = "walk-start" | "walk-end" | "board" | "alight" | "signal";
 export type StopWhich = "board" | "alight";
 
 interface CardShellProps {
@@ -69,6 +69,7 @@ export function WalkLegCard({
   onDistance,
   onStraightDistance,
   onInsertTransit,
+  children,
   ...shell
 }: ShellProps & {
   draft: WalkDraft;
@@ -77,6 +78,7 @@ export function WalkLegCard({
   onDistance: (m: number | null) => void;
   onStraightDistance: () => void;
   onInsertTransit: () => void;
+  children?: ReactNode;
 }) {
   return (
     <CardShell {...shell} label="도보" type="walk">
@@ -124,6 +126,7 @@ export function WalkLegCard({
           뒤에 대중교통 넣기
         </button>
       </div>
+      {children}
     </CardShell>
   );
 }

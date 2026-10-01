@@ -1,6 +1,12 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CommuteRouteDetail, RouteLeg, TransitLine, TransitStop } from "../api/client";
+import type {
+  CommuteRouteDetail,
+  RouteLeg,
+  TrafficSignal,
+  TransitLine,
+  TransitStop,
+} from "../api/client";
 import { setToken } from "../auth/token";
 import { detail, route, trip } from "../test/fixtures";
 import { json, renderApp } from "../test/render";
@@ -19,6 +25,14 @@ const stop = (id: number, name: string, lat: number, lng: number): TransitStop =
 });
 const dongtan = stop(4, "동탄", 37.2, 127.09);
 const suseo = stop(5, "수서", 37.48, 127.1);
+const signal: TrafficSignal = {
+  id: 9,
+  lat: 37.2,
+  lng: 127.08,
+  name: "동탄역 사거리",
+  createdAt: "2026-09-10T00:00:00Z",
+  distanceM: 40,
+};
 
 type Handler = (req: Request, url: URL) => Response | undefined | Promise<Response | undefined>;
 
@@ -34,6 +48,7 @@ function backend(routeDetail: CommuteRouteDetail, handler: Handler = () => undef
         return json(routeDetail);
       if (url.pathname === "/api/v1/transit-lines/search") return json([line]);
       if (url.pathname === "/api/v1/transit-stops/nearby") return json([dongtan, suseo]);
+      if (url.pathname === "/api/v1/traffic-signals/nearby") return json([signal]);
     }
     throw new Error(`unexpected ${req.method} ${req.url}`);
   };
@@ -275,6 +290,52 @@ describe("leg editor", () => {
     expect(alert).toHaveTextContent(
       "도보와 대중교통이 번갈아 와야 합니다 (구간 1·2이 둘 다 도보).",
     );
+  });
+});
+
+describe("signal crossings", () => {
+  it("adds a nearby signal and a new map-clicked one, then PUTs the crossings", async () => {
+    let body: unknown;
+    let created: unknown;
+    renderApp(
+      "/routes/7/edit",
+      backend(fullDetail, async (req, url) => {
+        if (req.method === "PUT" && url.pathname === "/api/v1/route-legs/11/signal-crossings") {
+          body = await req.json();
+          return json({ ...walkFixture, signalCrossings: [] });
+        }
+        if (req.method === "POST" && url.pathname === "/api/v1/traffic-signals") {
+          created = await req.json();
+          return json({ ...signal, id: 30, name: "새 교차로", distanceM: undefined }, 201);
+        }
+      }),
+    );
+
+    const first = await screen.findByRole("listitem", { name: "구간 1" });
+    // 처음에는 아무 구간도 고르지 않은 상태 (지도는 경로 전체). 구간을 누르면 교차로 편집이 열린다.
+    expect(within(first).queryByText("건너는 신호등")).not.toBeInTheDocument();
+    fireEvent.click(within(first).getByText("도보"));
+    const c = within(first);
+    expect(await c.findByText("건너는 신호등")).toBeInTheDocument();
+    // 픽스처 crossing(9, nt)이 이미 있다. 근처 목록에는 안 나온다.
+    expect(await c.findByText("동탄역 사거리")).toBeInTheDocument();
+    fireEvent.change(c.getByLabelText("교차로 1 접근 방향"), { target: { value: "sw" } });
+
+    fireEvent.click(c.getByRole("button", { name: "지도에서 교차로 등록" }));
+    fireEvent.click(screen.getByRole("button", { name: "지도 클릭" }));
+    fireEvent.change(c.getByLabelText("교차로 이름"), { target: { value: "새 교차로" } });
+    fireEvent.click(c.getByRole("button", { name: "등록하고 추가" }));
+    expect(await c.findByText("새 교차로")).toBeInTheDocument();
+    expect(created).toEqual({ lat: 37.25, lng: 127.08, name: "새 교차로" });
+
+    fireEvent.click(c.getByRole("button", { name: "교차로 저장" }));
+    expect(await c.findByRole("status")).toHaveTextContent("저장했습니다.");
+    expect(body).toEqual({
+      crossings: [
+        { trafficSignalId: 9, approachDir: "sw", signalKind: "Pd", seqOrder: 1 },
+        { trafficSignalId: 30, approachDir: "nt", signalKind: "Pd", seqOrder: 2 },
+      ],
+    });
   });
 });
 
