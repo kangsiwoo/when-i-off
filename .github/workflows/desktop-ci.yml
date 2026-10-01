@@ -1,0 +1,47 @@
+name: desktop-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-ci.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop-ci.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Types
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Format
+        run: npm run format:check
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      # 커밋된 openapi.json과 schema.d.ts가 서로 맞는지 본다. openapi.json이 backend와 맞는지는
+      # backend-ci의 "OpenAPI spec is up to date" 단계가 본다 (#56).
+      - name: Generated API types are up to date
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api/schema.d.ts || {
+            echo "::error::src/api/schema.d.ts is stale. Run 'npm run gen:api' in desktop/ and commit."
+            exit 1
+          }

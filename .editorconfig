@@ -15,6 +15,9 @@ ktlint_code_style = ktlint_official
 [*.{yml,yaml,json,md}]
 indent_size = 2
 
+[desktop/**.{ts,tsx,js,css,html}]
+indent_size = 2
+
 [*.md]
 trim_trailing_whitespace = false
 

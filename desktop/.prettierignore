@@ -1,0 +1,5 @@
+dist
+node_modules
+package-lock.json
+# backend가 내보낸 스펙 그대로 커밋한다 (./gradlew exportOpenApi)
+openapi.json

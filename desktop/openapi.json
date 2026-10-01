@@ -1,0 +1,2183 @@
+{
+  "components": {
+    "schemas": {
+      "BoardingAttemptResponse": {
+        "properties": {
+          "alightedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arrivedAtStopAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attemptSeq": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "enum": [
+              "CAUGHT",
+              "MISSED",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
+          "routeLegId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tripId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "vehicleActualDepartureAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vehicleScheduledOrPredictedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "attemptSeq",
+          "createdAt",
+          "id",
+          "result",
+          "routeLegId",
+          "tripId"
+        ],
+        "type": "object"
+      },
+      "BusRouteSyncResponse": {
+        "properties": {
+          "cityCode": {
+            "type": "string"
+          },
+          "lineStops": {
+            "$ref": "#/components/schemas/SyncCountsResponse"
+          },
+          "lines": {
+            "$ref": "#/components/schemas/SyncCountsResponse"
+          },
+          "routeIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "routeNo": {
+            "type": "string"
+          },
+          "stops": {
+            "$ref": "#/components/schemas/SyncCountsResponse"
+          }
+        },
+        "required": [
+          "cityCode",
+          "lineStops",
+          "lines",
+          "routeIds",
+          "routeNo",
+          "stops"
+        ],
+        "type": "object"
+      },
+      "CommuteRouteDetailResponse": {
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/RouteLegResponse"
+            },
+            "type": "array"
+          },
+          "route": {
+            "$ref": "#/components/schemas/CommuteRouteResponse"
+          }
+        },
+        "required": [
+          "legs",
+          "route"
+        ],
+        "type": "object"
+      },
+      "CommuteRouteResponse": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "destinationLat": {
+            "format": "double",
+            "type": "number"
+          },
+          "destinationLng": {
+            "format": "double",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "TO_WORK",
+              "TO_HOME"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "originLat": {
+            "format": "double",
+            "type": "number"
+          },
+          "originLng": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "createdAt",
+          "destinationLat",
+          "destinationLng",
+          "direction",
+          "id",
+          "isActive",
+          "name",
+          "originLat",
+          "originLng"
+        ],
+        "type": "object"
+      },
+      "CommuteTripResponse": {
+        "properties": {
+          "arrivedDestinationAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "boardingAttempts": {
+            "items": {
+              "$ref": "#/components/schemas/BoardingAttemptResponse"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "leftHomeAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routeId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tripDate": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "boardingAttempts",
+          "createdAt",
+          "id",
+          "routeId",
+          "tripDate"
+        ],
+        "type": "object"
+      },
+      "CreateCommuteRouteRequest": {
+        "properties": {
+          "destinationLat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "destinationLng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "TO_WORK",
+              "TO_HOME"
+            ],
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "originLat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "originLng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "destinationLat",
+          "destinationLng",
+          "direction",
+          "isActive",
+          "name",
+          "originLat",
+          "originLng"
+        ],
+        "type": "object"
+      },
+      "CreateCommuteTripRequest": {
+        "properties": {
+          "leftHomeAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routeId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tripDate": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "routeId",
+          "tripDate"
+        ],
+        "type": "object"
+      },
+      "CreateTrafficSignalRequest": {
+        "properties": {
+          "crsrdId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "lng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stdgCd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "type": "object"
+      },
+      "CreateTransitLineRequest": {
+        "properties": {
+          "agency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasRealtimeApi": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "BUS",
+              "SUBWAY",
+              "GTX"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "stdgCd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "hasRealtimeApi",
+          "mode",
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateTransitStopRequest": {
+        "properties": {
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "lng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "BUS",
+              "SUBWAY",
+              "GTX"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "stdgCd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lat",
+          "lng",
+          "mode",
+          "name"
+        ],
+        "type": "object"
+      },
+      "DepartureRecommendationResponse": {
+        "properties": {
+          "bufferSeconds": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "catchProbability": {
+            "format": "double",
+            "type": "number"
+          },
+          "computedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "recommendedLeaveHomeAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "targetArrivalAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bufferSeconds",
+          "catchProbability",
+          "computedAt",
+          "modelVersion",
+          "recommendedLeaveHomeAt",
+          "targetArrivalAt"
+        ],
+        "type": "object"
+      },
+      "GpsPointRequest": {
+        "properties": {
+          "accuracyM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": "number"
+          },
+          "lng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": "number"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "speedMps": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lat",
+          "lng",
+          "recordedAt"
+        ],
+        "type": "object"
+      },
+      "GpsTraceBatchRequest": {
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/GpsPointRequest"
+            },
+            "maxItems": 500,
+            "minItems": 0,
+            "type": "array"
+          },
+          "tripId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "type": "object"
+      },
+      "GpsTraceBatchResponse": {
+        "properties": {
+          "accepted": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "ignored": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "ignored"
+        ],
+        "type": "object"
+      },
+      "IntersectionSyncResponse": {
+        "properties": {
+          "intersections": {
+            "$ref": "#/components/schemas/SyncCountsResponse"
+          },
+          "stdgCd": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "intersections",
+          "stdgCd"
+        ],
+        "type": "object"
+      },
+      "NextDeparturesResponse": {
+        "properties": {
+          "departures": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledDepartureResponse"
+            },
+            "type": "array"
+          },
+          "directionCode": {
+            "type": "string"
+          },
+          "stopId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "transitLineId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "departures",
+          "directionCode",
+          "stopId",
+          "transitLineId"
+        ],
+        "type": "object"
+      },
+      "ReplaceRouteLegsRequest": {
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/RouteLegRequest"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "legs"
+        ],
+        "type": "object"
+      },
+      "ReplaceSignalCrossingsRequest": {
+        "properties": {
+          "crossings": {
+            "items": {
+              "$ref": "#/components/schemas/SignalCrossingRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "crossings"
+        ],
+        "type": "object"
+      },
+      "RouteLegRequest": {
+        "properties": {
+          "alightStopId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "boardStopId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "endLat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "endLng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "legType": {
+            "enum": [
+              "WALK",
+              "TRANSIT"
+            ],
+            "type": "string"
+          },
+          "plannedDistanceM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "plannedTravelSec": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "seqOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "startLat": {
+            "format": "double",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "startLng": {
+            "format": "double",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "transitLineId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "legType",
+          "seqOrder"
+        ],
+        "type": "object"
+      },
+      "RouteLegResponse": {
+        "properties": {
+          "alightStop": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TransitStopResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "alightStopId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "boardStop": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TransitStopResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "boardStopId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "endLat": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "endLng": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "legType": {
+            "enum": [
+              "WALK",
+              "TRANSIT"
+            ],
+            "type": "string"
+          },
+          "plannedDistanceM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "plannedTravelSec": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "seqOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "signalCrossings": {
+            "items": {
+              "$ref": "#/components/schemas/SignalCrossingResponse"
+            },
+            "type": "array"
+          },
+          "startLat": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "startLng": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "transitLine": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TransitLineResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transitLineId": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "legType",
+          "seqOrder",
+          "signalCrossings"
+        ],
+        "type": "object"
+      },
+      "ScheduledDepartureResponse": {
+        "properties": {
+          "dayType": {
+            "enum": [
+              "WEEKDAY",
+              "SATURDAY",
+              "SUNDAY_HOLIDAY"
+            ],
+            "type": "string"
+          },
+          "departureAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scheduledTime": {
+            "type": "string"
+          },
+          "serviceDate": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dayType",
+          "departureAt",
+          "scheduledTime",
+          "serviceDate"
+        ],
+        "type": "object"
+      },
+      "SignalCrossingRequest": {
+        "properties": {
+          "approachDir": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "seqOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "signalKind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "trafficSignalId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approachDir",
+          "seqOrder",
+          "signalKind",
+          "trafficSignalId"
+        ],
+        "type": "object"
+      },
+      "SignalCrossingResponse": {
+        "properties": {
+          "approachDir": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "seqOrder": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "signalKind": {
+            "type": "string"
+          },
+          "trafficSignalId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approachDir",
+          "id",
+          "seqOrder",
+          "signalKind",
+          "trafficSignalId"
+        ],
+        "type": "object"
+      },
+      "SyncCountsResponse": {
+        "properties": {
+          "created": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "fetched": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "skipped": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "updated": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "fetched",
+          "skipped",
+          "updated"
+        ],
+        "type": "object"
+      },
+      "TrafficSignalResponse": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "crsrdId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "distanceM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lat": {
+            "format": "double",
+            "type": "number"
+          },
+          "lng": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stdgCd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "lat",
+          "lng"
+        ],
+        "type": "object"
+      },
+      "TransitLineResponse": {
+        "properties": {
+          "agency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasRealtimeApi": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "BUS",
+              "SUBWAY",
+              "GTX"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stdgCd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "createdAt",
+          "hasRealtimeApi",
+          "id",
+          "mode",
+          "name"
+        ],
+        "type": "object"
+      },
+      "TransitStopResponse": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "distanceM": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lat": {
+            "format": "double",
+            "type": "number"
+          },
+          "lng": {
+            "format": "double",
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "BUS",
+              "SUBWAY",
+              "GTX"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "stdgCd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "lat",
+          "lng",
+          "mode",
+          "name"
+        ],
+        "type": "object"
+      },
+      "UpdateBoardingAttemptRequest": {
+        "properties": {
+          "alightedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arrivedAtStopAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "maxLength": 2000,
+            "minLength": 0,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "enum": [
+              "CAUGHT",
+              "MISSED",
+              "UNKNOWN"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vehicleActualDepartureAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vehicleScheduledOrPredictedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "UpdateCommuteTripRequest": {
+        "properties": {
+          "arrivedDestinationAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leftHomeAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "UpsertBoardingAttemptRequest": {
+        "properties": {
+          "alightedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arrivedAtStopAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attemptSeq": {
+            "format": "int32",
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "notes": {
+            "maxLength": 2000,
+            "minLength": 0,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "enum": [
+              "CAUGHT",
+              "MISSED",
+              "UNKNOWN"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "routeLegId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "vehicleActualDepartureAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vehicleScheduledOrPredictedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "attemptSeq",
+          "routeLegId"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenAPI definition",
+    "version": "v0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/schedules/import": {
+      "post": {
+        "operationId": "import",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncCountsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "schedule-admin-controller"
+        ]
+      }
+    },
+    "/api/v1/admin/sync/klid/intersections": {
+      "post": {
+        "operationId": "syncIntersections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "stdgCd",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntersectionSyncResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "admin-sync-controller"
+        ]
+      }
+    },
+    "/api/v1/admin/sync/tago/bus-route": {
+      "post": {
+        "operationId": "syncBusRoute",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cityCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "routeNo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusRouteSyncResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "tago-admin-sync-controller"
+        ]
+      }
+    },
+    "/api/v1/boarding-attempts/{id}": {
+      "patch": {
+        "operationId": "updateBoardingAttempt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBoardingAttemptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardingAttemptResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-trip-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes": {
+      "get": {
+        "operationId": "list",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommuteRouteResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-route-controller"
+        ]
+      },
+      "post": {
+        "operationId": "create_4",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommuteRouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommuteRouteResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "commute-route-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{id}": {
+      "get": {
+        "operationId": "detail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommuteRouteDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-route-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{id}/legs": {
+      "put": {
+        "operationId": "replaceLegs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceRouteLegsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommuteRouteDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-route-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{routeId}/recommendation": {
+      "get": {
+        "operationId": "forTargetArrival",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "routeId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "targetArrivalAt",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartureRecommendationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "departure-recommendation-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{routeId}/recommendation/latest": {
+      "get": {
+        "operationId": "latest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "routeId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartureRecommendationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "departure-recommendation-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-trips": {
+      "get": {
+        "operationId": "search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "routeId",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommuteTripResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-trip-controller"
+        ]
+      },
+      "post": {
+        "operationId": "create_3",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCommuteTripRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommuteTripResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-trip-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-trips/{id}": {
+      "patch": {
+        "operationId": "update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCommuteTripRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommuteTripResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-trip-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-trips/{id}/boarding-attempts": {
+      "post": {
+        "operationId": "upsertBoardingAttempt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertBoardingAttemptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardingAttemptResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "commute-trip-controller"
+        ]
+      }
+    },
+    "/api/v1/gps-traces/batch": {
+      "post": {
+        "operationId": "saveBatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GpsTraceBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/GpsTraceBatchResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "gps-trace-controller"
+        ]
+      }
+    },
+    "/api/v1/route-legs/{id}/signal-crossings": {
+      "put": {
+        "operationId": "replaceSignalCrossings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceSignalCrossingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteLegResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "route-leg-controller"
+        ]
+      }
+    },
+    "/api/v1/traffic-signals": {
+      "post": {
+        "operationId": "create_2",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTrafficSignalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrafficSignalResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "traffic-signal-controller"
+        ]
+      }
+    },
+    "/api/v1/traffic-signals/nearby": {
+      "get": {
+        "operationId": "nearby_1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lat",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lng",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "radiusM",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrafficSignalResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "traffic-signal-controller"
+        ]
+      }
+    },
+    "/api/v1/transit-lines": {
+      "post": {
+        "operationId": "create_1",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTransitLineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransitLineResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "transit-line-controller"
+        ]
+      }
+    },
+    "/api/v1/transit-lines/search": {
+      "get": {
+        "operationId": "search_1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BUS",
+                "SUBWAY",
+                "GTX"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TransitLineResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "transit-line-controller"
+        ]
+      }
+    },
+    "/api/v1/transit-lines/{lineId}/schedules/next": {
+      "get": {
+        "operationId": "next",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lineId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stopId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/NextDeparturesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "transit-schedule-controller"
+        ]
+      }
+    },
+    "/api/v1/transit-stops": {
+      "post": {
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTransitStopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransitStopResponse"
+                }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "tags": [
+          "transit-stop-controller"
+        ]
+      }
+    },
+    "/api/v1/transit-stops/nearby": {
+      "get": {
+        "operationId": "nearby",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "lat",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lng",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "radiusM",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "enum": [
+                "BUS",
+                "SUBWAY",
+                "GTX"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TransitStopResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "transit-stop-controller"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "Generated server url",
+      "url": "http://localhost"
+    }
+  ]
+}
