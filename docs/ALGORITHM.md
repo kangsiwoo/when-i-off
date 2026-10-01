@@ -207,11 +207,20 @@ def recommend_departure(route, target_arrival_at, p=0.95):
 
 | 대상 | 원재료 | 방법 |
 |---|---|---|
-| `user_walking_profile` | `walking_segments` | 최근 N회 윈도우 또는 EWMA. 구간별 행은 `sample_count ≥ 5`부터 사용, 그 전엔 전역 행 |
-| `transit_prediction_calibration` | attempt(차 한 대, 놓친 차 포함)마다 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 그룹별 평균/표준편차. 샘플 5회 미만이면 노선 단위 값을 상속 |
-| `transit_travel_time_calibration` | 탄 attempt(`CAUGHT`)의 `alighted_at − vehicle_actual_departure_at` | 동일 |
+| `user_walking_profile` | `walking_segments` (0.3 m/s 미만·3.0 m/s 초과 제외) | 최근 30회 윈도우(`started_at` 기준)의 평균/표준편차. 전역 행도 모든 구간에서 최근 30회. 구간별 행은 `sample_count ≥ 5`부터 사용, 그 전엔 전역 행 |
+| `transit_prediction_calibration` | attempt(차 한 대, 놓친 차 포함)마다 `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 노선 × 승차 정류장 × 예측 시각의 KST `day_type` × 30분 밴드별 평균/표준편차(전체 샘플). 샘플 5회 미만이면 노선 단위 값을 상속 |
+| `transit_travel_time_calibration` | 탄 attempt(`CAUGHT`)의 `alighted_at − vehicle_actual_departure_at` (0초 이하 제외) | 노선 × 승차역 × 하차역 × 출발 시각의 KST `day_type` × 30분 밴드. 나머지 동일 |
 | `walking_segments` | trip/attempt의 인접 사건 시각 + `gps_traces` | DATA_MODEL.md의 규칙으로 파생 |
 | `traffic_signal_cycles` (`PUBLIC_API`) | `traffic_signal_states` 누적 | 커버 교차로는 실시간 상태의 현시 전환 시각에서 `R`, `C`를 추정해 주기 행을 갱신 → 지평선 밖 계산과 폴링이 꺼진 시간대에도 실측 기반 주기를 쓴다. **현재는 커버 교차로가 없어 돌지 않는다** (#30) |
+
+세 테이블 공통 (`wio-analytics calibrate`, #45):
+
+- **시간대 밴드**는 KST 벽시계 30분 `[start, end)`. `TIME`은 24:00을 못 담아 마지막 밴드는
+  23:30–23:59:59.999999다. 조회는 시각을 내림한 밴드 시작값과 `time_band_start`가 같은 행을 찾는다.
+- **표준편차**는 샘플 2개 이상이면 표본표준편차(n − 1), 1개면 아래 콜드스타트 값(차내 시간은 평균의
+  15%)이고, 어느 쪽이든 하한(도보 0.05 m/s, 예측 오차·차내 시간 15초) 아래로 내리지 않는다. 같은 값
+  몇 개가 σ = 0을 만들어 분위수가 한 점으로 무너지는 것을 막는다.
+- 샘플 1개 그룹도 저장하고(`sample_count`), 상속은 읽는 쪽이 한다. 입력이 사라진 그룹의 행은 지운다.
 
 콜드스타트(기록 없음)는 `bias=0`, `σ_pred=90초`, 도보 속도 1.2 m/s ± 0.15 같은 보수적
 기본값으로 "일단 안전하게" 추천하고, 기록이 쌓일수록 분포가 좁아져 출발 시각이 뒤로 밀린다.

@@ -1,7 +1,8 @@
 # analytics
 
 Python 3.12 배치 모듈. 지금 있는 것은 **`recommend`(최적 출발 시각 계산) 콜드스타트 버전**(#22)과
-그 캘리브레이션의 첫 단계인 **`derive-walking-segments`**(#44)다. `calibrate`는 #6에 남아 있다.
+그 캘리브레이션 배치인 **`derive-walking-segments`**(#44)·**`calibrate`**(#45)다. recommend가 보정
+테이블을 읽는 연결은 #46에 남아 있다.
 
 ```
 whenioff_analytics/
@@ -87,6 +88,50 @@ trip마다 WALK 구간 하나당 `walking_segments` 한 행을 만든다. 시작
 - 입력이 고쳐져 이제는 건너뛰는 구간의 **예전 행은 지운다** (`deleted`). 이번에 읽은 trip
   범위(`--from`/`--to`) 안에서만이다. 남겨 두면 `calibrate`가 이미 틀렸다고 판명된 실측을 계속 쓴다
 
+## `calibrate`
+
+```bash
+uv run wio-analytics calibrate            # --dry-run: 계산만 하고 쓰지 않는다
+```
+
+```
+walking_segments 8, boarding_attempts 5
+user_walking_profile: groups 3 (per-leg 2, global 1), skipped 2 (too_slow 2)
+transit_prediction_calibration: groups 3, skipped 0
+transit_travel_time_calibration: groups 3, skipped 0
+user_walking_profile: created 3, updated 0, unchanged 0, deleted 0
+transit_prediction_calibration: created 3, updated 0, unchanged 0, deleted 0
+transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
+```
+
+`derive-walking-segments` 다음에 돈다. 매번 **전체 데이터**로 세 보정 테이블을 다시 계산한다
+(ALGORITHM 5절). 통계는 `model/calibration.py`, DB는 `io/calibration.py`다.
+
+| 테이블 | 샘플 | 그룹 | 윈도우 |
+|---|---|---|---|
+| `user_walking_profile` | `walking_segments.avg_speed_mps` (0.3 m/s 미만·3.0 m/s 초과 제외: `too_slow`/`too_fast`) | 사용자 × 구간, 사용자 전역(`route_leg_id` NULL) | `started_at` 최근 30개. 전역 행도 모든 구간에서 따로 최근 30개 |
+| `transit_prediction_calibration` | 시도마다(결과 무관, 놓친 차 포함) `vehicle_actual_departure_at − vehicle_scheduled_or_predicted_at` | 노선 × 승차 정류장 × 예측 시각의 KST `day_type` × 30분 밴드 | 전체 |
+| `transit_travel_time_calibration` | `CAUGHT` 시도의 `alighted_at − vehicle_actual_departure_at` (0초 이하 제외: `non_positive_duration`) | 노선 × 승차역 × 하차역 × 실제 출발 시각의 KST `day_type` × 30분 밴드 | 전체 |
+
+- 둘 중 한 시각이 비면 그 시도는 건너뛴다 (`missing_predicted` / `missing_departure` /
+  `missing_alighted`). `CAUGHT`가 아닌 시도는 원래 차내 시간의 대상이 아니라 세지 않는다
+- **밴드**: KST 벽시계의 `[HH:00, HH:30)` / `[HH:30, HH+1:00)`. `TIME`은 24:00을 담지 못해 마지막 밴드는
+  `23:30:00`–`23:59:59.999999`(`LAST_BAND_END`)다. 읽는 쪽은 `time_band_of(시각)`으로 시작값을 구해
+  `time_band_start`가 같은 행을 찾으면 된다 (끝값 비교 불필요). `day_type`은 KST **날짜**로 정한다 —
+  UTC 23:50은 KST 다음 날 08:50이다
+- **평균**: 샘플의 단순 평균. 도보는 구간 속도들의 평균이다 (거리 가중 아님)
+- **표준편차**: 샘플 2개 이상이면 표본표준편차(n − 1), 1개면 콜드스타트 기본값(도보 0.15 m/s,
+  예측 오차 90초, 차내 시간 평균의 15%). 결과는 하한 아래로 내려가지 않는다 — 도보 0.05 m/s, 예측
+  오차·차내 시간 15초. 같은 값 두 개가 σ = 0을 만들면 분위수가 한 점으로 무너지기 때문이고, geofence
+  시각은 그보다 정밀하지 않다
+- **INT 열**(`bias_sec`, `mean_sec`, `stddev_sec`)은 0에서 먼 쪽으로 반올림한다 (-12.5 → -13)
+- 샘플이 1개인 그룹도 저장한다. "5개 미만이면 상위 그룹 상속"은 읽는 쪽(#46)의 몫이다
+- **멱등성**: 각 테이블의 UNIQUE 키에 `ON CONFLICT DO UPDATE`, 값이 같으면 건드리지 않는다
+  (`unchanged`, `updated_at`도 그대로). 이번 결과에 없는 키의 행은 지운다(`deleted`) — 입력이 사라지거나
+  고쳐진 그룹, 모든 실측이 이상치가 된 사용자의 프로필도 포함한다. `user_walking_profile`의
+  `(user_id, route_leg_id)`는 `UNIQUE NULLS NOT DISTINCT`라 전역 행도 같은 `ON CONFLICT`로 잡힌다
+  (PostgreSQL 15+)
+
 ## 계산
 
 `docs/ALGORITHM.md` 2·3절 그대로다. 실측 기록이 0건이라 5절의 캘리브레이션 테이블 대신
@@ -143,6 +188,6 @@ uv run pytest -q
 ```
 
 통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다 (도보 구간 파생은
-`tests/test_walking_segments.py`). DB가 필요한 것은 `io` 계층뿐이고,
+`tests/test_walking_segments.py`, 보정 테이블은 `tests/test_calibration.py`). DB가 필요한 것은 `io` 계층뿐이고,
 시간표 전개와 방향 판정은 가짜 커서로 테스트한다
 (`tests/test_schedule_window.py`, `tests/test_leg_direction.py`).
