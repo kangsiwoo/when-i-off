@@ -21,6 +21,9 @@ export type WalkingProfile = components["schemas"]["WalkingProfileResponse"];
 export type PredictionCalibrationRow = components["schemas"]["PredictionCalibrationRowResponse"];
 export type TravelTimeCalibrationRow = components["schemas"]["TravelTimeCalibrationRowResponse"];
 export type DayType = PredictionCalibrationRow["dayType"];
+export type DepartureRecommendation = components["schemas"]["DepartureRecommendationResponse"];
+export type RecommendationHistoryDay = components["schemas"]["RecommendationHistoryDayResponse"];
+export type RecommendationHistoryTrip = components["schemas"]["RecommendationHistoryTripResponse"];
 
 export interface ApiClientOptions {
   /** 기본은 같은 출처. 개발/미리보기 서버가 /api를 backend로 넘긴다 (vite.config.ts). */

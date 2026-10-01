@@ -1,11 +1,11 @@
 # desktop
 
 TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)(#56)와
-이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58), 경로별 캘리브레이션 상태(#60)가 있다.
-지도 위 경로/구간/정류장/신호등 편집, 추천 vs 실제 비교는 이 골격 위에 올린다.
+이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58), 경로별 캘리브레이션 상태(#60), 추천 vs 실제(#62)가
+있다. 지도 위 경로/구간/정류장/신호등 편집은 이 골격 위에 올린다.
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
-스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch,
+스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch · Recharts(차트),
 검사는 ESLint(flat config) · Prettier · Vitest + Testing Library(jsdom). Node 22, npm(`package-lock.json` 커밋).
 
 ## 실행
@@ -90,6 +90,21 @@ npm run gen:api
 - 고르는 순서와 기본값은 analytics(`model/lookup.py`, `defaults.py`)를 옮긴 `src/calibration/chain.ts`에 있다.
   저쪽을 바꾸면 여기도 같이 바꾼다
 
+## 추천 vs 실제 (#62)
+
+- `/routes/:id/recommendations?from=&to=`: 경로 상세의 "추천 vs 실제" 탭. `GET /commute-routes/{id}/recommendation-history`
+  하나로 그린다. 기간은 KST 날짜이고 기본은 오늘(KST)까지 최근 30일, 프리셋 7/30/90일
+- 차트 두 개(Recharts, 이 탭에서만 쓰므로 lazy로 따로 읽는다): ① 날짜별 추천 출발(모델 버전별 선)과 실제 출발(점),
+  y는 KST 하루 중 시각 ② 날짜별 `bufferSeconds`(분, 0부터). 단위가 달라 축 두 개짜리 한 차트로 겹치지 않는다.
+  범례 + 겹치지 않는 끝점에만 직접 라벨 + 크로스헤어 툴팁. 표가 차트의 표 보기를 겸한다
+- 색은 dataviz 기준 팔레트(`index.css`의 `.viz` 토큰)이고 `validate_palette.js --pairs all`로 앱 표면(라이트 `#ffffff`,
+  다크 `#1a1b1e`)에 대해 검사했다. 실제 출발 = 1번, 버전은 `vN`의 N이 홀수면 2번·짝수면 3번(버전이 늘 같은 색).
+  같은 자리를 원하는 더 오래된 버전과 번호 없는 버전은 회색으로 접는다
+- 표: 날짜(그날 trip이 여럿이면 trip마다 한 줄) / 추천 출발(버전별, 확률·여유) / 실제 출발과 버전별 차이(±분, +면
+  늦게 나섬) / 목표 도착 / 실제 도착과 지각 여부 / 결과(전 구간 탑승, 놓친 차). 지각 판정 기준은 그날 가장 늦게
+  계산된 추천의 목표 시각이고, 1초라도 늦으면 지각이다
+- 계산은 `src/recommendations/history.ts`(화면 없는 순수 로직)
+
 ## 구조
 
 ```
@@ -98,8 +113,9 @@ src/
   auth/       token.ts(localStorage), RequireAuth.tsx
   pages/      LoginPage, Layout, RouteListPage, RouteDetailPage,
               TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
-              RouteCalibrationPage(+ RouteTabs)
+              RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
+  recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
   trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표

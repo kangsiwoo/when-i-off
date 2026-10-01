@@ -148,6 +148,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/commute-routes/{routeId}/recommendation-history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["recommendationHistory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/commute-routes/{routeId}/recommendation/latest": {
     parameters: {
       query?: never;
@@ -565,6 +581,23 @@ export interface components {
       timeBandStart: string;
       /** Format: date-time */
       updatedAt: string;
+    };
+    RecommendationHistoryDayResponse: {
+      /** Format: date */
+      date: string;
+      recommendations: components["schemas"]["DepartureRecommendationResponse"][];
+      trips: components["schemas"]["RecommendationHistoryTripResponse"][];
+    };
+    RecommendationHistoryTripResponse: {
+      allLegsCaught: boolean;
+      /** Format: date-time */
+      arrivedDestinationAt?: string | null;
+      /** Format: date-time */
+      leftHomeAt?: string | null;
+      /** Format: int32 */
+      missedCount: number;
+      /** Format: int64 */
+      tripId: number;
     };
     ReplaceRouteLegsRequest: {
       legs: components["schemas"]["RouteLegRequest"][];
@@ -1020,6 +1053,31 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["DepartureRecommendationResponse"];
+        };
+      };
+    };
+  };
+  recommendationHistory: {
+    parameters: {
+      query: {
+        from: string;
+        to: string;
+      };
+      header?: never;
+      path: {
+        routeId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["RecommendationHistoryDayResponse"][];
         };
       };
     };

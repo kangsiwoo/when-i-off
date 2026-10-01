@@ -745,6 +745,67 @@
         ],
         "type": "object"
       },
+      "RecommendationHistoryDayResponse": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/DepartureRecommendationResponse"
+            },
+            "type": "array"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationHistoryTripResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "recommendations",
+          "trips"
+        ],
+        "type": "object"
+      },
+      "RecommendationHistoryTripResponse": {
+        "properties": {
+          "allLegsCaught": {
+            "type": "boolean"
+          },
+          "arrivedDestinationAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "leftHomeAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "missedCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "tripId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "allLegsCaught",
+          "missedCount",
+          "tripId"
+        ],
+        "type": "object"
+      },
       "ReplaceRouteLegsRequest": {
         "properties": {
           "legs": {
@@ -1868,6 +1929,58 @@
         },
         "tags": [
           "departure-recommendation-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{routeId}/recommendation-history": {
+      "get": {
+        "operationId": "recommendationHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "routeId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationHistoryDayResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "recommendation-history-controller"
         ]
       }
     },

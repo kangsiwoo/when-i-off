@@ -3,6 +3,7 @@ import type {
   CommuteRoute,
   CommuteRouteDetail,
   CommuteTrip,
+  RecommendationHistoryDay,
   RouteCalibration,
 } from "../api/client";
 
@@ -170,3 +171,70 @@ export const calibration: RouteCalibration = {
     },
   ],
 };
+
+/** 추천 vs 실제(#62). 9/21: 두 버전 + trip 두 건, 9/22: 추천만, 9/23: trip만(지각). */
+export const recommendationHistory: RecommendationHistoryDay[] = [
+  {
+    date: "2026-09-21",
+    recommendations: [
+      {
+        recommendedLeaveHomeAt: "2026-09-20T22:24:00Z",
+        targetArrivalAt: "2026-09-21T00:00:00Z",
+        catchProbability: 0.91,
+        bufferSeconds: 660,
+        modelVersion: "v1",
+        computedAt: "2026-09-20T21:00:00Z",
+      },
+      {
+        recommendedLeaveHomeAt: "2026-09-20T22:30:00Z",
+        targetArrivalAt: "2026-09-21T00:00:00Z",
+        catchProbability: 0.88,
+        bufferSeconds: 420,
+        modelVersion: "v2",
+        computedAt: "2026-09-20T21:30:00Z",
+      },
+    ],
+    trips: [
+      {
+        tripId: 31,
+        leftHomeAt: "2026-09-20T22:27:10Z",
+        arrivedDestinationAt: "2026-09-20T23:58:00Z",
+        allLegsCaught: true,
+        missedCount: 1,
+      },
+      {
+        tripId: 32,
+        leftHomeAt: "2026-09-21T09:00:00Z",
+        allLegsCaught: false,
+        missedCount: 0,
+      },
+    ],
+  },
+  {
+    date: "2026-09-22",
+    recommendations: [
+      {
+        recommendedLeaveHomeAt: "2026-09-21T22:26:00Z",
+        targetArrivalAt: "2026-09-22T00:00:00Z",
+        catchProbability: 0.9,
+        bufferSeconds: 540,
+        modelVersion: "v1",
+        computedAt: "2026-09-21T21:00:00Z",
+      },
+    ],
+    trips: [],
+  },
+  {
+    date: "2026-09-23",
+    recommendations: [],
+    trips: [
+      {
+        tripId: 33,
+        leftHomeAt: "2026-09-22T22:35:00Z",
+        arrivedDestinationAt: "2026-09-23T00:04:00Z",
+        allLegsCaught: true,
+        missedCount: 0,
+      },
+    ],
+  },
+];

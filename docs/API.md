@@ -192,7 +192,7 @@ upsert(`POST …/boarding-attempts`)와 `PATCH /boarding-attempts/{id}` 모두, 
 |---|---|---|---|
 | ✔ | GET | `/commute-routes/{id}/recommendation?targetArrivalAt=` | 목표 도착 시각 기준 추천 출발 시각 조회 |
 | ✔ | GET | `/commute-routes/{id}/recommendation/latest` | 목표 시각과 무관하게 가장 최근 계산된 추천 |
-| 계약 | GET | `/commute-routes/{id}/recommendation/history` | 과거 추천과 실제 결과 비교 (모델 성능 확인용) |
+| ✔ | GET | `/commute-routes/{id}/recommendation-history?from=&to=` | 날짜별 추천(버전별 마지막 계산)과 그날 trip 결과 (추천 vs 실제, #62) |
 
 `recommendation` 엔드포인트는 Backend가 직접 계산하지 않고, Analytics가 미리 계산해
 `departure_recommendations`에 적재해 둔 값을 읽거나(캐시), 캐시가 없으면 즉석 계산을
@@ -201,7 +201,8 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 
 적재하는 쪽은 #22에서 구현됐다 — `uv run wio-analytics recommend --route-id … --target-arrival-at …`
 (콜드스타트 기본값, `model_version=v1`, [analytics/README.md](../analytics/README.md)). 조회 두 개는
-#24에서 붙었고(캐시 조회만, 즉석 계산 위임은 아직 없다), `history`는 아직 `계약` 그대로다.
+#24에서 붙었고(캐시 조회만, 즉석 계산 위임은 아직 없다), 이력은 #62에서 `recommendation-history`로 붙었다
+(아래 "추천 이력").
 
 ### 조회 두 개의 계약
 
@@ -224,6 +225,49 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
   ([DATA_MODEL.md](./DATA_MODEL.md)) 같은 (경로, 목표 시각)에 행이 여러 개다. 두 조회 모두
   `computed_at DESC, id DESC`로 **최신 한 건**만 고른다 — `computed_at` 기본값이 트랜잭션
   시각이라 한 번에 들어간 행끼리는 값이 같을 수 있어 id로 동점을 깬다
+
+### 추천 이력 (추천 vs 실제, #62)
+
+`GET /commute-routes/{id}/recommendation-history?from=2026-09-01&to=2026-09-30`
+
+```json
+[
+  {
+    "date": "2026-09-21",
+    "recommendations": [
+      {
+        "recommendedLeaveHomeAt": "2026-09-20T22:24:00Z",
+        "targetArrivalAt": "2026-09-21T00:00:00Z",
+        "catchProbability": 0.91,
+        "bufferSeconds": 660,
+        "modelVersion": "v1",
+        "computedAt": "2026-09-20T21:00:00Z"
+      }
+    ],
+    "trips": [
+      {
+        "tripId": 31,
+        "leftHomeAt": "2026-09-20T22:27:10Z",
+        "arrivedDestinationAt": "2026-09-20T23:58:40Z",
+        "allLegsCaught": true,
+        "missedCount": 1
+      }
+    ]
+  }
+]
+```
+
+- `from`·`to`는 **필수** KST 날짜(`yyyy-MM-dd`, 양끝 포함). 없거나 형식이 틀리거나 `to < from`이면 `400`.
+  경로가 없거나 내 것이 아니면 `404`
+- 날짜는 KST다. 추천은 `target_date`(analytics가 `target_arrival_at`의 KST 날짜로 채운다), trip은 `trip_date`로 묶는다.
+  추천이나 trip 중 **하나라도 있는 날만** 날짜 오름차순으로 준다. 아무 것도 없으면 빈 배열(`200`)
+- `recommendations`: `modelVersion`마다 그날 **마지막으로 계산된** 한 건, `modelVersion` 순. 고르는 기준은 위 조회와
+  같은 `computed_at DESC, id DESC`다. analytics는 `(경로, target_date, target_arrival_at, model_version)`당 한 행을
+  제자리에서 갱신하므로(`computed_at`도 바뀐다) 보통 버전당 목표 시각별 한 행이지만, 그날 목표 시각이 여러 개면
+  그 중 마지막 계산 하나만 고르고 어느 목표 시각의 것인지는 `targetArrivalAt`으로 알린다
+- `trips`: 그날 이 경로의 trip 전부, `leftHomeAt` 순(없으면 뒤). `allLegsCaught`는 경로의 TRANSIT 구간마다
+  `CAUGHT` 시도가 있는가(TRANSIT 구간이 없는 경로면 `true`), `missedCount`는 `MISSED` 시도 수(놓친 차 대수)
+- 추천 대비 출발 차이, 목표 대비 도착 차이(지각) 같은 파생값은 화면이 계산한다
 
 ## 외부 데이터 동기화 (TAGO/KLID) — 관리 API
 

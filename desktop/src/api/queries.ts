@@ -1,4 +1,10 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useApi } from "./ApiContext";
 import { unwrap, type UpdateBoardingAttemptRequest, type UpdateCommuteTripRequest } from "./client";
 
@@ -44,6 +50,26 @@ export function useRouteCalibration(id: number) {
   });
 }
 
+/**
+ * 추천 vs 실제 (#62). `from`·`to`는 KST 날짜(`yyyy-MM-dd`, 양끝 포함). 기간을 바꾸는 동안 앞 결과를 들고 있어
+ * 차트가 깜빡이지 않는다(`isPlaceholderData`로 흐리게 표시).
+ */
+export function useRecommendationHistory(id: number, from: string, to: string, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["commute-routes", id, "recommendation-history", from, to],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/commute-routes/{routeId}/recommendation-history", {
+          params: { path: { routeId: id }, query: { from, to } },
+          signal,
+        }),
+      ),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
 /** `GET /commute-trips`의 필터. 날짜는 KST 기준 trip 날짜(`yyyy-MM-dd`). */
 export interface TripFilter {
   routeId?: number;
@@ -64,13 +90,23 @@ export function useCommuteTrips(filter: TripFilter) {
   });
 }
 
+/** trip을 고치면 trip 목록·상세와 그 결과를 묶어 보여 주는 추천 vs 실제(#62)도 다시 받는다. */
+function invalidateTrips(queryClient: ReturnType<typeof useQueryClient>) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: [TRIPS] }),
+    queryClient.invalidateQueries({
+      predicate: (q) => q.queryKey[2] === "recommendation-history",
+    }),
+  ]);
+}
+
 export function useUpdateTrip(id: number) {
   const api = useApi();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (body: UpdateCommuteTripRequest) =>
       unwrap(await api.PATCH("/api/v1/commute-trips/{id}", { params: { path: { id } }, body })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TRIPS] }),
+    onSuccess: () => invalidateTrips(queryClient),
   });
 }
 
@@ -80,6 +116,6 @@ export function useUpdateAttempt(id: number) {
   return useMutation({
     mutationFn: async (body: UpdateBoardingAttemptRequest) =>
       unwrap(await api.PATCH("/api/v1/boarding-attempts/{id}", { params: { path: { id } }, body })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [TRIPS] }),
+    onSuccess: () => invalidateTrips(queryClient),
   });
 }
