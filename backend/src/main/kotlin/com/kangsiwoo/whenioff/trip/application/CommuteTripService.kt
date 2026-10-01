@@ -241,9 +241,12 @@ class CommuteTripService(
     }
 
     /**
-     * 같은 구간에서 뒤 시도(다음 차)의 관측 시각은 앞 시도의 차가 떠난 뒤여야 한다 (#38).
+     * 같은 구간에서 뒤 시도(다음 차)는 앞 시도의 차가 떠난 뒤에 떠나야 한다 (#38).
      * 어긋나면 "놓친 차 → 탄 차" 순서가 뒤집혀 시도별 예측 오차와 차내 시간이 엉뚱한 차에 붙는다.
-     * 값이 있는 쪽만 검사한다. 뒤 시도의 `arrivedAtStopAt`은 보통 비워 둔다 (도보 구간은 첫 시도의 도착을 쓴다).
+     * 값이 있는 쪽만 검사한다.
+     *
+     * 뒤 시도의 `arrivedAtStopAt`은 검사하지 않는다 (#42). 정류장에 처음 도착한 시각을 그대로 실어 보내는
+     * 것은 자연스러운 값이고, 도보 구간은 첫 시도의 도착만 쓰므로 막아서 지키는 데이터가 없다.
      */
     private fun requireAfterEarlierAttempts(attempt: BoardingAttempt) {
         val legAttempts =
@@ -258,7 +261,6 @@ class CommuteTripService(
                 val suffix =
                     "of attempt ${later.attemptSeq} must not be before vehicleActualDepartureAt of attempt " +
                         "${earlier.attemptSeq}"
-                requireOrdered(departed, later.arrivedAtStopAt, "arrivedAtStopAt $suffix")
                 requireOrdered(departed, later.vehicleActualDepartureAt, "vehicleActualDepartureAt $suffix")
             }
         }

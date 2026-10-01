@@ -531,11 +531,13 @@ class TripApiTest {
                 value("vehicleActualDepartureAt of attempt 2 must not be before vehicleActualDepartureAt of attempt 1")
             }
         }
+        assertEquals(1, attemptCount())
+
+        // 뒤 시도에 처음 정류장에 도착한 시각(앞 차가 떠나기 전)을 그대로 실어도 받는다 (#42).
         postJson(
             "/api/v1/commute-trips/$tripId/boarding-attempts",
             mapOf("routeLegId" to transitLeg.id, "attemptSeq" to 2, "arrivedAtStopAt" to "2026-09-20T22:42:00Z"),
-        ).andExpect { status { isBadRequest() } }
-        assertEquals(1, attemptCount())
+        ).andExpect { status { isCreated() } }
 
         postJson(
             "/api/v1/commute-trips/$tripId/boarding-attempts",
@@ -544,7 +546,7 @@ class TripApiTest {
                 "attemptSeq" to 2,
                 "vehicleActualDepartureAt" to "2026-09-20T22:58:00Z",
             ),
-        ).andExpect { status { isCreated() } }
+        ).andExpect { status { isOk() } }
         // 앞 시도를 나중에 고쳐 순서를 뒤집는 것도 막는다 (PATCH도 같은 검사를 탄다).
         patchJson("/api/v1/boarding-attempts/$firstId", mapOf("vehicleActualDepartureAt" to "2026-09-20T23:00:00Z"))
             .andExpect { status { isBadRequest() } }
