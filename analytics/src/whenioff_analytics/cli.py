@@ -11,8 +11,20 @@ import typer
 
 from whenioff_analytics import defaults
 from whenioff_analytics.daytype import KST, UTC, kst_date_of
+from whenioff_analytics.io.calibration import (
+    load_attempt_samples,
+    load_walk_samples,
+    save_prediction_calibrations,
+    save_travel_time_calibrations,
+    save_walking_profiles,
+)
 from whenioff_analytics.io.db import connect
-from whenioff_analytics.io.walking import load_trip_events, save_walking_segments
+from whenioff_analytics.io.walking import UpsertCounts, load_trip_events, save_walking_segments
+from whenioff_analytics.model.calibration import (
+    prediction_calibrations,
+    travel_time_calibrations,
+    walking_profiles,
+)
 from whenioff_analytics.model.recommend import NoFeasibleVehicleError, TransitLeg
 from whenioff_analytics.model.walking import SkippedSegment, WalkingSegment, derive_walking_segments
 from whenioff_analytics.service import (
@@ -146,8 +158,52 @@ def derive_walking_segments_command(
             typer.echo("dry-run: nothing written")
             return
         counts = save_walking_segments(conn, [t.commute_trip_id for t in trips], segments)
-    typer.echo(
-        f"walking_segments: created {counts.created}, updated {counts.updated}, "
+    typer.echo(f"walking_segments: {_counts(counts)}")
+
+
+@app.command()
+def calibrate(
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="계산만 하고 DB에 쓰지 않는다")] = False,
+) -> None:
+    """도보 실측·탑승 시도 전체로 세 보정 테이블을 다시 계산해 upsert한다 (ALGORITHM 5절)."""
+    with connect() as conn:
+        walks = load_walk_samples(conn)
+        attempts = load_attempt_samples(conn)
+        profiles, walk_skipped = walking_profiles(walks)
+        predictions, prediction_skipped = prediction_calibrations(attempts)
+        travel_times, travel_skipped = travel_time_calibrations(attempts)
+
+        typer.echo(f"walking_segments {len(walks)}, boarding_attempts {len(attempts)}")
+        typer.echo(
+            f"user_walking_profile: groups {len(profiles)} "
+            f"(per-leg {sum(p.route_leg_id is not None for p in profiles)}, "
+            f"global {sum(p.route_leg_id is None for p in profiles)}), "
+            f"skipped {walk_skipped.total()}{_breakdown(walk_skipped.elements())}"
+        )
+        typer.echo(
+            f"transit_prediction_calibration: groups {len(predictions)}, "
+            f"skipped {prediction_skipped.total()}{_breakdown(prediction_skipped.elements())}"
+        )
+        typer.echo(
+            f"transit_travel_time_calibration: groups {len(travel_times)}, "
+            f"skipped {travel_skipped.total()}{_breakdown(travel_skipped.elements())}"
+        )
+        if dry_run:
+            conn.rollback()
+            typer.echo("dry-run: nothing written")
+            return
+        results = [
+            ("user_walking_profile", save_walking_profiles(conn, profiles)),
+            ("transit_prediction_calibration", save_prediction_calibrations(conn, predictions)),
+            ("transit_travel_time_calibration", save_travel_time_calibrations(conn, travel_times)),
+        ]
+    for table, counts in results:
+        typer.echo(f"{table}: {_counts(counts)}")
+
+
+def _counts(counts: UpsertCounts) -> str:
+    return (
+        f"created {counts.created}, updated {counts.updated}, "
         f"unchanged {counts.unchanged}, deleted {counts.deleted}"
     )
 

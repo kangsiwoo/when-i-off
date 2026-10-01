@@ -291,16 +291,24 @@ trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 
 `walking_segments`를 누적 집계한 사용자의 평균 도보 속도(표준편차, 샘플 수 포함).
 `route_leg_id`가 NULL이면 전역 기본 속도(새 구간에 데이터가 없을 때 fallback), 값이 있으면
 그 구간 전용(오르막/계단/혼잡도가 달라 구간마다 다를 수 있음). 전역 행이 사용자당 하나만
-있도록 `UNIQUE NULLS NOT DISTINCT`를 건다.
+있도록 `UNIQUE NULLS NOT DISTINCT`를 건다. 속도 0.3–3.0 m/s 밖의 실측은 빼고, 구간별 행과 전역 행
+모두 `started_at` 기준 최근 30개로 계산한다.
 
 ### `transit_prediction_calibration`
 노선 × 정류장 × 요일유형 × 시간대별 "실제 − 예측"의 평균(`bias_sec`)과
 표준편차(`stddev_sec`). 샘플이 없으면 bias 0, stddev 90초의 보수적 기본값으로 시작한다.
 예측이 우리가 파생한 ETA이므로, 이 보정치는 곧 "우리 투영 로직의 체계적 오차"이기도 하다.
+`stop_id`는 승차 정류장(`route_legs.board_stop_id`), 요일유형·시간대는 **예측 시각**의 KST 날짜와
+벽시계로 정한다. 시간대(`time_band_start`/`time_band_end`)는 30분 밴드이고, `TIME`이 24:00을 못 담아
+마지막 밴드의 끝은 `23:59:59.999999`다 (아래 테이블도 같다).
 
 ### `transit_travel_time_calibration`
 노선 × 승차역 × 하차역 × 요일유형 × 시간대별 차내 이동시간의 평균/표준편차. 샘플이 없으면
 `route_legs.planned_travel_sec`을 평균으로, 넉넉한 기본 표준편차로 시작한다.
+요일유형·시간대는 **실제 출발 시각**(`vehicle_actual_departure_at`)의 KST 기준이다.
+
+세 보정 테이블은 `wio-analytics calibrate`가 매번 전체 실측으로 다시 계산한다. 샘플이 1개인 그룹도
+저장하고(σ는 콜드스타트 값), 입력이 사라진 그룹의 행은 지운다. 표준편차 규칙은 ALGORITHM.md 5절.
 
 ### `departure_recommendations`
 Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시각을 맞추려면, OO시 OO분에
