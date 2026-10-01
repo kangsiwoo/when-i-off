@@ -37,6 +37,8 @@ cd backend
 
 - Health: `http://localhost:8080/actuator/health` (인증 없음)
 - Swagger UI: `http://localhost:8080/swagger-ui.html` (OpenAPI JSON `/v3/api-docs`)
+- API를 바꾸면 `./gradlew exportOpenApi`로 `desktop/openapi.json`을 다시 쓰고 desktop 타입도 재생성한다
+  ([desktop/README.md](../desktop/README.md#api-타입-재생성)). 낡은 스펙은 backend-ci가 잡는다.
 - API 호출은 전부 `X-Api-Token: $WIO_API_TOKEN` 헤더 필요:
   ```bash
   curl -s -H "X-Api-Token: $WIO_API_TOKEN" localhost:8080/api/v1/commute-routes

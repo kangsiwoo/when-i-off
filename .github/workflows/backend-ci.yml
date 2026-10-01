@@ -6,10 +6,14 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
+      # 손으로 고친 스펙도 backend와 대조한다.
+      - "desktop/openapi.json"
   pull_request:
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
+      # 손으로 고친 스펙도 backend와 대조한다.
+      - "desktop/openapi.json"
 
 jobs:
   check:
@@ -44,6 +48,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Check
         run: ./gradlew check --no-daemon
+      # desktop이 타입을 생성하는 desktop/openapi.json이 지금 backend의 스펙과 같은지 본다 (#56).
+      # API를 바꿨으면 로컬에서 ./gradlew exportOpenApi 후 desktop에서 npm run gen:api를 돌려 같이 커밋한다.
+      - name: OpenAPI spec is up to date
+        run: |
+          ./gradlew exportOpenApi --no-daemon
+          git diff --exit-code -- ../desktop/openapi.json || {
+            echo "::error::desktop/openapi.json is stale. Run './gradlew exportOpenApi' in backend/, then 'npm run gen:api' in desktop/, and commit both."
+            exit 1
+          }
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4

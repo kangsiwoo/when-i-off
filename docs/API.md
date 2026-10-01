@@ -2,7 +2,8 @@
 
 앱(Swift)과 데스크탑(TS/React)이 공용으로 쓰는 REST API. 구현된 엔드포인트의 실제 스펙은
 서버의 Swagger UI(`/swagger-ui.html`, OpenAPI JSON `/v3/api-docs`)가 진실이고, 이 문서는
-계약의 의도와 아직 구현 전인 부분을 적는다. 표의 **상태** 열: `✔` #10에서 구현, `계약` 초안만.
+계약의 의도와 아직 구현 전인 부분을 적는다. 그 스펙의 스냅샷이 `desktop/openapi.json`이며 desktop의 API 타입은
+여기서 생성된다(`./gradlew exportOpenApi`, [desktop/README.md](../desktop/README.md#api-타입-재생성)). 표의 **상태** 열: `✔` #10에서 구현, `계약` 초안만.
 
 ## 공통 규약
 

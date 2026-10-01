@@ -66,3 +66,18 @@ tasks.withType<Test> {
         events("passed", "skipped", "failed")
     }
 }
+
+// desktop이 타입을 생성하는 OpenAPI 스펙을 desktop/openapi.json으로 내보낸다 (#56).
+// 앱을 test 프로필로 띄워(로컬 PostgreSQL 필요) /v3/api-docs를 받아 키 정렬·고정 들여쓰기로 쓴다.
+val exportOpenApi by tasks.registering(Test::class) {
+    description = "Writes the springdoc OpenAPI spec to ../desktop/openapi.json"
+    group = "documentation"
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("com.kangsiwoo.whenioff.openapi.OpenApiSpecExportIT") }
+    systemProperty("wio.openapi.out", rootDir.resolve("../desktop/openapi.json").normalize().absolutePath)
+    outputs.upToDateWhen { false }
+}

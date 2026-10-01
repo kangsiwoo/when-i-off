@@ -137,7 +137,10 @@
 ### desktop (TypeScript / React)
 - Vite + React + TS strict, ESLint + Prettier
 - 서버 상태는 TanStack Query, 폼은 react-hook-form. 전역 상태 라이브러리는 필요해질 때
-- API 타입은 backend OpenAPI에서 생성 (`openapi-typescript`), 손으로 쓰지 않는다
+- API 타입은 backend OpenAPI에서 생성 (`openapi-typescript`), 손으로 쓰지 않는다.
+  backend API를 바꾸는 PR은 `./gradlew exportOpenApi`(→ `desktop/openapi.json`)와
+  `npm run gen:api`(→ `desktop/src/api/schema.d.ts`) 결과를 같이 커밋한다. 둘 다 CI가 diff로 확인한다
+- 검사: `npm run typecheck && npm run lint && npm run format:check && npm test && npm run build`가 CI 게이트
 
 ### ios (Swift)
 - SwiftUI, 최소 iOS 17, SwiftLint
