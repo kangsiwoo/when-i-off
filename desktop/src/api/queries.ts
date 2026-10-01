@@ -272,3 +272,60 @@ export function useTripGpsTraces(tripId: number) {
       ),
   });
 }
+
+// --- 정적 시간표 (#70) ---
+
+/**
+ * 정적 시간표 CSV 업로드 (`POST /admin/schedules/import`, multipart 파트 `file`). 생성 타입은 binary를 `string`으로
+ * 두므로 본문은 타입만 맞추고, 실제 파트는 bodySerializer가 File 그대로 FormData에 담는다(Content-Type과
+ * boundary는 브라우저가 붙인다). 성공하면 다음 출발 조회 캐시를 버린다.
+ */
+export function useImportSchedules() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File) =>
+      unwrap(
+        await api.POST("/api/v1/admin/schedules/import", {
+          body: { file: file.name },
+          bodySerializer: () => {
+            const form = new FormData();
+            form.append("file", file, file.name);
+            return form;
+          },
+        }),
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === NEXT_DEPARTURES }),
+  });
+}
+
+const NEXT_DEPARTURES = "schedules-next";
+
+export interface NextDeparturesQuery {
+  lineId: number;
+  stopId: number;
+  direction: string;
+  /** UTC ISO. */
+  at: string;
+  limit: number;
+}
+
+/** 정적 시간표 기준 다음 출발 (`GET /transit-lines/{id}/schedules/next`). `q`가 null이면 부르지 않는다. */
+export function useNextDepartures(q: NextDeparturesQuery | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [NEXT_DEPARTURES, q],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/transit-lines/{lineId}/schedules/next", {
+          params: {
+            path: { lineId: q!.lineId },
+            query: { stopId: q!.stopId, direction: q!.direction, at: q!.at, limit: q!.limit },
+          },
+          signal,
+        }),
+      ),
+    enabled: q != null,
+  });
+}

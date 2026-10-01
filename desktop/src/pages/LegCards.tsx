@@ -1,9 +1,9 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import type { TransitLine, TransitMode, TransitStop } from "../api/client";
-import { useTransitLineSearch } from "../api/queries";
+import type { ReactNode } from "react";
+import type { TransitLine, TransitStop } from "../api/client";
 import { formatDistance, modeLabel } from "../format";
 import type { TransitDraft, WalkDraft } from "../legs/legRules";
 import { formatLatLng } from "../map/geo";
+import { LinePicker } from "./LinePicker";
 
 export type PickTarget = "walk-start" | "walk-end" | "board" | "alight" | "signal";
 export type StopWhich = "board" | "alight";
@@ -250,92 +250,5 @@ function StopCandidates({
         </li>
       ))}
     </ul>
-  );
-}
-
-const MODES: TransitMode[] = ["BUS", "SUBWAY", "GTX"];
-
-function LinePicker({
-  line,
-  onLine,
-  keyPrefix,
-}: {
-  line: TransitLine | null;
-  onLine: (line: TransitLine) => void;
-  keyPrefix: string;
-}) {
-  const [input, setInput] = useState("");
-  const [mode, setMode] = useState<TransitMode | "">("");
-  const [submitted, setSubmitted] = useState("");
-  const search = useTransitLineSearch(submitted, mode || undefined);
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setSubmitted(input.trim());
-  };
-  return (
-    <div className="line-picker">
-      <p>
-        <span className="stop-label">노선</span>{" "}
-        {line ? `${line.name} (${modeLabel(line.mode)})` : <span className="muted">미선택</span>}
-      </p>
-      {/* 바깥 폼 안에 폼을 두지 않도록 div + Enter 처리 */}
-      <div className="form" role="search">
-        <div className="field">
-          <label htmlFor={`mode-${keyPrefix}`}>수단</label>
-          <select
-            id={`mode-${keyPrefix}`}
-            value={mode}
-            onChange={(e) => setMode(e.target.value as TransitMode | "")}
-          >
-            <option value="">전체</option>
-            {MODES.map((m) => (
-              <option key={m} value={m}>
-                {modeLabel(m)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={`kw-${keyPrefix}`}>노선 검색</label>
-          <input
-            id={`kw-${keyPrefix}`}
-            value={input}
-            placeholder="M4403, GTX-A"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onSubmit(e)}
-          />
-        </div>
-        <button type="button" className="secondary" onClick={onSubmit}>
-          검색
-        </button>
-      </div>
-      {search.isFetching && <p className="muted small">검색 중…</p>}
-      {search.error && <p className="error small">검색하지 못했습니다: {search.error.message}</p>}
-      {search.data &&
-        (search.data.length === 0 ? (
-          <p className="muted small">“{submitted}” 노선이 없습니다.</p>
-        ) : (
-          <ul className="candidates" aria-label="노선 검색 결과">
-            {search.data.map((l) => (
-              <li key={l.id}>
-                <button
-                  type="button"
-                  className="link-button"
-                  onClick={() => {
-                    onLine(l);
-                    setSubmitted("");
-                  }}
-                >
-                  {l.name}
-                </button>{" "}
-                <span className="muted small">
-                  {modeLabel(l.mode)}
-                  {l.hasRealtimeApi ? "" : " · 시간표만"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ))}
-    </div>
   );
 }
