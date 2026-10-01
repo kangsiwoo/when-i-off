@@ -47,6 +47,10 @@ erDiagram
 
     users ||--o{ departure_recommendations : "추천 결과"
     commute_routes ||--o{ departure_recommendations : ""
+
+    commute_routes ||--o{ recommendation_evaluations : "날짜 × 버전마다 1건 (파생)"
+    departure_recommendations ||--o{ recommendation_evaluations : "그날 마지막 추천"
+    commute_trips ||--o{ recommendation_evaluations : "그날 고른 trip"
 ```
 
 ## 계층 구조 한눈에
@@ -330,7 +334,25 @@ trip마다 WALK 구간별로 "실제 몇 초/몇 미터 걸렸는지"를 분석 
 ### `departure_recommendations`
 Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시각을 맞추려면, OO시 OO분에
 나가라 (성공 확률 P)"를 기록한다. 앱/웹은 이 테이블을 읽기만 한다. 과거 추천도 삭제하지
-않고 누적해서 같은 날짜의 `commute_trips`와 비교해 모델 성능을 추적한다.
+않고 누적해서 같은 날짜의 `commute_trips`와 비교해 모델 성능을 추적한다 (비교 결과는
+`recommendation_evaluations`).
+
+### `recommendation_evaluations`
+추천 성과 평가 (V7, #72). (경로, `target_date`, `model_version`)마다 한 행으로 "추천대로 나갔을 때 실제로
+됐는가"를 쌓아, 모델을 바꿀 때 버전끼리 비교한다. analytics `evaluate` 배치가 파생해 upsert한다.
+- 비교 대상: 그날 **마지막으로 계산된** 추천(`computed_at DESC, id DESC` 첫 행 — 추천 이력 API #62와 같은 기준)과
+  같은 경로·같은 날짜(`trip_date`)의 trip 하나. trip이 없는 날은 행이 없다
+- trip이 여럿이면 도착 기록이 있는 것 중 `arrived_destination_at`이 목표 도착에 가장 가까운 것, 도착한 trip이
+  없으면 `left_home_at`이 가장 이른 것을 고른다
+- 값: 추천 출발·실제 출발과 그 차이(`departure_diff_sec`, + = 늦게 나감), 목표·실제 도착과 그 차이
+  (`arrival_diff_sec`, + = 늦음), 지각(`is_late`: 실제 도착 > 목표, 정각은 지각 아님), 전 구간 탑승
+  (`all_legs_caught`), 놓친 차 수(`missed_count`) — 마지막 둘은 #62의 `allLegsCaught`/`missedCount`와 같다 —,
+  정류장 평균 대기(`avg_stop_wait_sec`: `CAUGHT` 구간마다 탄 차의 실제 출발 − 첫 시도의 정류장 도착, 구간 평균).
+  원본에 시각이 없으면 해당 값은 NULL이다
+- 원본(추천·trip·경로)이 지워지면 함께 지운다(`ON DELETE CASCADE`) — 다시 돌리면 같은 값이 나오는 파생값이다.
+  배치는 평가한 날짜 범위 안에서 더는 매칭되지 않는 키의 행도 지운다. `evaluated_at`은 값이 바뀐 때만 움직인다
+
+자세한 규칙과 요약 출력은 analytics/README.md의 `evaluate`. desktop의 버전 비교 화면은 후속이다.
 
 ## 왜 "예측"과 "실측"을 분리해서 저장하는가
 
