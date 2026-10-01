@@ -21,6 +21,7 @@ export function Layout() {
         <nav>
           <Link to="/">경로</Link>
           <Link to="/trips">이동 기록</Link>
+          <Link to="/schedules">시간표</Link>
         </nav>
         <button type="button" className="link-button" onClick={logout}>
           로그아웃

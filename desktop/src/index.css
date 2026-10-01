@@ -1008,3 +1008,186 @@ button:disabled {
 .editor-actions {
   margin-bottom: 0.5rem;
 }
+
+/* 정적 시간표 (#70) */
+.schedules {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.schedules .card {
+  padding: 1.25rem 1.5rem;
+}
+
+/* 그리드 칸은 기본 min-width가 내용 폭이라, 넓은 표가 카드째 화면 밖으로 밀어낸다. 표만 가로로 스크롤한다. */
+.schedules > *,
+.schedule-upload > * {
+  min-width: 0;
+}
+
+.schedules h2 {
+  margin: 0 0 0.5rem;
+}
+
+.schedules h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.4rem;
+}
+
+/* 그냥 monospace면 브라우저가 13px로 줄여 작은 글씨 안에서 너무 작아진다. */
+.schedules code,
+.problem-box pre.detail {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+.schedule-upload {
+  display: grid;
+  gap: 1rem;
+}
+
+.schedule-upload > p {
+  margin: 0;
+}
+
+.schedule-upload input[type="file"] {
+  font: inherit;
+  max-width: 100%;
+}
+
+.problem-box {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+}
+
+.problem-box p {
+  margin: 0.25rem 0;
+}
+
+.problem-box pre.detail {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.preview-head {
+  margin: 0 0 0.5rem;
+}
+
+.schedule-preview .facts {
+  margin-bottom: 0.75rem;
+}
+
+.count-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.count-list {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.count-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+.count-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.count-list .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.warn-note,
+.replace-scope {
+  padding: 0.75rem 1rem;
+  background: var(--warn);
+  color: var(--text);
+  border-radius: 8px;
+}
+
+.replace-scope h3 {
+  color: var(--warn-text);
+}
+
+.replace-scope > p {
+  margin: 0 0 0.75rem;
+}
+
+.scope-table {
+  min-width: 620px;
+}
+
+.scope-table td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.upload-actions .checkbox {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.upload-result p {
+  margin: 0 0 0.5rem;
+}
+
+.next-form {
+  margin-top: 0.75rem;
+}
+
+.next-form .narrow {
+  width: 5rem;
+}
+
+.chip {
+  font: inherit;
+  font-size: 0.85rem;
+  margin: 0 0.35rem 0.25rem 0;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.departures {
+  margin-top: 1rem;
+}
+
+.departures td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

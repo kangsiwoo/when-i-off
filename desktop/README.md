@@ -2,7 +2,7 @@
 
 TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)(#56)와
 이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58), 경로별 캘리브레이션 상태(#60), 추천 vs 실제(#62)가
-있다. 지도 위 경로 등록·구간/정류장/신호등 편집과 trip GPS 트랙(#64)도 있다.
+있다. 지도 위 경로 등록·구간/정류장/신호등 편집과 trip GPS 트랙(#64), 정적 시간표 CSV 업로드와 다음 출발 확인(#70)도 있다.
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
 스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch · Recharts(차트),
@@ -140,6 +140,24 @@ npm run gen:api
   (서버도 400). 규칙은 `src/target/defaultTarget.ts`(순수 로직), 입력 칸은 `pages/TargetFields.tsx`
 - 저장 응답을 상세 캐시의 `route`에 바로 넣고 목록·상세를 다시 받는다
 
+## 정적 시간표 (#70)
+
+- `/schedules` (상단 "시간표"): GTX처럼 실시간 API가 없는 노선의 시간표 CSV를 `POST /admin/schedules/import`(multipart
+  파트 `file`)로 올리고 `GET /transit-lines/{id}/schedules/next`로 확인한다. 형식은 [docs/API.md](../docs/API.md#정적-시간표)
+- 파일을 고르면 **올리기 전에** 브라우저에서 서버와 같은 규칙으로 검사한다(`src/schedules/csv.ts`: `TransitScheduleService`
+  `parseRows`/`parseRow`와 `ScheduleAdminController`를 그대로 옮김 — 서버를 바꾸면 같이 바꾼다). 오류 메시지는 서버 `detail`과
+  같은 문자열(`row 2: expected 5 columns …`)이고 줄 원문을 같이 보여 준다. Kotlin `trim()`/`toLongOrNull()`/`LocalTime.parse`의
+  세부(U+FEFF는 칸 안에서 공백이 아님, `+12`·유니코드 숫자 허용, `07:30:05.` 허용, `24:00` 거부 등)까지 맞췄다
+- 통과하면 미리보기(데이터 행·넣을 차편·파일 안 중복, 노선/정류장/방향/day_type별 행 수)와 **교체 범위**(파일에 나온
+  (노선, 정류장, day_type, 방향) 조합마다 기존 행을 지우고 바꾼다)를 표로 보여 주고, 확인 체크를 해야 업로드 버튼이 켜진다
+- 서버 결과(`fetched/created/updated/skipped`)와 거절(`400` `detail`, 예: `row 3: unknown transit_stop_id 999999`)을 그대로 보여 준다.
+  없는 노선·정류장 id는 서버만 안다
+- 업로드 요청: 생성 타입은 binary 파트를 `string`으로 두므로 본문은 타입만 맞추고 `bodySerializer`가 File을 FormData에 담는다
+  (`useImportSchedules`, Content-Type·boundary는 브라우저가 붙인다)
+- "다음 출발": 노선 검색(`LinePicker`, 구간 편집과 공용) → 정류장 id(방금 고른 CSV와 내 경로 구간의 정류장이 후보) → 방향 코드
+  → 기준 시각(KST) → 대수(1~50). 업로드에 성공하면 그 파일의 첫 조합으로 칸을 채운다. 다음 날로 넘어간 차편은 "다음 날"로 표시
+- 노선·정류장 단건 조회 API가 없어서 이름은 내 경로의 TRANSIT 구간에서 아는 것만 쓰고 나머지는 `#id`로 보인다
+
 ## 구조
 
 ```
@@ -150,12 +168,14 @@ src/
               TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
               RouteCreatePage, RouteEditPage(+ LegCards, SignalCrossingsEditor), TripGpsMap,
               RouteSettingsForm(+ TargetFields),
-              RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy)
+              RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy),
+              SchedulesPage(+ ScheduleUpload, NextDeparturesChecker), LinePicker(노선 검색, 공용)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
   recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
   legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증, crossing 코드) — 화면 없는 순수 로직
   map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선)
   target/     defaultTarget.ts(기본 목표 도착 시각·추천할 날 초안 ↔ 생성 필드/PATCH 본문, 검증) — 화면 없는 순수 로직
+  schedules/  csv.ts(시간표 CSV 검사·미리보기 — 서버 파서를 옮김), next.ts(다음 출발 조회 파라미터·후보) — 화면 없는 순수 로직
   trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표
