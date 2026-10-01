@@ -1,15 +1,14 @@
 # analytics
 
-Python 3.12 배치 모듈. 지금 있는 것은 **`recommend`(최적 출발 시각 계산) 콜드스타트 버전**(#22)과
-그 캘리브레이션 배치인 **`derive-walking-segments`**(#44)·**`calibrate`**(#45)다. recommend가 보정
-테이블을 읽는 연결은 #46에 남아 있다.
+Python 3.12 배치 모듈. **`recommend`(최적 출발 시각 계산)**(#22, 보정 테이블 연결 #46)와 그
+캘리브레이션 배치인 **`derive-walking-segments`**(#44)·**`calibrate`**(#45)가 있다.
 
 ```
 whenioff_analytics/
   model/       순수 통계 함수 — DB도 시계도 모른다 (분포, 신호 주기, 역산)
   io/          DB 읽기/쓰기 — 통계는 하지 않는다
   daytype.py   KST 달력: 날짜 → day_type, 시간표 벽시계 → 절대 시각
-  defaults.py  콜드스타트 기본값 (캘리브레이션 테이블이 비어 있는 동안 쓰는 prior)
+  defaults.py  콜드스타트 기본값 (보정 테이블에 쓸 만한 행이 없을 때의 마지막 fallback)
   service.py   io로 읽은 경로를 분포로 바꿔 model에 넘기는 조립 계층
   cli.py       typer 서브커맨드
 ```
@@ -39,20 +38,27 @@ uv run wio-analytics recommend --route-id 1 --target-arrival-at 2026-09-22T09:00
 ```
 route 1 (동탄→수서 출근), p=0.95
   target arrival        2026-09-22 09:00:00 KST
-  leave home at         2026-09-22 08:00:24 KST (2026-09-21T23:00:24.577354+00:00)
+  leave home at         2026-09-22 07:54:17 KST (2026-09-21T22:54:17.697471+00:00)
   catch probability     0.9500
-  buffer                347s
+  buffer                102s
   target date           2026-09-22
-  model version         v1
-  leg 2: vehicle 2026-09-22 08:14:00 KST of 13 candidates
-      be at the stop by 2026-09-22 08:11:31 KST
+  model version         v2
+  leg 1: walk, speed 1.35±0.06m/s calibrated n=12
+  leg 2: vehicle 2026-09-22 08:00:00 KST of 13 candidates
+      be at the stop by 2026-09-22 07:59:35 KST
       catch p=0.9500, arrive-in-time p=1.0000
-departure_recommendations id=1 (created)
+      prediction error 25±30s calibrated n=12; travel 2269±56s inherited n=8
+  leg 3: walk, speed 1.30±0.08m/s inherited n=20
+departure_recommendations id=2 (created)
 ```
+
+구간마다 쓴 입력과 그 출처(`calibrated` / `inherited` / `default`, 아래 "계산")를 찍는다. TRANSIT
+구간은 고른 차량에 쓴 예측 오차(bias±σ)와 차내 시간(평균±σ)이다.
 
 **멱등성**: `(commute_route_id, target_date, target_arrival_at, model_version)`당 한 행을 유지한다.
 값이 그대로면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). V1 스키마에 이 조합의
-UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다.
+UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다. `model_version`이 키에 들어 있어 v2가 같은
+목표 시각을 다시 계산해도 v1 행은 그대로 남는다 (두 버전의 추천을 같은 trip과 비교할 수 있다).
 
 ## `derive-walking-segments`
 
@@ -125,7 +131,7 @@ transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
   오차·차내 시간 15초. 같은 값 두 개가 σ = 0을 만들면 분위수가 한 점으로 무너지기 때문이고, geofence
   시각은 그보다 정밀하지 않다
 - **INT 열**(`bias_sec`, `mean_sec`, `stddev_sec`)은 0에서 먼 쪽으로 반올림한다 (-12.5 → -13)
-- 샘플이 1개인 그룹도 저장한다. "5개 미만이면 상위 그룹 상속"은 읽는 쪽(#46)의 몫이다
+- 샘플이 1개인 그룹도 저장한다. "5개 미만이면 상위 그룹 상속"은 읽는 쪽(`recommend`, 아래 "계산")의 몫이다
 - **멱등성**: 각 테이블의 UNIQUE 키에 `ON CONFLICT DO UPDATE`, 값이 같으면 건드리지 않는다
   (`unchanged`, `updated_at`도 그대로). 이번 결과에 없는 키의 행은 지운다(`deleted`) — 입력이 사라지거나
   고쳐진 그룹, 모든 실측이 이상치가 된 사용자의 프로필도 포함한다. `user_walking_profile`의
@@ -134,17 +140,34 @@ transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
 
 ## 계산
 
-`docs/ALGORITHM.md` 2·3절 그대로다. 실측 기록이 0건이라 5절의 캘리브레이션 테이블 대신
-`defaults.py`의 콜드스타트 값을 쓴다.
+`docs/ALGORITHM.md` 2·3절 그대로다. `MODEL_VERSION`은 **v2** — v1(콜드스타트 기본값만)에서 보정
+테이블 조회가 붙었다(#46). 테이블이 비어 있으면 v1과 숫자가 똑같다.
 
-| 입력 | 값 | 나중에 대신할 것 |
-|---|---|---|
-| 도보 속도 | 1.2 m/s ± 0.15 | `user_walking_profile` |
-| 도착예측 오차 | bias 0, σ 90초 | `transit_prediction_calibration` |
-| 차내 이동시간 | `route_legs.planned_travel_sec`, σ = 평균의 15% | `transit_travel_time_calibration` |
-| 신호 대기 | `traffic_signal_cycles`, 행이 없으면 C=120초 / R=90초 | 같음 (`PUBLIC_API` 행이 쌓이면) |
-| 후보 차량 | `transit_schedules` | 실시간 예측(`transit_arrival_observations`) |
-| 도보 거리 | `planned_distance_m`, 없으면 구간 양 끝 좌표의 대권거리 | `walking_segments` 실측 |
+| 입력 | 조회 순서 (앞 단계의 샘플이 5개 미만이면 다음으로) |
+|---|---|
+| 도보 속도 | `user_walking_profile`의 그 구간 행 → 사용자 전역 행(`route_leg_id` NULL) → 1.2 m/s ± 0.15 |
+| 도착예측 오차 | `transit_prediction_calibration`의 (노선, 승차 정류장, day_type, 밴드) → 같은 노선·정류장의 모든 행을 합친 값 → bias 0, σ 90초 |
+| 차내 이동시간 | `transit_travel_time_calibration`의 (노선, 승차역, 하차역, day_type, 밴드) → 같은 노선·역 쌍의 모든 행을 합친 값 → `route_legs.planned_travel_sec`, σ = 평균의 15% |
+| 신호 대기 | `traffic_signal_cycles`, 행이 없으면 C=120초 / R=90초 (`PUBLIC_API` 행이 쌓이면 그 값) |
+| 후보 차량 | `transit_schedules` (나중에 실시간 예측 `transit_arrival_observations`) |
+| 도보 거리 | `planned_distance_m`, 없으면 구간 양 끝 좌표의 대권거리 (`walking_segments` 실측 거리는 아직 안 씀) |
+
+- **출처**: 쓴 값마다 `calibrated`(가장 좁은 키의 행), `inherited`(도보는 전역 행, 예측 오차·차내 시간은
+  합친 값), `default`(`defaults.py`)를 붙여 CLI가 찍는다. 문턱은 `model/lookup.py`의
+  `MIN_CALIBRATION_SAMPLES = 5`
+- **후보 차량마다 따로 고른다**: 같은 구간에서도 차마다 KST `day_type`·30분 밴드가 다르다(자정을 넘는
+  창이면 날짜도). 그래서 보정 행은 구간마다 한 번 (노선, 정류장[, 하차역])의 모든 행을 읽고
+  (`io/calibration.py`), 차마다 메모리에서 고른다(`model/lookup.py`, 순수 함수). 키는 calibrate가 그룹을
+  만든 기준과 같다 — 예측 오차는 **시간표(예측) 시각**, 차내 시간은 **출발 시각**의 밴드인데 출발은 아직
+  모르므로 그 기댓값(예측 + 고른 bias)을 쓴다
+- **합치기(pool)**: 그룹별 (n, 평균, σ)를 "모든 샘플을 한데 모아 다시 계산한 값"으로 합친다. 평균은 n 가중,
+  분산은 (그룹 안 제곱합 Σ(nᵢ−1)σᵢ² + 그룹 사이 제곱합 Σnᵢ(평균ᵢ−전체 평균)²) / (N−1) — σ들의 평균이
+  아니다. 샘플 1개 그룹은 그룹 안 항이 0이라 그 행에 넣어 둔 콜드스타트 σ가 섞이지 않는다. 합친 N도
+  5 미만이면 기본값이다. 저장값이 정수 초로 반올림돼 있어 합친 값은 원 샘플로 계산한 것과 1초 안팎 다를 수 있다
+- **σ 하한**: 고른 σ는 calibrate와 같은 하한(도보 0.05 m/s, 예측 오차·차내 시간 15초) 아래로 내리지 않는다.
+  calibrate가 쓴 행은 이미 지키지만, 하한 근처 그룹들을 합치면 그 아래로 떨어질 수 있다
+- 샘플이 쌓여 σ가 좁아지면 분위수 − 평균이 줄어 `buffer_seconds`가 줄고 출발이 늦어진다
+  (`tests/test_lookup.py`의 마지막 테스트가 실측 → calibrate → recommend로 이를 잡는다, #6 완료 기준)
 
 역산에서 가장 헷갈리는 두 지점:
 
@@ -159,7 +182,7 @@ transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
   그 테이블에 승차역 행이 없으면 방향을 모르므로 `IncompleteLegError`로 멈춘다 — 반대 방향 차를
   후보에 섞는 것보다 낫다.
 
-v1에서 문서와 다르게 한(또는 문서가 정하지 않은) 것:
+문서와 다르게 한(또는 문서가 정하지 않은) 것:
 
 - `catch_probability`는 선택된 TRANSIT 구간마다 (그 차를 탈 확률 × 제때 내릴 확률)을 곱한 값이다.
   두 사건을 독립으로 보는 근사다 (실제로는 양의 상관이 있어 약간 보수적으로 나온다).
@@ -188,6 +211,7 @@ uv run pytest -q
 ```
 
 통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다 (도보 구간 파생은
-`tests/test_walking_segments.py`, 보정 테이블은 `tests/test_calibration.py`). DB가 필요한 것은 `io` 계층뿐이고,
+`tests/test_walking_segments.py`, 보정 테이블은 `tests/test_calibration.py`, recommend의
+보정값 조회는 `tests/test_lookup.py`). DB가 필요한 것은 `io` 계층뿐이고,
 시간표 전개와 방향 판정은 가짜 커서로 테스트한다
 (`tests/test_schedule_window.py`, `tests/test_leg_direction.py`).

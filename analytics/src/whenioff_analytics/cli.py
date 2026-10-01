@@ -25,7 +25,8 @@ from whenioff_analytics.model.calibration import (
     travel_time_calibrations,
     walking_profiles,
 )
-from whenioff_analytics.model.recommend import NoFeasibleVehicleError, TransitLeg
+from whenioff_analytics.model.lookup import Provenance, Resolved
+from whenioff_analytics.model.recommend import NoFeasibleVehicleError, WalkLeg
 from whenioff_analytics.model.walking import SkippedSegment, WalkingSegment, derive_walking_segments
 from whenioff_analytics.service import (
     IncompleteLegError,
@@ -102,16 +103,32 @@ def _report(result: RecommendationResult) -> None:
     typer.echo(f"  buffer                {recommendation.buffer_seconds}s")
     typer.echo(f"  target date           {kst_date_of(result.target_arrival_at)}")
     typer.echo(f"  model version         {defaults.MODEL_VERSION}")
-    legs = {leg.route_leg_id: leg for leg in result.legs if isinstance(leg, TransitLeg)}
-    for chosen in recommendation.chosen:
-        candidates = len(legs[chosen.route_leg_id].candidates)
-        typer.echo(
-            f"  leg {chosen.route_leg_id}: vehicle {chosen.candidate.label} of {candidates} candidates"
-        )
+    chosen_by_leg = {chosen.route_leg_id: chosen for chosen in recommendation.chosen}
+    for leg, inputs in zip(result.legs, result.inputs, strict=True):
+        if isinstance(leg, WalkLeg):
+            if inputs.walking_speed is not None:
+                speed = _resolved(inputs.walking_speed, "m/s", 2)
+                typer.echo(f"  leg {leg.route_leg_id}: walk, speed {speed}")
+            continue
+        chosen = chosen_by_leg[leg.route_leg_id]
+        used = result.candidate_inputs(leg.route_leg_id, chosen.candidate)
+        candidates = len(leg.candidates)
+        typer.echo(f"  leg {leg.route_leg_id}: vehicle {chosen.candidate.label} of {candidates} candidates")
         typer.echo(f"      be at the stop by {_local(chosen.be_at_stop_by)}")
         typer.echo(
             f"      catch p={chosen.catch_probability:.4f}, arrive-in-time p={chosen.arrive_probability:.4f}"
         )
+        typer.echo(
+            f"      prediction error {_resolved(used.prediction_error, 's', 0)}; "
+            f"travel {_resolved(used.travel_time, 's', 0)}"
+        )
+
+
+def _resolved(resolved: Resolved, unit: str, digits: int) -> str:
+    """`1.31±0.08m/s calibrated n=12` 처럼 값·출처·샘플 수를 한 덩어리로."""
+    value = resolved.value
+    count = "" if resolved.provenance is Provenance.DEFAULT else f" n={resolved.sample_count}"
+    return f"{value.mean:.{digits}f}±{value.stddev:.{digits}f}{unit} {resolved.provenance}{count}"
 
 
 def _parse_date(raw: str | None, option: str) -> date | None:
