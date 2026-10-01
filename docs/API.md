@@ -130,9 +130,9 @@ attempt는 **차 한 대 = 한 건**이다 (#38). 한 구간에서 차를 놓치
   받는다 (409가 아님)
 - **번호를 건너뛸 수 없다.** 새 `attemptSeq`는 그 구간의 현재 최댓값 + 1 이하여야 한다(첫 시도는 1).
   아니면 400 — 중간 시도가 빠진 기록은 "그 사이 놓친 차"를 잃는다. 범위는 1~20
-- 같은 구간에서 뒤 시도의 `arrivedAtStopAt`, `vehicleActualDepartureAt`은 앞 시도의
-  `vehicleActualDepartureAt`보다 이르면 400 (값이 있는 쪽만). 뒤 시도의 `arrivedAtStopAt`은 보통
-  생략한다 — 도보 구간은 첫 시도의 도착을 쓴다
+- 같은 구간에서 뒤 시도의 `vehicleActualDepartureAt`이 앞 시도의 `vehicleActualDepartureAt`보다
+  이르면 400 (값이 있는 쪽만). 뒤 시도의 `arrivedAtStopAt`은 이 검사를 받지 않는다(#42) — 처음 도착한
+  시각을 그대로 실어도 되고 생략해도 된다. 도보 구간은 첫 시도의 도착만 쓴다
 - trip의 `boardingAttempts`는 구간 순서(`seqOrder`) → `attemptSeq` 순으로 나온다
 
 예: 역 도착 → 22:43 차 놓침 → 22:58 차 탐
