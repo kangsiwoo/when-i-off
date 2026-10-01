@@ -19,12 +19,24 @@ from whenioff_analytics.io.calibration import (
     save_walking_profiles,
 )
 from whenioff_analytics.io.db import connect
+from whenioff_analytics.io.evaluation import (
+    load_recommendations,
+    load_transit_legs,
+    load_trips,
+    save_evaluations,
+)
 from whenioff_analytics.io.routes import RouteNotFoundError, load_active_route_targets
 from whenioff_analytics.io.walking import UpsertCounts, load_trip_events, save_walking_segments
 from whenioff_analytics.model.calibration import (
     prediction_calibrations,
     travel_time_calibrations,
     walking_profiles,
+)
+from whenioff_analytics.model.evaluation import (
+    VersionSummary,
+    evaluate_all,
+    latest_recommendations,
+    summarize,
 )
 from whenioff_analytics.model.lookup import Provenance, Resolved
 from whenioff_analytics.model.recommend import NoFeasibleVehicleError, WalkLeg
@@ -322,6 +334,60 @@ def calibrate(
         ]
     for table, counts in results:
         typer.echo(f"{table}: {_counts(counts)}")
+
+
+@app.command()
+def evaluate(
+    date_from: Annotated[
+        str | None, typer.Option("--from", help="이 target_date부터 (YYYY-MM-DD, KST, 포함). 없으면 처음부터")
+    ] = None,
+    date_to: Annotated[
+        str | None, typer.Option("--to", help="이 target_date까지 (YYYY-MM-DD, KST, 포함). 없으면 끝까지")
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="계산만 하고 DB에 쓰지 않는다")] = False,
+) -> None:
+    """그날 마지막 추천과 그날 trip을 짝지어 `recommendation_evaluations`에 upsert한다 (#72)."""
+    start, end = _parse_date(date_from, "--from"), _parse_date(date_to, "--to")
+    if start is not None and end is not None and start > end:
+        typer.echo("--from must not be after --to", err=True)
+        raise typer.Exit(2)
+
+    with connect() as conn:
+        recommendations = load_recommendations(conn, start, end)
+        trips = load_trips(conn, start, end)
+        legs = load_transit_legs(conn, sorted({r.commute_route_id for r in recommendations}))
+        latest = latest_recommendations(recommendations)
+        evaluations = evaluate_all(recommendations, trips, legs)
+
+        window = f"{start or ''}..{end or ''}" if start or end else "all"
+        typer.echo(
+            f"target_date {window}: recommendations {len(recommendations)} "
+            f"(latest per route·date·version {len(latest)}), trips {len(trips)}"
+        )
+        typer.echo(f"  evaluated {len(evaluations)}, no trip {len(latest) - len(evaluations)}")
+        for summary in summarize(evaluations):
+            typer.echo(f"  {_summary(summary)}")
+        if dry_run:
+            conn.rollback()
+            typer.echo("dry-run: nothing written")
+            return
+        counts = save_evaluations(conn, start, end, evaluations)
+    typer.echo(f"recommendation_evaluations: {_counts(counts)}")
+
+
+def _summary(summary: VersionSummary) -> str:
+    rate = "-" if summary.late_rate is None else f"{summary.late_rate:.0%}"
+    return (
+        f"{summary.model_version}: n {summary.n}, late {summary.late}/{summary.with_arrival} ({rate}), "
+        f"mean departure diff {_signed_sec(summary.mean_departure_diff_sec)}, "
+        f"mean stop wait {_signed_sec(summary.mean_stop_wait_sec, sign=False)}"
+    )
+
+
+def _signed_sec(value: float | None, sign: bool = True) -> str:
+    if value is None:
+        return "-"
+    return f"{value:+.0f}s" if sign else f"{value:.0f}s"
 
 
 def _counts(counts: UpsertCounts) -> str:

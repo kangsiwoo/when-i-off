@@ -1,7 +1,8 @@
 # analytics
 
 Python 3.12 배치 모듈. **`recommend`(최적 출발 시각 계산)**(#22, 보정 테이블 연결 #46)와 그
-캘리브레이션 배치인 **`derive-walking-segments`**(#44)·**`calibrate`**(#45)가 있다.
+캘리브레이션 배치인 **`derive-walking-segments`**(#44)·**`calibrate`**(#45), 추천 성과를 버전별로 쌓는
+**`evaluate`**(#72)가 있다.
 
 ```
 whenioff_analytics/
@@ -174,6 +175,51 @@ transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
   `(user_id, route_leg_id)`는 `UNIQUE NULLS NOT DISTINCT`라 전역 행도 같은 `ON CONFLICT`로 잡힌다
   (PostgreSQL 15+)
 
+## `evaluate`
+
+```bash
+uv run wio-analytics evaluate --from 2026-09-01 --to 2026-09-30   # --dry-run: 계산만 하고 쓰지 않는다
+```
+
+- `--from` / `--to`: `target_date`(= `trip_date`, KST 날짜) 범위, 양 끝 포함. 생략하면 그쪽은 열려 있다(기본 전체)
+
+```
+target_date all: recommendations 62 (latest per route·date·version 21), trips 3
+  evaluated 6, no trip 15
+  v1: n 3, late 0/2 (0%), mean departure diff -2177s, mean stop wait 532s
+  v2: n 3, late 0/2 (0%), mean departure diff -2180s, mean stop wait 532s
+recommendation_evaluations: created 6, updated 0, unchanged 0, deleted 0
+```
+
+"추천대로 나갔을 때 실제로 됐는가"를 `model_version`별로 `recommendation_evaluations`에 쌓아 모델을 바꿀 때
+비교한다. 계산은 `model/evaluation.py`(순수 함수), DB는 `io/evaluation.py`다.
+
+- **추천**: (경로, `target_date`, `model_version`)마다 그날 **마지막으로 계산된** 추천 하나 —
+  `computed_at DESC, id DESC` 첫 행. backend 추천 이력 API(#62)와 같은 기준이라 그날 목표 시각이 여러 개여도
+  버전당 하나다
+- **trip**: 같은 경로·같은 날짜(`trip_date = target_date`)의 trip. 없으면 행을 만들지 않는다(`no trip`).
+  여럿이면 **도착 기록이 있는 trip 중 `arrived_destination_at`이 그 추천의 목표 도착에 가장 가까운 것**
+  (같으면 이른 도착, 그다음 id), 도착한 trip이 하나도 없으면 `left_home_at`이 가장 이른 것(없는 것은 뒤, 같으면 id).
+  목표를 맞추려던 이동은 목표 근처에 도착한 이동이라서다. 버전마다 목표 시각이 다르면 고른 trip도 다를 수 있다
+- **값** (초는 0에서 먼 쪽으로 반올림):
+
+  | 열 | 정의 | 비는 경우 |
+  |---|---|---|
+  | `departure_diff_sec` | 실제 출발(`left_home_at`) − 추천 출발. + = 늦게 나감 | `left_home_at` 없음 |
+  | `arrival_diff_sec` | 실제 도착(`arrived_destination_at`) − 목표 도착. + = 늦음 | 도착 없음 |
+  | `is_late` | 실제 도착 > 목표 도착. **정각은 지각 아님**. 반올림 전 시각으로 판정한다 (0.3초 늦으면 차이 0초여도 지각) | 도착 없음 |
+  | `all_legs_caught` | 경로의 TRANSIT 구간마다 `CAUGHT` 시도가 있다. TRANSIT 없는 경로는 참 (#62 `allLegsCaught`) | — |
+  | `missed_count` | `MISSED` 시도 수 (#62 `missedCount`) | — |
+  | `avg_stop_wait_sec` | `CAUGHT` 구간마다 탄 차의 `vehicle_actual_departure_at` − 그 구간 첫 시도(`attempt_seq = 1`)의 `arrived_at_stop_at`, 구간 평균. 놓친 차를 보낸 시간도 대기에 들어간다 | 두 시각이 다 있는 구간이 없음. 음수(출발이 도착보다 앞)인 구간은 뺀다 |
+
+- **요약**: 버전별 n, 지각 수/도착 기록이 있는 평가 수(지각률), 평균 출발 차이, 평균 정류장 대기. 평균은 값이 있는
+  행만으로 낸다
+- **멱등성**: `(commute_route_id, target_date, model_version)` UNIQUE에 `ON CONFLICT DO UPDATE`, 값이 같으면
+  건드리지 않는다(`unchanged`, `evaluated_at`도 그대로). 범위 안에서 이번에 나오지 않은 키의 행(trip이나 추천이
+  지워지거나 날짜가 고쳐진 것)은 지운다(`deleted`). 범위 밖 행은 건드리지 않는다
+- 추천을 다시 계산해 그날 마지막 추천이 바뀌면 다음 실행에서 그 추천으로 갱신된다(`updated`). 그래서 새벽 배치는
+  전체를 다시 본다 — 행 수가 (경로 × 날짜 × 버전)이라 작다
+
 ## 컨테이너와 스케줄
 
 배치는 상주 서비스가 아니라서 compose의 `analytics` 서비스는 `profiles: [batch]`로 두었다(`up`으로는 뜨지
@@ -183,6 +229,7 @@ transit_travel_time_calibration: created 3, updated 0, unchanged 0, deleted 0
 docker compose --profile batch build analytics
 docker compose run --rm analytics derive-walking-segments
 docker compose run --rm analytics calibrate
+docker compose run --rm analytics evaluate
 docker compose run --rm analytics recommend --route-id 1 --target-arrival-at 2026-10-05T09:00:00
 docker compose run --rm analytics recommend --all-active-routes --only-in-window
 ```
@@ -191,7 +238,8 @@ DB는 compose 안에서 서비스 이름(`postgres`)으로 붙는다. 이미지�
 설치하고, 비루트 사용자로 돈다.
 
 정기 실행은 호스트 crontab으로 한다: [`cron.example`](cron.example).
-- 새벽 03:00 `derive-walking-segments` → `calibrate` (순서가 중요하다 — calibrate는 파생된 도보 구간을 읽는다)
+- 새벽 03:00 `derive-walking-segments` → `calibrate` → `evaluate` (앞 둘은 순서가 중요하다 — calibrate는 파생된
+  도보 구간을 읽는다. evaluate는 추천·trip만 읽는다)
 - 하루 종일 10분마다 `recommend --all-active-routes --only-in-window` 한 줄. 경로마다 기본 목표 시각의
   −120분 ~ +30분 창 안일 때만 다시 계산한다 (실시간 예측이 바뀌므로). 경로를 더하거나 목표 시각을 바꿔도 crontab은
   그대로다 — 목표 시각·대상 day_type은 desktop의 경로 화면(또는 `PATCH /commute-routes/{id}`)에서 정한다
@@ -270,7 +318,7 @@ uv run pytest -q
 ```
 
 통계 로직은 전부 순수 함수라 DB 없이 합성 데이터로 테스트한다 (도보 구간 파생은
-`tests/test_walking_segments.py`, 보정 테이블은 `tests/test_calibration.py`, recommend의
+`tests/test_walking_segments.py`, 보정 테이블은 `tests/test_calibration.py`, 추천 성과 평가는 `tests/test_evaluation.py`, recommend의
 보정값 조회는 `tests/test_lookup.py`, 일괄 추천의 경로·날짜·창 선택은 `tests/test_targets.py`,
 그 CLI의 인자 규칙·경로별 실패·종료 코드는 가짜 연결로 `tests/test_recommend_cli.py`). DB가 필요한 것은 `io` 계층뿐이고,
 시간표 전개와 방향 판정은 가짜 커서로 테스트한다
