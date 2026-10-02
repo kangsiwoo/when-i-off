@@ -1,8 +1,12 @@
 package com.kangsiwoo.whenioff.support
 
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallMetrics
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallStore
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.RecordedRequest
+import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
 
 object Fixtures {
@@ -13,6 +17,9 @@ object Fixtures {
 
     fun json(name: String): MockResponse =
         MockResponse().setHeader("Content-Type", "application/json").setBody(read(name))
+
+    fun metrics(clock: Clock = Clock.systemUTC()): ExternalCallMetrics =
+        ExternalCallMetrics(SimpleMeterRegistry(), ExternalCallStore(clock))
 }
 
 /** TAGO(버스)와 KLID(신호등) 응답을 오퍼레이션 이름으로 구분해 돌려주는 공용 디스패처. */

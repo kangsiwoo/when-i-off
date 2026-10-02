@@ -23,7 +23,13 @@ data class WioProperties(
         val readTimeout: Duration = Duration.ofSeconds(20),
         val maxRetries: Int = 2,
         val retryBackoff: Duration = Duration.ofMillis(500),
+        /** 오퍼레이션(포털 "상세기능")마다의 일 호출 한도. 개발계정 1,000회 (#76, 운영 조회의 사용률 분모). */
+        val dailyLimit: Long = 1_000,
+        /** op 이름 → 한도. 운영계정 전환 등으로 일부 op만 다를 때. */
+        val dailyLimitOverrides: Map<String, Long> = emptyMap(),
     ) {
+        fun dailyLimitOf(op: String): Long = dailyLimitOverrides[op] ?: dailyLimit
+
         val routeInfo: Endpoint get() = Endpoint(routeInfoBaseUrl, serviceKey)
         val arrivalInfo: Endpoint get() = Endpoint(arrivalInfoBaseUrl, serviceKey)
     }
@@ -41,7 +47,12 @@ data class WioProperties(
          * `0`이면 표시가 즉시 만료되어 건너뛰기가 사실상 꺼진다.
          */
         val noDataTtl: Duration = Duration.ofHours(6),
-    )
+        /** 오퍼레이션마다의 일 호출 한도. 개발계정 5,000회 수준 (ARCHITECTURE "호출 한도"). */
+        val dailyLimit: Long = 5_000,
+        val dailyLimitOverrides: Map<String, Long> = emptyMap(),
+    ) {
+        fun dailyLimitOf(op: String): Long = dailyLimitOverrides[op] ?: dailyLimit
+    }
 
     data class Endpoint(
         val baseUrl: String,

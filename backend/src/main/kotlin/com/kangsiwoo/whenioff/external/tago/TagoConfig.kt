@@ -2,9 +2,9 @@ package com.kangsiwoo.whenioff.external.tago
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallMetrics
 import com.kangsiwoo.whenioff.external.tago.bus.TagoArrivalApi
 import com.kangsiwoo.whenioff.external.tago.bus.TagoBusRouteApi
-import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings
 import org.springframework.context.annotation.Bean
@@ -14,13 +14,10 @@ import org.springframework.web.client.RestClient
 @Configuration
 class TagoConfig {
     @Bean
-    fun tagoCallCounter(meterRegistry: MeterRegistry): TagoCallCounter = TagoCallCounter(meterRegistry)
-
-    @Bean
     fun tagoHttpClient(
         properties: WioProperties,
         objectMapper: ObjectMapper,
-        callCounter: TagoCallCounter,
+        metrics: ExternalCallMetrics,
     ): TagoHttpClient {
         val tago = properties.tago
         val settings =
@@ -33,7 +30,7 @@ class TagoConfig {
                 .builder()
                 .requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings))
                 .build()
-        return TagoHttpClient(restClient, objectMapper, callCounter, tago.maxRetries, tago.retryBackoff)
+        return TagoHttpClient(restClient, objectMapper, metrics, tago.maxRetries, tago.retryBackoff)
     }
 
     @Bean

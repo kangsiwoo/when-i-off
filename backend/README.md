@@ -54,6 +54,9 @@ cd backend
 | `wio.tago.connect-timeout` / `read-timeout` / `max-retries` / `retry-backoff` | | 5s / 20s / 2 / 500ms | TAGO 클라이언트 |
 | `wio.klid.signal.service-key` | `REALTIME_TREFFIC_LIGHT_API` | 빈 문자열 | KLID 신호등 `rti` 서비스 키 (Decoding/Encoding 둘 다 가능) |
 | `wio.klid.connect-timeout` / `read-timeout` / `max-retries` / `retry-backoff` | | 5s / 20s / 2 / 500ms | KLID 클라이언트 |
+| `wio.tago.daily-limit` / `wio.klid.daily-limit` | `WIO_TAGO_DAILY_LIMIT` / `WIO_KLID_DAILY_LIMIT` | 1000 / 5000 | 오퍼레이션마다의 일 호출 한도. 운영 조회의 사용률 분모일 뿐 호출을 막지 않는다 (아래 "운영 메트릭") |
+| `wio.tago.daily-limit-overrides.<op>` / `wio.klid.daily-limit-overrides.<op>` | | 없음 | 일부 op만 한도가 다를 때 |
+| `logging.structured.format.console` | `WIO_LOG_FORMAT=json` | 텍스트 | `json`이면 ECS JSON 한 줄 로그 (아래 "운영 메트릭") |
 | `wio.polling.enabled` | | `false` | 실시간 폴링 스케줄러 on/off |
 | `wio.polling.interval-ms` | | 60000 | 폴링 간격 |
 | `wio.polling.windows` | | `06:30-09:30,17:30-20:30` | 폴링하는 시간대 (KST) |
@@ -67,6 +70,40 @@ cd backend
 | `wio.retention.batch-size` | | 5000 | DELETE 한 문(=한 커밋)이 지우는 최대 행 수 |
 
 키는 환경변수로만 받는다. 값은 커밋·로그·채팅에 남기지 않는다.
+
+## 운영 메트릭 (#76)
+
+외부 API(TAGO/KLID) HTTP **시도마다**(재시도 포함) 하나씩 기록한다:
+
+- Micrometer Timer `wio.external.calls{source=tago|klid, op, outcome}` — `outcome`은 `success`(KLID `K3` NODATA 포함),
+  `http_error`(2xx가 아니고 결과 코드를 못 읽음: 평문 403, 429/5xx), `api_error`(결과 코드가 비정상 — 미등록 키
+  `30`처럼 HTTP 403에 결과 코드 JSON이 와도 여기, 2xx인데 봉투를 못 읽어도 여기), `timeout`, `io_error`.
+  재시도는 시도마다 따로 세고 `attempt` 태그는 없다(재시도도 한도를 쓰므로 한도와 같은 기준). 키가 없어 부르지 않은
+  것은 세지 않는다. 예전의 `wio.tago.calls`/`wio.klid.calls` 카운터는 이것으로 대체했다
+- 메모리 집계(`ExternalCallStore`): (소스, op)마다 **오늘(KST 자정부터)** 과 **최근 1시간(분 단위 60칸)** 의 호출·실패·
+  결과별 수와 p50/p95 지연(로그 눈금 히스토그램, 상대 오차 9% 안). 폴링 결과의 `tagoCallsToday`/`klidCallsToday`도
+  여기서 온다. **재시작하면 비어 시작한다**
+
+Actuator 메트릭 엔드포인트는 인증 없이 열리므로 노출하지 않는다(`health,info`만). 대신 토큰이 필요한 조회 API가 있다:
+
+```bash
+curl -s -H "X-Api-Token: $WIO_API_TOKEN" localhost:8080/api/v1/admin/ops/external-apis | jq
+```
+
+소스·op별 오늘/최근 1시간의 `calls`, `failures`, `failureRate`, `p50Ms`/`p95Ms`, `outcomes`와 일 한도 사용률
+(`quota.used / quota.dailyLimit`), 폴링(켜짐, 창, 마지막 사이클 시각·결과·실패 코드)과 보관 정리(켜짐, dry-run, cron,
+다음 실행, 마지막 실행의 테이블별 행 수) 상태. desktop "운영" 화면이 이것을 그린다. Redis 도입 여부를 다시 판단하는
+기준이 이 값들이다 ([ADR 0002](../docs/adr/0002-redis-not-yet.md)).
+
+**구조화 로그**: `WIO_LOG_FORMAT=json`이면 콘솔 로그가 Spring Boot 기본 지원 ECS JSON 한 줄이 된다(기본은 지금 텍스트,
+그 밖의 값이면 시작이 멈춘다). 외부 호출 실패·재시도 로그는 `source`/`op`/`outcome`을 MDC 필드로 싣고 텍스트 로그에서도
+보이게 메시지에 `key=value`로 쓴다. 로그에는 요청 URL(= `serviceKey`)을 남기지 않는다.
+
+```bash
+WIO_LOG_FORMAT=json ./gradlew bootRun
+# {"@timestamp":"…","log":{"level":"WARN","logger":"…TagoHttpClient"},"source":"tago","op":"getRouteNoList",
+#  "outcome":"api_error","message":"external call failed: source=tago op=getRouteNoList outcome=api_error status=403 …",…}
+```
 
 ## 보관 정책과 백업
 

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
 import com.kangsiwoo.whenioff.external.klid.signal.KlidSignalApi
 import com.kangsiwoo.whenioff.support.Fixtures
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -27,7 +26,7 @@ class KlidApiFixtureTest {
             KlidHttpClient(
                 RestClient.create(),
                 jacksonObjectMapper(),
-                KlidCallCounter(SimpleMeterRegistry()),
+                Fixtures.metrics(),
                 0,
                 Duration.ZERO,
             )

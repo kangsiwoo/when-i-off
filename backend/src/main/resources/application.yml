@@ -27,6 +27,9 @@ spring:
 server:
   port: 8080
 
+# 기본은 Spring Boot 텍스트 로그. WIO_LOG_FORMAT=json이면 ECS JSON 한 줄 로그가 된다
+# (LogFormatEnvironmentPostProcessor가 logging.structured.format.console=ecs로 바꾼다, #76).
+
 management:
   endpoints:
     web:
@@ -50,6 +53,8 @@ wio:
     read-timeout: 20s
     max-retries: 2
     retry-backoff: 500ms
+    # 오퍼레이션마다의 일 한도(개발계정). 운영 조회 API의 사용률 분모일 뿐 호출을 막지는 않는다 (#76)
+    daily-limit: ${WIO_TAGO_DAILY_LIMIT:1000}
   klid:
     signal:
       base-url: https://apis.data.go.kr/B551982/rti
@@ -60,6 +65,7 @@ wio:
     retry-backoff: 500ms
     # K3(NODATA)를 준 stdgCd를 이 시간 동안 폴링에서 건너뛴다 (#31).
     no-data-ttl: 6h
+    daily-limit: ${WIO_KLID_DAILY_LIMIT:5000}
   polling:
     enabled: false
     interval-ms: 60000

@@ -3,7 +3,7 @@ package com.kangsiwoo.whenioff.external.klid
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
 import com.kangsiwoo.whenioff.external.klid.signal.KlidSignalApi
-import io.micrometer.core.instrument.MeterRegistry
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallMetrics
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings
 import org.springframework.context.annotation.Bean
@@ -14,9 +14,6 @@ import java.time.Clock
 @Configuration
 class KlidConfig {
     @Bean
-    fun klidCallCounter(meterRegistry: MeterRegistry): KlidCallCounter = KlidCallCounter(meterRegistry)
-
-    @Bean
     fun klidNoDataRegistry(
         properties: WioProperties,
         clock: Clock,
@@ -26,7 +23,7 @@ class KlidConfig {
     fun klidHttpClient(
         properties: WioProperties,
         objectMapper: ObjectMapper,
-        callCounter: KlidCallCounter,
+        metrics: ExternalCallMetrics,
     ): KlidHttpClient {
         val klid = properties.klid
         val settings =
@@ -39,7 +36,7 @@ class KlidConfig {
                 .builder()
                 .requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings))
                 .build()
-        return KlidHttpClient(restClient, objectMapper, callCounter, klid.maxRetries, klid.retryBackoff)
+        return KlidHttpClient(restClient, objectMapper, metrics, klid.maxRetries, klid.retryBackoff)
     }
 
     @Bean

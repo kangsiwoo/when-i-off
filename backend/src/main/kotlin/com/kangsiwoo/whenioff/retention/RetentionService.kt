@@ -1,6 +1,7 @@
 package com.kangsiwoo.whenioff.retention
 
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import com.kangsiwoo.whenioff.ops.application.BatchRunTracker
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.jdbc.core.JdbcTemplate
@@ -42,6 +43,7 @@ class RetentionService(
     private val properties: WioProperties,
     private val clock: Clock,
     private val meterRegistry: MeterRegistry,
+    private val batchRunTracker: BatchRunTracker,
 ) {
     private data class Rule(
         val table: String,
@@ -104,12 +106,19 @@ class RetentionService(
             return RetentionResult(ran = false, dryRun = config.dryRun, rules = emptyList())
         }
         val now = clock.instant()
-        val results = rules().map { apply(it, now.minus(Duration.ofDays(it.days))) }
+        val results =
+            try {
+                rules().map { apply(it, now.minus(Duration.ofDays(it.days))) }
+            } catch (e: RuntimeException) {
+                batchRunTracker.retentionFailed(config.dryRun, e)
+                throw e
+            }
         val result = RetentionResult(ran = true, dryRun = config.dryRun, rules = results)
+        batchRunTracker.retentionSucceeded(config.dryRun, TABLES.associateWith { result.rows(it) })
         val verb = if (config.dryRun) "would delete" else "deleted"
         log.info {
             "retention ${if (config.dryRun) "dry-run" else "run"}: $verb " +
-                listOf(GPS_TRACES, ARRIVAL_OBSERVATIONS, SIGNAL_STATES).joinToString { "$it ${result.rows(it)}" }
+                TABLES.joinToString { "$it ${result.rows(it)}" }
         }
         return result
     }
@@ -155,5 +164,6 @@ class RetentionService(
         const val GPS_TRACES = "gps_traces"
         const val ARRIVAL_OBSERVATIONS = "transit_arrival_observations"
         const val SIGNAL_STATES = "traffic_signal_states"
+        val TABLES = listOf(GPS_TRACES, ARRIVAL_OBSERVATIONS, SIGNAL_STATES)
     }
 }
