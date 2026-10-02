@@ -336,6 +336,48 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 - 실시간 폴링 스케줄러는 `wio.polling.enabled=true`일 때만 돌고, 위 `bus-arrivals`/`signal-states`
   잡을 창(`wio.polling.windows`) 안에서 `interval-ms`마다 활성 구간/지자체에 대해 실행하는 것과 같다
 
+## 운영 조회 (#76) — 관리 API
+
+| 상태 | Method | Path | 설명 |
+|---|---|---|---|
+| ✔ | GET | `/admin/ops/external-apis` | 외부 API(TAGO/KLID) 호출 집계와 일 한도 사용률, 폴링·보관 배치 상태 |
+
+같은 `X-Api-Token`으로 보호된다(없거나 틀리면 `401`). Actuator 메트릭 엔드포인트는 인증 없이 열리므로 노출하지 않고
+이 API로만 본다. 집계는 서버 메모리에만 있어 **재시작하면 비어 시작한다** — `collectingSince`가 그 시각이다.
+
+```json
+{
+  "generatedAt": "2026-10-02T00:30:00Z",
+  "todayStart": "2026-10-01T15:00:00Z",
+  "collectingSince": "2026-10-01T23:00:00Z",
+  "sources": [
+    { "source": "tago", "configured": true, "ops": [
+      { "op": "getRouteNoList",
+        "today":    { "calls": 4, "failures": 4, "failureRate": 1.0, "p50Ms": 120, "p95Ms": 240,
+                      "outcomes": { "success": 0, "httpError": 0, "apiError": 4, "timeout": 0, "ioError": 0 } },
+        "lastHour": { "calls": 0, "failures": 0, "outcomes": { "success": 0, "httpError": 0, "apiError": 0, "timeout": 0, "ioError": 0 } },
+        "quota": { "dailyLimit": 1000, "used": 4, "usageRate": 0.004 } } ] },
+    { "source": "klid", "configured": true, "ops": [ … ] }
+  ],
+  "polling": { "enabled": true, "intervalMs": 60000, "windows": ["06:30-09:30", "17:30-20:30"], "withinWindow": true,
+               "lastRun": { "at": "…", "result": "SUCCESS", "legsPredicted": 2, "predictions": 5,
+                            "signalStatesInserted": 0, "failedCodes": ["31240"] } },
+  "retention": { "enabled": true, "dryRun": false, "cron": "0 30 4 * * *", "nextRunAt": "2026-10-02T19:30:00Z",
+                 "lastRun": { "at": "…", "result": "SUCCESS", "dryRun": false,
+                              "rows": [ { "table": "gps_traces", "rows": 120 }, … ] } }
+}
+```
+
+- 단위는 **HTTP 시도**(재시도 포함). `outcome`: `success`(KLID `K3` 포함) / `http_error`(2xx 아님 + 결과 코드 없음) /
+  `api_error`(결과 코드 비정상 — HTTP 상태와 상관없이, 2xx인데 봉투를 못 읽은 것 포함) / `timeout` / `io_error`
+- 오늘 = KST 자정부터, 최근 1시간 = 분 단위 60칸(지금 분 포함, 59~60분). 호출이 없는 창은 `failureRate`·`p50Ms`·`p95Ms`가 빠진다
+- p50/p95는 로그 눈금 히스토그램(칸 폭 약 9%)의 nearest-rank 값을 관측 최소·최대로 자른 것이다
+- `ops`에는 이 앱이 부르는 op가 호출 전에도 0으로 나오고, 그 밖에 기록된 op가 뒤에 붙는다
+- `quota.dailyLimit`은 op별 설정값(`wio.tago.daily-limit` 1,000 / `wio.klid.daily-limit` 5,000, `…-overrides.<op>`로 덮어쓰기).
+  `usageRate`는 1을 넘을 수 있다. 사용률은 보여 주기만 하고 호출을 막지 않는다
+- `polling.lastRun.result`는 사이클이 예외 없이 끝났으면 `SUCCESS`이고, 일부 도시/지자체 실패는 `failedCodes`로 따로 보인다.
+  `lastRun`이 없으면 재시작 뒤 아직 실행되지 않았다
+
 ## 정적 시간표
 
 GTX처럼 실시간 API가 없는 노선(`has_realtime_api=false`)은 `transit_schedules`의 정적 시간표가

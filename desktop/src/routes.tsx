@@ -2,6 +2,7 @@ import { Navigate, type RouteObject } from "react-router";
 import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./pages/Layout";
 import { LoginPage } from "./pages/LoginPage";
+import { OpsPage } from "./pages/OpsPage";
 import { RouteCalibrationPage } from "./pages/RouteCalibrationPage";
 import { RouteCreatePage } from "./pages/RouteCreatePage";
 import { RouteDetailPage } from "./pages/RouteDetailPage";
@@ -29,6 +30,7 @@ export const routes: RouteObject[] = [
           { path: "trips", element: <TripListPage /> },
           { path: "trips/:id", element: <TripDetailPage /> },
           { path: "schedules", element: <SchedulesPage /> },
+          { path: "ops", element: <OpsPage /> },
         ],
       },
     ],

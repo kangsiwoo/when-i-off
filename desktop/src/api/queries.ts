@@ -329,3 +329,19 @@ export function useNextDepartures(q: NextDeparturesQuery | null) {
     enabled: q != null,
   });
 }
+
+// --- 운영 (#76) ---
+
+/** 운영 화면 자동 새로 고침 간격. 집계가 분 단위라 이보다 자주 받을 이유가 없다. */
+export const OPS_REFRESH_MS = 30_000;
+
+/** 외부 API 호출 집계 + 폴링·보관 배치 상태 (`GET /admin/ops/external-apis`). 30초마다 다시 받는다. */
+export function useOpsStatus() {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["admin-ops", "external-apis"],
+    queryFn: async ({ signal }) =>
+      unwrap(await api.GET("/api/v1/admin/ops/external-apis", { signal })),
+    refetchInterval: OPS_REFRESH_MS,
+  });
+}

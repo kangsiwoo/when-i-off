@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+  "/api/v1/admin/ops/external-apis": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["externalApis"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/admin/schedules/import": {
     parameters: {
       query?: never;
@@ -423,6 +439,19 @@ export interface components {
       routeNo: string;
       stops: components["schemas"]["SyncCountsResponse"];
     };
+    CallWindowResponse: {
+      /** Format: int64 */
+      calls: number;
+      /** Format: double */
+      failureRate?: number | null;
+      /** Format: int64 */
+      failures: number;
+      outcomes: components["schemas"]["OutcomeCountsResponse"];
+      /** Format: int64 */
+      p50Ms?: number | null;
+      /** Format: int64 */
+      p95Ms?: number | null;
+    };
     CommuteRouteDetailResponse: {
       legs: components["schemas"]["RouteLegResponse"][];
       route: components["schemas"]["CommuteRouteResponse"];
@@ -529,6 +558,17 @@ export interface components {
       /** Format: date-time */
       targetArrivalAt: string;
     };
+    ExternalOpResponse: {
+      lastHour: components["schemas"]["CallWindowResponse"];
+      op: string;
+      quota: components["schemas"]["QuotaResponse"];
+      today: components["schemas"]["CallWindowResponse"];
+    };
+    ExternalSourceOpsResponse: {
+      configured: boolean;
+      ops: components["schemas"]["ExternalOpResponse"][];
+      source: string;
+    };
     GpsPointRequest: {
       /** Format: double */
       accuracyM?: number | null;
@@ -600,6 +640,51 @@ export interface components {
       /** Format: int64 */
       transitLineId: number;
     };
+    OpsStatusResponse: {
+      /** Format: date-time */
+      collectingSince: string;
+      /** Format: date-time */
+      generatedAt: string;
+      polling: components["schemas"]["PollingStatusResponse"];
+      retention: components["schemas"]["RetentionStatusResponse"];
+      sources: components["schemas"]["ExternalSourceOpsResponse"][];
+      /** Format: date-time */
+      todayStart: string;
+    };
+    OutcomeCountsResponse: {
+      /** Format: int64 */
+      apiError: number;
+      /** Format: int64 */
+      httpError: number;
+      /** Format: int64 */
+      ioError: number;
+      /** Format: int64 */
+      success: number;
+      /** Format: int64 */
+      timeout: number;
+    };
+    PollingRunResponse: {
+      /** Format: date-time */
+      at: string;
+      error?: string | null;
+      failedCodes: string[];
+      /** Format: int32 */
+      legsPredicted: number;
+      /** Format: int32 */
+      predictions: number;
+      /** @enum {string} */
+      result: "SUCCESS" | "FAILURE";
+      /** Format: int32 */
+      signalStatesInserted: number;
+    };
+    PollingStatusResponse: {
+      enabled: boolean;
+      /** Format: int64 */
+      intervalMs: number;
+      lastRun?: components["schemas"]["PollingRunResponse"] | null;
+      windows: string[];
+      withinWindow: boolean;
+    };
     PredictionCalibrationRowResponse: {
       /** Format: int32 */
       biasSec: number;
@@ -613,6 +698,14 @@ export interface components {
       timeBandStart: string;
       /** Format: date-time */
       updatedAt: string;
+    };
+    QuotaResponse: {
+      /** Format: int64 */
+      dailyLimit: number;
+      /** Format: double */
+      usageRate: number;
+      /** Format: int64 */
+      used: number;
     };
     RecommendationHistoryDayResponse: {
       /** Format: date */
@@ -636,6 +729,28 @@ export interface components {
     };
     ReplaceSignalCrossingsRequest: {
       crossings: components["schemas"]["SignalCrossingRequest"][];
+    };
+    RetentionRunResponse: {
+      /** Format: date-time */
+      at: string;
+      dryRun: boolean;
+      error?: string | null;
+      /** @enum {string} */
+      result: "SUCCESS" | "FAILURE";
+      rows: components["schemas"]["RetentionTableRowsResponse"][];
+    };
+    RetentionStatusResponse: {
+      cron: string;
+      dryRun: boolean;
+      enabled: boolean;
+      lastRun?: components["schemas"]["RetentionRunResponse"] | null;
+      /** Format: date-time */
+      nextRunAt?: string | null;
+    };
+    RetentionTableRowsResponse: {
+      /** Format: int64 */
+      rows: number;
+      table: string;
     };
     RouteCalibrationResponse: {
       globalWalkingProfile?: components["schemas"]["WalkingProfileResponse"] | null;
@@ -860,6 +975,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  externalApis: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["OpsStatusResponse"];
+        };
+      };
+    };
+  };
   import: {
     parameters: {
       query?: never;

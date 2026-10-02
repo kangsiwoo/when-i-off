@@ -1,10 +1,11 @@
 package com.kangsiwoo.whenioff.polling
 
-import com.kangsiwoo.whenioff.external.klid.KlidCallCounter
 import com.kangsiwoo.whenioff.external.klid.KlidException
 import com.kangsiwoo.whenioff.external.klid.KlidNoDataRegistry
-import com.kangsiwoo.whenioff.external.tago.TagoCallCounter
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallMetrics
+import com.kangsiwoo.whenioff.external.metrics.ExternalSource
 import com.kangsiwoo.whenioff.external.tago.TagoException
+import com.kangsiwoo.whenioff.ops.application.BatchRunTracker
 import com.kangsiwoo.whenioff.route.domain.LegType
 import com.kangsiwoo.whenioff.route.domain.RouteLegRepository
 import com.kangsiwoo.whenioff.route.domain.RouteLegSignalCrossingRepository
@@ -44,8 +45,8 @@ class PollingCycleService(
     private val predictionProvider: ArrivalPredictionProvider,
     private val signalIngestService: SignalStateIngestService,
     private val noDataRegistry: KlidNoDataRegistry,
-    private val tagoCallCounter: TagoCallCounter,
-    private val klidCallCounter: KlidCallCounter,
+    private val callMetrics: ExternalCallMetrics,
+    private val batchRunTracker: BatchRunTracker,
     private val transactionTemplate: TransactionTemplate,
 ) {
     private data class BusLegTarget(
@@ -55,7 +56,25 @@ class PollingCycleService(
         val directionCode: String,
     )
 
+    /** 한 사이클. 결과(또는 예외)를 운영 조회 API용으로 남긴다 (#76). */
     fun runCycle(): PollingCycleResult {
+        val result =
+            try {
+                cycle()
+            } catch (e: RuntimeException) {
+                batchRunTracker.pollingFailed(e)
+                throw e
+            }
+        batchRunTracker.pollingSucceeded(
+            result.legsPredicted,
+            result.predictions,
+            result.signalStatesInserted,
+            result.failedCodes,
+        )
+        return result
+    }
+
+    private fun cycle(): PollingCycleResult {
         val failed = mutableSetOf<String>()
         val targets = collectBusTargets()
         val busCityCodes = targets.map { it.cityCode }.toSet()
@@ -113,8 +132,9 @@ class PollingCycleService(
                 signalSkippedStdgCds = skippedStdgCds,
                 signalStatesInserted = statesInserted,
                 failedCodes = failed,
-                tagoCallsToday = tagoCallCounter.todayCount(),
-                klidCallsToday = klidCallCounter.todayCount(),
+                // HTTP 시도 수(재시도 포함, 실패 포함) — 일 한도와 같은 기준 (#76)
+                tagoCallsToday = callMetrics.todayCount(ExternalSource.TAGO),
+                klidCallsToday = callMetrics.todayCount(ExternalSource.KLID),
             )
         log.info { "polling cycle: $result" }
         return result

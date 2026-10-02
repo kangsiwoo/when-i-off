@@ -7,7 +7,6 @@ import com.kangsiwoo.whenioff.external.tago.bus.TagoArrivalApi
 import com.kangsiwoo.whenioff.external.tago.bus.TagoBusRouteApi
 import com.kangsiwoo.whenioff.external.tago.bus.TagoRouteStop
 import com.kangsiwoo.whenioff.support.Fixtures
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -31,7 +30,7 @@ class TagoApiFixtureTest {
             TagoHttpClient(
                 RestClient.create(),
                 jacksonObjectMapper(),
-                TagoCallCounter(SimpleMeterRegistry()),
+                Fixtures.metrics(),
                 0,
                 Duration.ZERO,
             )

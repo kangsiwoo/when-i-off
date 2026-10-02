@@ -183,6 +183,13 @@ HTTP 200에 body 없음 → 빈 목록, 그 외 K-코드(`K10` 파라미터, `K2
   (`POST /api/v1/admin/sync/...`)로 필요할 때만 실행한다
 - `wio.polling.enabled=false`가 기본이다. 키가 없는 환경(CI, 테스트)에서 스케줄러가 돌지 않게
 
+### 호출 수·실패·한도 사용률 보기 (#76)
+외부 호출은 HTTP 시도마다(재시도 포함) Micrometer Timer `wio.external.calls{source, op, outcome}`와 메모리 집계
+(오늘 KST·최근 1시간)에 기록된다. 한도는 포털이 오퍼레이션(상세기능)마다 일 트래픽을 매기므로 **op별**로 계산하고
+값은 설정(`wio.tago.daily-limit` 1,000, `wio.klid.daily-limit` 5,000)이다 — 위 "서비스별 일 5,000회 수준"은 이 앱이 KLID에서
+폴링하는 op가 `tl_drct_info` 하나라 사실상 같은 말이다. 사용률은 보여 주기만 하고 호출을 막지 않는다. 조회는 토큰이 필요한
+`GET /api/v1/admin/ops/external-apis`와 desktop "운영" 화면 (API.md "운영 조회"). 집계는 재시작하면 비어 시작한다.
+
 ### TAGO: 필터가 노선/정류소 단위라는 것과 호출 한도 (버스)
 KLID와 반대로 TAGO 도착예측은 **지자체 전체 덤프가 없고 `cityCode`+`nodeId`+`routeId`로
 정확히 우리가 등록한 정류장 하나·노선 하나만 조회**한다. 그래서 호출 수는 "지자체 수"가
@@ -220,6 +227,6 @@ KLID와 반대로 TAGO 도착예측은 **지자체 전체 덤프가 없고 `city
 - 지하철 실시간(서울 열린데이터광장 등)도 같은 `ArrivalPredictionProvider`로 얹는다
 - 여러 사용자를 지원하는 구조지만 지금은 1인 사용 기준으로 단순화 가능
 - Redis 등 별도 캐시는 두지 않는다. 캐시가 필요한 값(외부 API 응답, 최신 추천)은 이미
-  `bus_position_observations`/`traffic_signal_states`/`departure_recommendations` 테이블이 그
-  역할을 하고, 1인 규모에선 Postgres 조회로 충분. 앱에서 "지금 몇 분 남았어?"를 초 단위로
-  폴링하게 되어 공공 API 호출 한도가 문제 되는 시점에 짧은 TTL 캐시로 추가 검토
+  `transit_arrival_observations`/`traffic_signal_states`/`departure_recommendations` 테이블이 그
+  역할을 하고, 1인 규모에선 Postgres 조회로 충분. 다시 판단할 기준(한도 사용률 70% 초과가 영업일 3일 연속 등)은
+  운영 메트릭(#76)으로 보고 [ADR 0002](./adr/0002-redis-not-yet.md)에 적었다

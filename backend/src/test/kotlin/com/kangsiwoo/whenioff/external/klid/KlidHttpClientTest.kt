@@ -2,8 +2,9 @@ package com.kangsiwoo.whenioff.external.klid
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallMetrics
+import com.kangsiwoo.whenioff.external.metrics.ExternalSource
 import com.kangsiwoo.whenioff.support.Fixtures
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
@@ -19,7 +20,7 @@ import kotlin.test.assertTrue
 class KlidHttpClientTest {
     private lateinit var server: MockWebServer
     private lateinit var endpoint: WioProperties.Endpoint
-    private lateinit var counter: KlidCallCounter
+    private lateinit var metrics: ExternalCallMetrics
     private lateinit var client: KlidHttpClient
 
     @BeforeEach
@@ -27,12 +28,12 @@ class KlidHttpClientTest {
         server = MockWebServer()
         server.start()
         endpoint = WioProperties.Endpoint(server.url("/rti").toString(), "dec+oded/key=")
-        counter = KlidCallCounter(SimpleMeterRegistry())
+        metrics = Fixtures.metrics()
         client =
             KlidHttpClient(
                 restClient = RestClient.create(),
                 objectMapper = jacksonObjectMapper(),
-                callCounter = counter,
+                metrics = metrics,
                 maxRetries = 2,
                 retryBackoff = Duration.ZERO,
             )
@@ -56,7 +57,7 @@ class KlidHttpClientTest {
             "/rti/crsrd_map_info?serviceKey=dec%2Boded%2Fkey%3D&pageNo=1&numOfRows=1000&type=json&stdgCd=1100000000",
             request.path,
         )
-        assertEquals(1, counter.todayCount())
+        assertEquals(1, metrics.todayCount(ExternalSource.KLID))
     }
 
     @Test
@@ -79,7 +80,7 @@ class KlidHttpClientTest {
 
         assertThrows<KlidNotConfiguredException> { client.fetchAll(unconfigured, "crsrd_map_info", "1100000000") }
         assertEquals(0, server.requestCount)
-        assertEquals(0, counter.todayCount())
+        assertEquals(0, metrics.todayCount(ExternalSource.KLID))
     }
 
     @Test

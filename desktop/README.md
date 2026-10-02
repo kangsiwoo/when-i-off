@@ -2,7 +2,7 @@
 
 TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경로 목록 → 경로 상세(구간 목록)(#56)와
 이동 기록(trip 히스토리: 목록·타임라인·시각/결과 보정, #58), 경로별 캘리브레이션 상태(#60), 추천 vs 실제(#62)가
-있다. 지도 위 경로 등록·구간/정류장/신호등 편집과 trip GPS 트랙(#64), 정적 시간표 CSV 업로드와 다음 출발 확인(#70)도 있다.
+있다. 지도 위 경로 등록·구간/정류장/신호등 편집과 trip GPS 트랙(#64), 정적 시간표 CSV 업로드와 다음 출발 확인(#70), 운영 화면(외부 API 호출·실패·지연·한도 사용률과 배치 상태, #76)도 있다.
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
 스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch · Recharts(차트),
@@ -158,6 +158,19 @@ npm run gen:api
   → 기준 시각(KST) → 대수(1~50). 업로드에 성공하면 그 파일의 첫 조합으로 칸을 채운다. 다음 날로 넘어간 차편은 "다음 날"로 표시
 - 노선·정류장 단건 조회 API가 없어서 이름은 내 경로의 TRANSIT 구간에서 아는 것만 쓰고 나머지는 `#id`로 보인다
 
+## 운영 (#76)
+
+- `/ops`: 머리 메뉴 "운영". `GET /admin/ops/external-apis` 하나로 그리고 **30초마다** 다시 받는다(`OPS_REFRESH_MS`).
+  새로 고침이 실패하면 받아 둔 값을 그대로 두고 위에 알린다
+- 위: 폴링(켜짐/꺼짐, 창과 지금 창 안인지, 마지막 사이클 시각·결과·일부 실패 코드)과 보관 정리(켜짐/꺼짐, dry-run, cron,
+  다음 실행, 마지막 실행의 테이블별 행 수) 카드
+- 아래: 소스(TAGO/KLID)마다 op별 표 — 오늘(KST)·최근 1시간의 호출 수, 실패율(+ 결과별 실패 내역), p50/p95, 일 한도 사용률 막대.
+  단위는 HTTP 시도(재시도 포함)
+- 강조 규칙(`src/ops/ops.ts`): 오늘이나 최근 1시간 실패율이 20% 이상이면 행 배경 + "실패율 높음". 한도 막대는 70% 이상
+  노랑 "한도 70%+", 90% 이상 빨강 "한도 90%+"(ADR 0002의 재검토 기준과 같은 70%). 상태 색은 고정 팔레트이고 언제나
+  아이콘 + 글자와 같이 나온다 — 색만으로 뜻을 싣지 않는다. 막대의 빈 칸은 채움과 같은 계열의 옅은(다크에서는 어두운) 색
+- 서버 집계는 메모리라 재시작하면 0부터다. 화면 위에 "집계 시작" 시각을 보여 주고, 기록이 하나도 없으면 빈 상태 문구를 띄운다
+
 ## 구조
 
 ```
@@ -169,7 +182,7 @@ src/
               RouteCreatePage, RouteEditPage(+ LegCards, SignalCrossingsEditor), TripGpsMap,
               RouteSettingsForm(+ TargetFields),
               RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy),
-              SchedulesPage(+ ScheduleUpload, NextDeparturesChecker), LinePicker(노선 검색, 공용)
+              SchedulesPage(+ ScheduleUpload, NextDeparturesChecker), LinePicker(노선 검색, 공용), OpsPage(운영)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
   recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
   legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증, crossing 코드) — 화면 없는 순수 로직
@@ -177,6 +190,7 @@ src/
   target/     defaultTarget.ts(기본 목표 도착 시각·추천할 날 초안 ↔ 생성 필드/PATCH 본문, 검증) — 화면 없는 순수 로직
   schedules/  csv.ts(시간표 CSV 검사·미리보기 — 서버 파서를 옮김), next.ts(다음 출발 조회 파라미터·후보) — 화면 없는 순수 로직
   trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
+  ops/        ops.ts(운영 화면: 실패율 강조·한도 단계·표시 형식) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표
   context.ts  라우터 · QueryClient · API 클라이언트 묶음 (테스트는 메모리 라우터와 가짜 fetch를 넣는다)

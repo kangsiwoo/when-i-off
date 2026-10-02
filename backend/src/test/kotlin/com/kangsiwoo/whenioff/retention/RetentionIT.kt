@@ -2,6 +2,8 @@ package com.kangsiwoo.whenioff.retention
 
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import com.kangsiwoo.whenioff.ops.application.BatchRunResult
+import com.kangsiwoo.whenioff.ops.application.BatchRunTracker
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -31,6 +33,7 @@ class RetentionIT {
     private val now = Instant.parse("2026-10-01T00:00:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val meterRegistry = SimpleMeterRegistry()
+    private val tracker = BatchRunTracker(clock)
 
     private var routeId = 0L
     private var walkLegId = 0L
@@ -122,6 +125,15 @@ class RetentionIT {
         assertEquals(1, result.rows(RetentionService.SIGNAL_STATES))
         assertEquals(daysAgo(364), single("SELECT observed_at FROM transit_arrival_observations"))
         assertEquals(daysAgo(29), single("SELECT observed_at FROM traffic_signal_states"))
+        // 운영 조회용 마지막 실행 (#76)
+        val last = tracker.lastRetention()!!
+        assertEquals(BatchRunResult.SUCCESS, last.result)
+        assertEquals(now, last.at)
+        assertFalse(last.dryRun)
+        assertEquals(
+            mapOf("gps_traces" to 0L, "transit_arrival_observations" to 1L, "traffic_signal_states" to 1L),
+            last.rows,
+        )
     }
 
     @Test
@@ -137,6 +149,7 @@ class RetentionIT {
         // 서비스를 직접 불러도 아무것도 하지 않는다
         val result = service(enabled = false).run()
         assertFalse(result.ran)
+        assertEquals(null, tracker.lastRetention())
         assertEquals(1, count("SELECT count(*) FROM gps_traces"))
         assertEquals(1, count("SELECT count(*) FROM transit_arrival_observations"))
     }
@@ -172,6 +185,8 @@ class RetentionIT {
         assertEquals(1, result.rows("gps_traces"))
         assertEquals(2, count("SELECT count(*) FROM gps_traces"))
         assertEquals(0.0, deletedMetric("gps_traces", "no-trip"))
+        assertTrue(tracker.lastRetention()!!.dryRun)
+        assertEquals(1L, tracker.lastRetention()!!.rows["gps_traces"])
     }
 
     // --- fixtures ---
@@ -188,6 +203,7 @@ class RetentionIT {
             ),
             clock,
             meterRegistry,
+            tracker,
         )
 
     private fun daysAgo(days: Long): Instant = now.minus(Duration.ofDays(days))

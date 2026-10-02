@@ -110,6 +110,48 @@
         ],
         "type": "object"
       },
+      "CallWindowResponse": {
+        "properties": {
+          "calls": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "failureRate": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "failures": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "outcomes": {
+            "$ref": "#/components/schemas/OutcomeCountsResponse"
+          },
+          "p50Ms": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "p95Ms": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "calls",
+          "failures",
+          "outcomes"
+        ],
+        "type": "object"
+      },
       "CommuteRouteDetailResponse": {
         "properties": {
           "legs": {
@@ -517,6 +559,51 @@
         ],
         "type": "object"
       },
+      "ExternalOpResponse": {
+        "properties": {
+          "lastHour": {
+            "$ref": "#/components/schemas/CallWindowResponse"
+          },
+          "op": {
+            "type": "string"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/QuotaResponse"
+          },
+          "today": {
+            "$ref": "#/components/schemas/CallWindowResponse"
+          }
+        },
+        "required": [
+          "lastHour",
+          "op",
+          "quota",
+          "today"
+        ],
+        "type": "object"
+      },
+      "ExternalSourceOpsResponse": {
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "ops": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalOpResponse"
+            },
+            "type": "array"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "configured",
+          "ops",
+          "source"
+        ],
+        "type": "object"
+      },
       "GpsPointRequest": {
         "properties": {
           "accuracyM": {
@@ -778,6 +865,160 @@
         ],
         "type": "object"
       },
+      "OpsStatusResponse": {
+        "properties": {
+          "collectingSince": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "polling": {
+            "$ref": "#/components/schemas/PollingStatusResponse"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionStatusResponse"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalSourceOpsResponse"
+            },
+            "type": "array"
+          },
+          "todayStart": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collectingSince",
+          "generatedAt",
+          "polling",
+          "retention",
+          "sources",
+          "todayStart"
+        ],
+        "type": "object"
+      },
+      "OutcomeCountsResponse": {
+        "properties": {
+          "apiError": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "httpError": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ioError": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "success": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "timeout": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "apiError",
+          "httpError",
+          "ioError",
+          "success",
+          "timeout"
+        ],
+        "type": "object"
+      },
+      "PollingRunResponse": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failedCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "legsPredicted": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "predictions": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "result": {
+            "enum": [
+              "SUCCESS",
+              "FAILURE"
+            ],
+            "type": "string"
+          },
+          "signalStatesInserted": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "failedCodes",
+          "legsPredicted",
+          "predictions",
+          "result",
+          "signalStatesInserted"
+        ],
+        "type": "object"
+      },
+      "PollingStatusResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "intervalMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastRun": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PollingRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "windows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "withinWindow": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "intervalMs",
+          "windows",
+          "withinWindow"
+        ],
+        "type": "object"
+      },
       "PredictionCalibrationRowResponse": {
         "properties": {
           "biasSec": {
@@ -819,6 +1060,28 @@
           "timeBandEnd",
           "timeBandStart",
           "updatedAt"
+        ],
+        "type": "object"
+      },
+      "QuotaResponse": {
+        "properties": {
+          "dailyLimit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "usageRate": {
+            "format": "double",
+            "type": "number"
+          },
+          "used": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dailyLimit",
+          "usageRate",
+          "used"
         ],
         "type": "object"
       },
@@ -909,6 +1172,95 @@
         },
         "required": [
           "crossings"
+        ],
+        "type": "object"
+      },
+      "RetentionRunResponse": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "enum": [
+              "SUCCESS",
+              "FAILURE"
+            ],
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RetentionTableRowsResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "at",
+          "dryRun",
+          "result",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "RetentionStatusResponse": {
+        "properties": {
+          "cron": {
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastRun": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RetentionRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nextRunAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "cron",
+          "dryRun",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "RetentionTableRowsResponse": {
+        "properties": {
+          "rows": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rows",
+          "table"
         ],
         "type": "object"
       },
@@ -1715,6 +2067,26 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/ops/external-apis": {
+      "get": {
+        "operationId": "externalApis",
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsStatusResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "ops-controller"
+        ]
+      }
+    },
     "/api/v1/admin/schedules/import": {
       "post": {
         "operationId": "import",

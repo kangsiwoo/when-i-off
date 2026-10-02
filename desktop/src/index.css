@@ -1191,3 +1191,192 @@ button:disabled {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* --- 운영 (#76) ---
+ * 상태 색은 고정(테마를 따르지 않는다)이고 언제나 아이콘 + 글자와 함께 쓴다. 한도 막대는 채움이 심각도를 싣고,
+ * 빈 칸은 같은 계열의 옅은(다크에서는 어두운) 단계다. */
+:root {
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+  --good-text: #006300;
+  --critical-text: #b22d2d;
+  --meter-ok: #2a78d6;
+  --meter-ok-track: #cde2fb;
+  --meter-warning-track: #fde9bb;
+  --meter-critical-track: #f5d0d0;
+  --failing-row: #fdf2f2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --good-text: #0ca30c;
+    --critical-text: #ff7b7b;
+    --meter-ok: #3987e5;
+    --meter-ok-track: #0d366b;
+    --meter-warning-track: #4a3a12;
+    --meter-critical-track: #4a1d1d;
+    --failing-row: #2d1717;
+  }
+}
+
+.ops-batches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.card.ops-card {
+  padding: 1rem 1.25rem;
+}
+
+.ops-card h2 {
+  margin: 0 0 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.badge-on {
+  background: var(--transit);
+  color: var(--transit-text);
+}
+
+.badge-off {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.ops-error-text {
+  color: var(--critical-text);
+  word-break: break-word;
+}
+
+.ops-empty {
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.ops-source h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.ops-table {
+  min-width: 820px;
+}
+
+.ops-table th.group {
+  text-align: center;
+  border-left: 1px solid var(--border);
+}
+
+.ops-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-table td {
+  vertical-align: top;
+}
+
+.ops-table .ops-op {
+  max-width: 19rem;
+  overflow-wrap: anywhere;
+}
+
+.ops-table .ops-op code {
+  font-size: 0.8rem;
+}
+
+.ops-table tr.ops-failing td {
+  background: var(--failing-row);
+}
+
+.ops-table tr.ops-failing td:first-child {
+  box-shadow: inset 3px 0 0 var(--status-critical);
+}
+
+.status-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-mark svg {
+  flex: none;
+}
+
+.status-ok svg {
+  color: var(--status-good);
+}
+
+.status-ok {
+  color: var(--good-text);
+}
+
+.status-warning svg {
+  color: var(--status-warning);
+}
+
+.status-warning {
+  color: var(--text);
+}
+
+.status-critical svg {
+  color: var(--status-critical);
+}
+
+.status-critical {
+  color: var(--critical-text);
+}
+
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.meter {
+  width: 80px;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--meter-ok-track);
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--meter-ok);
+}
+
+.meter-warning {
+  background: var(--meter-warning-track);
+}
+
+.meter-warning .meter-fill {
+  background: var(--status-warning);
+}
+
+.meter-critical {
+  background: var(--meter-critical-track);
+}
+
+.meter-critical .meter-fill {
+  background: var(--status-critical);
+}
+
+.meter-text {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

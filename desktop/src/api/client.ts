@@ -37,6 +37,12 @@ export type GpsTrace = components["schemas"]["GpsTraceResponse"];
 export type SyncCounts = components["schemas"]["SyncCountsResponse"];
 export type NextDepartures = components["schemas"]["NextDeparturesResponse"];
 export type ScheduledDeparture = components["schemas"]["ScheduledDepartureResponse"];
+export type OpsStatus = components["schemas"]["OpsStatusResponse"];
+export type ExternalSourceOps = components["schemas"]["ExternalSourceOpsResponse"];
+export type ExternalOp = components["schemas"]["ExternalOpResponse"];
+export type CallWindow = components["schemas"]["CallWindowResponse"];
+export type PollingStatus = components["schemas"]["PollingStatusResponse"];
+export type RetentionStatus = components["schemas"]["RetentionStatusResponse"];
 
 export interface ApiClientOptions {
   /** 기본은 같은 출처. 개발/미리보기 서버가 /api를 backend로 넘긴다 (vite.config.ts). */

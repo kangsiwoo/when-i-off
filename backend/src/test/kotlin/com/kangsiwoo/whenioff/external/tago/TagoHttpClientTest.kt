@@ -2,8 +2,9 @@ package com.kangsiwoo.whenioff.external.tago
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.kangsiwoo.whenioff.common.config.WioProperties
+import com.kangsiwoo.whenioff.external.metrics.ExternalCallMetrics
+import com.kangsiwoo.whenioff.external.metrics.ExternalSource
 import com.kangsiwoo.whenioff.support.Fixtures
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
@@ -18,7 +19,7 @@ import kotlin.test.assertTrue
 class TagoHttpClientTest {
     private lateinit var server: MockWebServer
     private lateinit var endpoint: WioProperties.Endpoint
-    private lateinit var counter: TagoCallCounter
+    private lateinit var metrics: ExternalCallMetrics
     private lateinit var client: TagoHttpClient
 
     private val routeParams = mapOf("cityCode" to CITY, "routeNo" to "1001")
@@ -28,12 +29,12 @@ class TagoHttpClientTest {
         server = MockWebServer()
         server.start()
         endpoint = WioProperties.Endpoint(server.url("/BusRouteInfoInqireService").toString(), "dec+oded/key=")
-        counter = TagoCallCounter(SimpleMeterRegistry())
+        metrics = Fixtures.metrics()
         client =
             TagoHttpClient(
                 restClient = RestClient.create(),
                 objectMapper = jacksonObjectMapper(),
-                callCounter = counter,
+                metrics = metrics,
                 maxRetries = 2,
                 retryBackoff = Duration.ZERO,
             )
@@ -58,7 +59,7 @@ class TagoHttpClientTest {
                 "?serviceKey=dec%2Boded%2Fkey%3D&pageNo=1&numOfRows=1000&_type=json&cityCode=$CITY&routeNo=1001",
             request.path,
         )
-        assertEquals(1, counter.todayCount())
+        assertEquals(1, metrics.todayCount(ExternalSource.TAGO))
     }
 
     @Test
@@ -77,7 +78,7 @@ class TagoHttpClientTest {
 
         assertThrows<TagoNotConfiguredException> { client.fetchAll(unconfigured, "getRouteNoList", routeParams) }
         assertEquals(0, server.requestCount)
-        assertEquals(0, counter.todayCount())
+        assertEquals(0, metrics.todayCount(ExternalSource.TAGO))
     }
 
     @Test
