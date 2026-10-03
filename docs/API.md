@@ -333,8 +333,8 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 - 날짜는 KST다. 추천은 `target_date`(analytics가 `target_arrival_at`의 KST 날짜로 채운다), trip은 `trip_date`로 묶는다.
   추천이나 trip 중 **하나라도 있는 날만** 날짜 오름차순으로 준다. 아무 것도 없으면 빈 배열(`200`)
 - `recommendations`: `modelVersion`마다 그날 **마지막으로 계산된** 한 건, `modelVersion` 순. 고르는 기준은 위 조회와
-  같은 `computed_at DESC, id DESC`다. analytics는 `(경로, target_date, target_arrival_at, model_version)`당 한 행을
-  제자리에서 갱신하므로(`computed_at`도 바뀐다) 보통 버전당 목표 시각별 한 행이지만, 그날 목표 시각이 여러 개면
+  같은 `computed_at DESC, id DESC`다. analytics는 `(경로, target_date, target_arrival_at, model_version)`의 값이
+  바뀌면 새 행을 추가하므로(같으면 쓰지 않는다) 한 키에 여러 행이 있을 수 있다. 그 중 최신 하나를 고르고, 그날 목표 시각이 여러 개면
   그 중 마지막 계산 하나만 고르고 어느 목표 시각의 것인지는 `targetArrivalAt`으로 알린다
 - `trips`: 그날 이 경로의 trip 전부, `leftHomeAt` 순(없으면 뒤). `allLegsCaught`는 경로의 TRANSIT 구간마다
   `CAUGHT` 시도가 있는가(TRANSIT 구간이 없는 경로면 `true`), `missedCount`는 `MISSED` 시도 수(놓친 차 대수)

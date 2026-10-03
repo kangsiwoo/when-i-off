@@ -98,9 +98,10 @@ route 7 (E2E 퇴근 (수서→성남)): skipped no_target_time: no default targe
 done: computed 1, failed 0, skipped 1
 ```
 
-**멱등성**: `(commute_route_id, target_date, target_arrival_at, model_version)`당 한 행을 유지한다.
-값(표본 수 포함, #86)이 그대로면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). V1 스키마에 이 조합의
-UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다. `model_version`이 키에 들어 있어 v2가 같은
+**멱등성**: `(commute_route_id, target_date, target_arrival_at, model_version)`의 최신 행과 값(표본 수 포함, #86)이
+같으면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). 값이 달라졌으면 기존 행을 고치지 않고 **새 행을
+추가**한다 — 추천 이력 자체가 모델 성능 추적의 기록이기 때문이다. 조회 쪽은 늘 `computed_at DESC, id DESC`로 최신
+행을 고른다. `model_version`이 키에 들어 있어 v2가 같은
 목표 시각을 다시 계산해도 v1 행은 그대로 남는다 (두 버전의 추천을 같은 trip과 비교할 수 있다).
 
 ## `derive-walking-segments`
