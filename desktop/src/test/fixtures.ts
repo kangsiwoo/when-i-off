@@ -3,6 +3,7 @@ import type {
   CommuteRoute,
   CommuteRouteDetail,
   CommuteTrip,
+  RecommendationEvaluations,
   RecommendationHistoryDay,
   RouteCalibration,
 } from "../api/client";
@@ -240,3 +241,30 @@ export const recommendationHistory: RecommendationHistoryDay[] = [
     ],
   },
 ];
+
+/** 버전별 성과(#79). v1은 표본 6일, v2는 2일(표본 적음)이고 도착 기록이 없어 지각률·출발 차이가 빈다. */
+export const recommendationEvaluations: RecommendationEvaluations = {
+  summaries: [
+    {
+      modelVersion: "v2",
+      n: 2,
+      lateCount: 0,
+      withArrival: 0,
+      allLegsCaughtCount: 1,
+      allLegsCaughtRate: 0.5,
+      meanStopWaitSec: 45,
+    },
+    {
+      modelVersion: "v1",
+      n: 6,
+      lateCount: 2,
+      withArrival: 5,
+      lateRate: 0.4,
+      meanDepartureDiffSec: -2177.4,
+      meanStopWaitSec: 532,
+      allLegsCaughtCount: 4,
+      allLegsCaughtRate: 4 / 6,
+    },
+  ],
+  evaluations: [],
+};

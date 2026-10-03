@@ -1,12 +1,18 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setToken } from "../auth/token";
-import { detail, recommendationHistory } from "../test/fixtures";
+import { detail, recommendationEvaluations, recommendationHistory } from "../test/fixtures";
 import { BASE, json, renderApp } from "../test/render";
 
-function handler(body: unknown) {
-  return (req: Request) =>
-    new URL(req.url).pathname.endsWith("/recommendation-history") ? json(body) : json(detail);
+const NO_EVALUATIONS = { summaries: [], evaluations: [] };
+
+function handler(body: unknown, evaluations: unknown = NO_EVALUATIONS) {
+  return (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith("/recommendation-history")) return json(body);
+    if (path.endsWith("/recommendation-evaluations")) return json(evaluations);
+    return json(detail);
+  };
 }
 
 const historyUrls = (fetch: ReturnType<typeof renderApp>["fetch"]) =>
@@ -130,5 +136,61 @@ describe("recommendation vs actual", () => {
     expect(within(legends[0]!).getByText("실제 출발")).toBeInTheDocument();
     expect(within(legends[0]!).getByText("추천 v1")).toBeInTheDocument();
     expect(within(legends[0]!).getByText("추천 v2")).toBeInTheDocument();
+  });
+
+  it("summarizes each model version above the charts with stat tiles", async () => {
+    const { fetch } = renderApp(
+      "/routes/7/recommendations?from=2026-09-21&to=2026-09-23",
+      handler(recommendationHistory, recommendationEvaluations),
+    );
+    const section = await screen.findByRole("region", { name: "버전별 성과" });
+    expect(fetch.mock.calls.map((c) => c[0].url)).toContain(
+      `${BASE}/api/v1/commute-routes/7/recommendation-evaluations?from=2026-09-21&to=2026-09-23`,
+    );
+    // 버전 순(v1 → v2), 차트보다 위.
+    const groups = within(section).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("aria-labelledby"))).toEqual(["eval-v1", "eval-v2"]);
+    const chartTitle = screen.getByRole("heading", { name: "추천 출발 vs 실제 출발" });
+    expect(
+      section.compareDocumentPosition(chartTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const v1 = within(groups[0]!);
+    expect(v1.getByText("6일")).toBeInTheDocument();
+    expect(v1.getByText("40%")).toBeInTheDocument();
+    expect(v1.getByText("2/5일 (도착 기록 있는 날)")).toBeInTheDocument();
+    expect(v1.getByText("−36분")).toBeInTheDocument();
+    expect(v1.getByText("8분 52초")).toBeInTheDocument();
+    expect(v1.getByText("67%")).toBeInTheDocument();
+    expect(v1.queryByText("표본 적음")).toBeNull();
+
+    const v2 = within(groups[1]!);
+    expect(v2.getByText("표본 적음")).toBeInTheDocument();
+    expect(v2.getByText("도착 기록 없음")).toBeInTheDocument();
+    expect(v2.getAllByText("—")).toHaveLength(2); // 지각률, 평균 출발 차이
+    expect(v2.getByText("45초")).toBeInTheDocument();
+  });
+
+  it("tells to run evaluate when days that could be evaluated have no evaluations", async () => {
+    renderApp(
+      "/routes/7/recommendations?from=2026-09-21&to=2026-09-23",
+      handler(recommendationHistory),
+    );
+    const section = await screen.findByRole("region", { name: "버전별 성과" });
+    expect(section).toHaveTextContent("평가가 아직 없습니다");
+    expect(section).toHaveTextContent(
+      "uv run wio-analytics evaluate --from 2026-09-21 --to 2026-09-23",
+    );
+    expect(section).toHaveTextContent("03:00");
+    // 요약이 없어도 차트와 표는 그대로다.
+    expect(screen.getByRole("table", { name: "날짜별 추천과 실제" })).toBeInTheDocument();
+  });
+
+  it("says there is nothing to evaluate when no day has both a recommendation and a trip", async () => {
+    const apart = recommendationHistory.filter((d) => d.date !== "2026-09-21");
+    renderApp("/routes/7/recommendations?from=2026-09-21&to=2026-09-23", handler(apart));
+    const section = await screen.findByRole("region", { name: "버전별 성과" });
+    expect(section).toHaveTextContent("평가할 날이 없습니다");
+    expect(section).not.toHaveTextContent("wio-analytics evaluate");
   });
 });

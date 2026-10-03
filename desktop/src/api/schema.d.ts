@@ -164,6 +164,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/commute-routes/{routeId}/recommendation-evaluations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["recommendationEvaluations"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/commute-routes/{routeId}/recommendation-history": {
     parameters: {
       query?: never;
@@ -722,6 +738,54 @@ export interface components {
       usageRate: number;
       /** Format: int64 */
       used: number;
+    };
+    RecommendationEvaluationResponse: {
+      /** Format: date-time */
+      actualArrivedAt?: string | null;
+      /** Format: date-time */
+      actualLeftHomeAt?: string | null;
+      allLegsCaught: boolean;
+      /** Format: int32 */
+      arrivalDiffSec?: number | null;
+      /** Format: int32 */
+      avgStopWaitSec?: number | null;
+      /** Format: date */
+      date: string;
+      /** Format: int32 */
+      departureDiffSec?: number | null;
+      /** Format: date-time */
+      evaluatedAt: string;
+      isLate?: boolean | null;
+      /** Format: int32 */
+      missedCount: number;
+      modelVersion: string;
+      /** Format: date-time */
+      recommendedLeaveHomeAt: string;
+      /** Format: date-time */
+      targetArrivalAt: string;
+    };
+    RecommendationEvaluationSummaryResponse: {
+      /** Format: int32 */
+      allLegsCaughtCount: number;
+      /** Format: double */
+      allLegsCaughtRate: number;
+      /** Format: int32 */
+      lateCount: number;
+      /** Format: double */
+      lateRate?: number | null;
+      /** Format: double */
+      meanDepartureDiffSec?: number | null;
+      /** Format: double */
+      meanStopWaitSec?: number | null;
+      modelVersion: string;
+      /** Format: int32 */
+      n: number;
+      /** Format: int32 */
+      withArrival: number;
+    };
+    RecommendationEvaluationsResponse: {
+      evaluations: components["schemas"]["RecommendationEvaluationResponse"][];
+      summaries: components["schemas"]["RecommendationEvaluationSummaryResponse"][];
     };
     RecommendationHistoryDayResponse: {
       /** Format: date */
@@ -1298,6 +1362,31 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["DepartureRecommendationResponse"];
+        };
+      };
+    };
+  };
+  recommendationEvaluations: {
+    parameters: {
+      query: {
+        from: string;
+        to: string;
+      };
+      header?: never;
+      path: {
+        routeId: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["RecommendationEvaluationsResponse"];
         };
       };
     };

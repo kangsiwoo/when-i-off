@@ -105,6 +105,12 @@ npm run gen:api
   늦게 나섬) / 목표 도착 / 실제 도착과 지각 여부 / 결과(전 구간 탑승, 놓친 차). 지각 판정 기준은 그날 가장 늦게
   계산된 추천의 목표 시각이고, 1초라도 늦으면 지각이다
 - 계산은 `src/recommendations/history.ts`(화면 없는 순수 로직)
+- **버전별 성과(#79)**: 차트 위에 `GET /commute-routes/{id}/recommendation-evaluations`(같은 기간)의 버전별 요약을 버전마다 한 줄의
+  stat tile로 — 평가한 날(n) / 지각률(분모는 도착 기록이 있는 날) / 평균 출발 차이 / 평균 정류장 대기 / 전 구간 탑승률.
+  숫자는 backend가 analytics `summarize()`와 같은 정의로 내고 화면은 반올림만 한다. n < 5면 "표본 적음" 배지.
+  버전 색은 차트와 같은 번호 규칙(차트에 보이는 버전과 합쳐 고른다)이고 견본에만 쓰며 글자는 잉크색이다.
+  평가가 없으면, 같은 날 추천과 trip이 있는 날이 있을 때만 `wio-analytics evaluate`를 돌리라고 안내한다(운영은 새벽 03:00 cron).
+  표시 로직은 `src/recommendations/evaluations.ts`
 
 ## 지도 경로 편집과 GPS 트랙 (#64)
 
@@ -181,10 +187,10 @@ src/
               TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
               RouteCreatePage, RouteEditPage(+ LegCards, SignalCrossingsEditor), TripGpsMap,
               RouteSettingsForm(+ TargetFields),
-              RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts, lazy),
+              RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts lazy, EvaluationSummary),
               SchedulesPage(+ ScheduleUpload, NextDeparturesChecker), LinePicker(노선 검색, 공용), OpsPage(운영)
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
-  recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색) — 화면 없는 순수 로직
+  recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색), evaluations.ts(버전별 성과 tile) — 화면 없는 순수 로직
   legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증, crossing 코드) — 화면 없는 순수 로직
   map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선)
   target/     defaultTarget.ts(기본 목표 도착 시각·추천할 날 초안 ↔ 생성 필드/PATCH 본문, 검증) — 화면 없는 순수 로직
