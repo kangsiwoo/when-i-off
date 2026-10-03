@@ -14,9 +14,11 @@ import com.kangsiwoo.whenioff.user.domain.User
 import com.kangsiwoo.whenioff.user.domain.UserRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
@@ -26,6 +28,7 @@ import org.springframework.test.web.servlet.get
 import java.time.Instant
 import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -80,6 +83,46 @@ class RecommendationApiIT {
         // 목표 시각과 무관한 latest도 같은 한 건을 본다.
         val latest = getRecommendation("/latest").andExpect { status { isOk() } }.json()
         assertEquals("2026-09-20T22:30:00Z", latest["recommendedLeaveHomeAt"].asText())
+    }
+
+    @Test
+    fun `sample count is returned when recorded and omitted for older rows`() {
+        // V8 이전에 적재된 행(표본 수 NULL)은 키가 빠진 채 기존 계약 그대로다.
+        saveRecommendation(route, Instant.parse("2026-09-20T22:30:00Z"), 0.87, 300)
+        val older = getRecommendation("/latest").andExpect { status { isOk() } }.json()
+        assertFalse(older.has("minTransitSampleCount"))
+
+        saveRecommendation(
+            route = route,
+            leaveHomeAt = Instant.parse("2026-09-20T22:24:00Z"),
+            catchProbability = 0.91,
+            bufferSeconds = 660,
+            computedAt = Instant.parse("2026-09-20T21:00:00Z"),
+            minTransitSampleCount = 7,
+        )
+        val body = getRecommendation("?targetArrivalAt=2026-09-21T00:00:00Z").andExpect { status { isOk() } }.json()
+        assertEquals(7, body["minTransitSampleCount"].asInt())
+        val latest = getRecommendation("/latest").andExpect { status { isOk() } }.json()
+        assertEquals(7, latest["minTransitSampleCount"].asInt())
+
+        // 0(어느 입력이 기본값)은 null과 다르다 — 키가 있고 값이 0이다.
+        saveRecommendation(
+            route = route,
+            leaveHomeAt = Instant.parse("2026-09-20T22:20:00Z"),
+            catchProbability = 0.9,
+            bufferSeconds = 700,
+            computedAt = Instant.parse("2026-09-20T22:00:00Z"),
+            minTransitSampleCount = 0,
+        )
+        val cold = getRecommendation("/latest").andExpect { status { isOk() } }.json()
+        assertEquals(0, cold["minTransitSampleCount"].asInt())
+    }
+
+    @Test
+    fun `negative sample count is rejected by the schema`() {
+        assertThrows<DataIntegrityViolationException> {
+            saveRecommendation(route, Instant.parse("2026-09-20T22:30:00Z"), 0.87, 300, minTransitSampleCount = -1)
+        }
     }
 
     @Test
@@ -236,6 +279,7 @@ class RecommendationApiIT {
         bufferSeconds: Int,
         computedAt: Instant = Instant.parse("2026-09-20T18:00:00Z"),
         targetArrivalAt: Instant = this.targetArrivalAt,
+        minTransitSampleCount: Int? = null,
     ): DepartureRecommendation =
         recommendationRepository.save(
             DepartureRecommendation(
@@ -248,6 +292,7 @@ class RecommendationApiIT {
                 bufferSeconds = bufferSeconds,
                 modelVersion = "v1",
                 computedAt = computedAt,
+                minTransitSampleCount = minTransitSampleCount,
             ),
         )
 }

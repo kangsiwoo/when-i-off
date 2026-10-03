@@ -371,7 +371,12 @@ CREATE TABLE departure_recommendations (
     catch_probability           DOUBLE PRECISION NOT NULL,
     buffer_seconds              INT NOT NULL,
     model_version               TEXT NOT NULL,
-    computed_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+    computed_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- 고른 차량들의 예측 오차·차내 시간 입력 표본 수 중 최솟값 (V8 #86). 0 = 어느 입력이 기본값.
+    -- NULL = V8 이전 행 또는 TRANSIT 구간이 없는 경로
+    min_transit_sample_count    INT
+        CONSTRAINT chk_departure_recommendations_min_transit_sample_count
+            CHECK (min_transit_sample_count >= 0)
 );
 
 CREATE INDEX idx_departure_reco_lookup

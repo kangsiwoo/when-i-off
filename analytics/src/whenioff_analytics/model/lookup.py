@@ -193,6 +193,21 @@ def resolve_candidate(
     )
 
 
+def min_sample_count(chosen: Iterable[ResolvedCandidate]) -> int | None:
+    """고른 차량들의 입력(예측 오차, 차내 시간)이 기댄 표본 수 중 가장 작은 값 (#86).
+
+    추천의 성공확률은 TRANSIT 구간의 이 두 분포로만 계산되므로(도보는 출발 시각만 당긴다) "이 확률 뒤에
+    실측이 얼마나 있나"는 가장 얇은 입력이 정한다. 기본값으로 내려간 입력은 0이고, 그 밖에는
+    `MIN_CALIBRATION_SAMPLES` 이상이다. 고른 차량이 없으면(TRANSIT 구간이 없는 경로) `None`.
+    """
+    counts = [
+        resolved.sample_count
+        for candidate in chosen
+        for resolved in (candidate.prediction_error, candidate.travel_time)
+    ]
+    return min(counts) if counts else None
+
+
 def vehicle_candidate(
     label: str, predicted_at: datetime, prediction_error: Normal, travel: Normal
 ) -> VehicleCandidate:

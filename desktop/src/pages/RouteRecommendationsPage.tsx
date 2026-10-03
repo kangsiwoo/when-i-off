@@ -189,7 +189,7 @@ function HistoryRow({ row }: { row: TableRow }) {
                 {kstClock(r.recommendedLeaveHomeAt, date)}{" "}
                 <span className="muted small">
                   ({Math.round(r.catchProbability * 100)}%, 여유 {Math.round(r.bufferSeconds / 60)}
-                  분)
+                  분{r.minTransitSampleCount != null && `, 표본 ${r.minTransitSampleCount}`})
                 </span>
               </span>
             ))}

@@ -221,6 +221,8 @@ def _report(result: RecommendationResult) -> None:
     typer.echo(f"  buffer                {recommendation.buffer_seconds}s")
     typer.echo(f"  target date           {kst_date_of(result.target_arrival_at)}")
     typer.echo(f"  model version         {defaults.MODEL_VERSION}")
+    samples = result.min_transit_sample_count()
+    typer.echo(f"  min transit samples   {'-' if samples is None else samples}")
     chosen_by_leg = {chosen.route_leg_id: chosen for chosen in recommendation.chosen}
     for leg, inputs in zip(result.legs, result.inputs, strict=True):
         if isinstance(leg, WalkLeg):

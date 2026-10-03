@@ -86,6 +86,9 @@ describe("recommendation vs actual", () => {
     expect(first.getByText("2026-09-21")).toBeInTheDocument();
     expect(first.getByText("07:24")).toBeInTheDocument(); // 추천 v1 (KST)
     expect(first.getByText("07:30")).toBeInTheDocument(); // 추천 v2
+    // 표본 수(#86)는 있는 추천에만 붙는다 — v1 행에는 없다.
+    expect(rows[0]).toHaveTextContent("(88%, 여유 7분, 표본 7)");
+    expect(rows[0]).toHaveTextContent("(91%, 여유 11분)");
     expect(first.getByText("07:27")).toBeInTheDocument(); // 실제 출발
     // v1 대비 3분 10초 늦게, v2 대비 2분 50초 일찍 나섰다.
     expect(rows[0]).toHaveTextContent("v1+3분");

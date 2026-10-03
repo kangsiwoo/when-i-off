@@ -277,12 +277,18 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
   "targetArrivalAt": "2026-09-21T00:00:00Z",
   "catchProbability": 0.91,
   "bufferSeconds": 660,
-  "modelVersion": "v1",
-  "computedAt": "2026-09-20T21:00:00Z"
+  "modelVersion": "v2",
+  "computedAt": "2026-09-20T21:00:00Z",
+  "minTransitSampleCount": 7
 }
 ```
 
 - `computedAt`은 analytics가 그 추천을 계산한 시각이다 (`departure_recommendations.computed_at`)
+- `minTransitSampleCount`(선택, #86)는 이 확률 뒤에 있는 실측 표본 수다 — TRANSIT 구간마다 고른 차량의 예측 오차·
+  차내 시간 입력이 기댄 표본 수 중 최솟값(`departure_recommendations.min_transit_sample_count`). `0`이면 어느 입력이
+  콜드스타트 기본값으로 내려갔다는 뜻이고, `0`이 아니면 analytics의 사용 기준(`MIN_CALIBRATION_SAMPLES` = 5) 이상이다.
+  표본 수를 기록하기 전(V8 이전)에 계산된 추천과 TRANSIT 구간이 없는 경로에는 **키가 없다**("모름" — `0`과 다르다).
+  아래 추천 이력의 `recommendations`도 같은 필드를 갖는다
 - `targetArrivalAt`은 **필수**이고 ISO-8601 절대 시각이다. 없거나 파싱 실패면 `400`
 - `/latest`는 목표 시각을 가리지 않고 그 경로에서 가장 늦게 계산된 한 건을 준다
 - 추천이 한 건도 없으면 `404`다 (빈 `200`이 아니라). 경로가 없거나 내 것이 아닐 때도 같은 `404`
@@ -327,8 +333,8 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 - 날짜는 KST다. 추천은 `target_date`(analytics가 `target_arrival_at`의 KST 날짜로 채운다), trip은 `trip_date`로 묶는다.
   추천이나 trip 중 **하나라도 있는 날만** 날짜 오름차순으로 준다. 아무 것도 없으면 빈 배열(`200`)
 - `recommendations`: `modelVersion`마다 그날 **마지막으로 계산된** 한 건, `modelVersion` 순. 고르는 기준은 위 조회와
-  같은 `computed_at DESC, id DESC`다. analytics는 `(경로, target_date, target_arrival_at, model_version)`당 한 행을
-  제자리에서 갱신하므로(`computed_at`도 바뀐다) 보통 버전당 목표 시각별 한 행이지만, 그날 목표 시각이 여러 개면
+  같은 `computed_at DESC, id DESC`다. analytics는 `(경로, target_date, target_arrival_at, model_version)`의 값이
+  바뀌면 새 행을 추가하므로(같으면 쓰지 않는다) 한 키에 여러 행이 있을 수 있다. 그 중 최신 하나를 고르고, 그날 목표 시각이 여러 개면
   그 중 마지막 계산 하나만 고르고 어느 목표 시각의 것인지는 `targetArrivalAt`으로 알린다
 - `trips`: 그날 이 경로의 trip 전부, `leftHomeAt` 순(없으면 뒤). `allLegsCaught`는 경로의 TRANSIT 구간마다
   `CAUGHT` 시도가 있는가(TRANSIT 구간이 없는 경로면 `true`), `missedCount`는 `MISSED` 시도 수(놓친 차 대수)

@@ -195,6 +195,7 @@ export const recommendationHistory: RecommendationHistoryDay[] = [
         bufferSeconds: 420,
         modelVersion: "v2",
         computedAt: "2026-09-20T21:30:00Z",
+        minTransitSampleCount: 7,
       },
     ],
     trips: [

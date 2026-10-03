@@ -584,6 +584,8 @@ export interface components {
       catchProbability: number;
       /** Format: date-time */
       computedAt: string;
+      /** Format: int32 */
+      minTransitSampleCount?: number | null;
       modelVersion: string;
       /** Format: date-time */
       recommendedLeaveHomeAt: string;

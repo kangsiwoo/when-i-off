@@ -37,6 +37,12 @@ class DepartureRecommendation(
     var modelVersion: String,
     @Column(nullable = false)
     var computedAt: Instant = Instant.now(),
+    /**
+     * 고른 차량들의 예측 오차·차내 시간 입력 표본 수 중 최솟값 (V8, #86). 0이면 어느 입력이 콜드스타트 기본값이다.
+     * V8 이전 행과 TRANSIT 구간이 없는 경로는 null.
+     */
+    @Column
+    var minTransitSampleCount: Int? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

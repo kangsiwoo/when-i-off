@@ -99,11 +99,29 @@ struct APIClientTests {
             targetArrivalAt: try #require(Timestamp.parse("2026-09-28T09:00:00+09:00"))
         )
         #expect(recommendation.bufferSeconds == 660)
+        // 표본 수(#86)는 이전 응답에 없다 — 없어도 디코딩된다.
+        #expect(recommendation.minTransitSampleCount == nil)
         let url = try #require(await transport.requests.first?.url.absoluteString)
         #expect(
             url
                 == "http://localhost:8080/api/v1/commute-routes/1/recommendation?targetArrivalAt=2026-09-28T00:00:00.000Z"
         )
+    }
+
+    @Test func latestRecommendationCarriesSampleCount() async throws {
+        let transport = RecordingTransport.ok(
+            json: #"""
+                {"recommendedLeaveHomeAt":"2026-09-27T22:24:00Z","targetArrivalAt":"2026-09-28T00:00:00Z",
+                 "catchProbability":0.91,"bufferSeconds":660,"modelVersion":"v2","computedAt":"2026-09-27T21:00:00Z",
+                 "minTransitSampleCount":0}
+                """#
+        )
+        let recommendation = try await client(transport).latestRecommendation(routeId: 1)
+        // 0(어느 입력이 기본값)은 nil(모름)과 다르다.
+        #expect(recommendation.minTransitSampleCount == 0)
+        #expect(
+            await transport.requests.first?.url.absoluteString
+                == "http://localhost:8080/api/v1/commute-routes/1/recommendation/latest")
     }
 
     @Test(
