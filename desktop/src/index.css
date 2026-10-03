@@ -1380,3 +1380,63 @@ button:disabled {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* 교차로 신호 주기 (#78) */
+.cycle-editor {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.cycle-editor h4 {
+  margin: 0 0 0.4rem;
+}
+
+.cycle-table {
+  font-size: 0.85rem;
+}
+
+.cycle-rows {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cycle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+}
+
+.cycle-row select,
+.cycle-row input {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cycle-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.cycle-num input {
+  width: 4.5rem;
+}
+
+.cycle-table th,
+.cycle-table td {
+  white-space: nowrap;
+  padding: 0.25rem 0.5rem;
+}

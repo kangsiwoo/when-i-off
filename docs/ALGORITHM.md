@@ -53,8 +53,10 @@ E[W²]  = R³ / (3C)
 Var[W] = E[W²] − E[W]²
 ```
 
-`C`, `R`은 `traffic_signal_cycles`에서 요일유형×시간대로 조회한다. 행이 없는 교차로는
-`DEFAULT_ASSUMPTION` 행(예: C=120초, R=90초 → 평균 약 34초)으로 채워 두고 사용한다.
+`C`, `R`은 `traffic_signal_cycles`에서 요일유형×시간대로 조회한다. 그 시각을 담는 행이 여럿이면 출처
+우선순위 `USER_OBSERVED > PUBLIC_API > DEFAULT_ASSUMPTION`으로 고르고(DATA_MODEL, #78), 하나도 없으면
+analytics 기본값 `DEFAULT_SIGNAL_CYCLE`(C=120초, R=90초 → 평균 약 34초)을 쓴다. 사용자가 잰 값은
+데스크탑 구간 편집의 교차로별 "신호 주기"에서 넣는다(`PUT /traffic-signals/{id}/cycles`).
 
 시간대를 고르려면 "그 횡단보도에 언제 서는가"가 필요한데 그 시각은 역산이 끝나야 나온다. v1은
 목표 도착 시각의 시간대로 경로 전체를 한 번에 고른다 — 통근 한 번은 대체로 시간대 하나에 들어가고,

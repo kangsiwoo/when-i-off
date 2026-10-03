@@ -1175,6 +1175,22 @@
         ],
         "type": "object"
       },
+      "ReplaceTrafficSignalCyclesRequest": {
+        "properties": {
+          "cycles": {
+            "items": {
+              "$ref": "#/components/schemas/TrafficSignalCycleRequest"
+            },
+            "maxItems": 100,
+            "minItems": 0,
+            "type": "array"
+          }
+        },
+        "required": [
+          "cycles"
+        ],
+        "type": "object"
+      },
       "RetentionRunResponse": {
         "properties": {
           "at": {
@@ -1632,6 +1648,93 @@
           "fetched",
           "skipped",
           "updated"
+        ],
+        "type": "object"
+      },
+      "TrafficSignalCycleRequest": {
+        "properties": {
+          "cycleDurationSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "dayType": {
+            "enum": [
+              "WEEKDAY",
+              "SATURDAY",
+              "SUNDAY_HOLIDAY"
+            ],
+            "type": "string"
+          },
+          "redDurationSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "timeBandEnd": {
+            "type": "string"
+          },
+          "timeBandStart": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cycleDurationSec",
+          "dayType",
+          "redDurationSec",
+          "timeBandEnd",
+          "timeBandStart"
+        ],
+        "type": "object"
+      },
+      "TrafficSignalCycleResponse": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cycleDurationSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "dayType": {
+            "enum": [
+              "WEEKDAY",
+              "SATURDAY",
+              "SUNDAY_HOLIDAY"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "redDurationSec": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "PUBLIC_API",
+              "USER_OBSERVED",
+              "DEFAULT_ASSUMPTION"
+            ],
+            "type": "string"
+          },
+          "timeBandEnd": {
+            "type": "string"
+          },
+          "timeBandStart": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "createdAt",
+          "cycleDurationSec",
+          "dayType",
+          "id",
+          "redDurationSec",
+          "source",
+          "timeBandEnd",
+          "timeBandStart"
         ],
         "type": "object"
       },
@@ -2886,6 +2989,82 @@
                 "schema": {
                   "items": {
                     "$ref": "#/components/schemas/TrafficSignalResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "traffic-signal-controller"
+        ]
+      }
+    },
+    "/api/v1/traffic-signals/{id}/cycles": {
+      "get": {
+        "operationId": "listCycles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrafficSignalCycleResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "traffic-signal-controller"
+        ]
+      },
+      "put": {
+        "operationId": "replaceCycles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceTrafficSignalCyclesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrafficSignalCycleResponse"
                   },
                   "type": "array"
                 }

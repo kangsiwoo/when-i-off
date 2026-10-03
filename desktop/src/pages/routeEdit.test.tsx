@@ -382,3 +382,110 @@ describe("trip GPS overlay", () => {
     expect(calls(fetch, "GET", `/api/v1/commute-trips/${trip.id}/gps-traces`)).toHaveLength(1);
   });
 });
+
+describe("signal cycles (#78)", () => {
+  const publicRow = {
+    id: 3,
+    dayType: "WEEKDAY" as const,
+    timeBandStart: "07:00:00",
+    timeBandEnd: "10:00:00",
+    cycleDurationSec: 140,
+    redDurationSec: 100,
+    source: "PUBLIC_API" as const,
+    createdAt: "2026-10-03T00:00:00Z",
+  };
+  const userRow = {
+    ...publicRow,
+    id: 4,
+    timeBandStart: "08:00:00",
+    timeBandEnd: "09:00:00",
+    cycleDurationSec: 120,
+    redDurationSec: 60,
+    source: "USER_OBSERVED" as const,
+  };
+
+  async function openCycles() {
+    const first = await screen.findByRole("listitem", { name: "구간 1" });
+    fireEvent.click(within(first).getByText("도보"));
+    const c = within(first);
+    await c.findByText("동탄역 사거리");
+    fireEvent.click(c.getByRole("button", { name: "신호 주기" }));
+    const p = within(await c.findByRole("region", { name: "동탄역 사거리 신호 주기" }));
+    await p.findByRole("button", { name: "주기 저장" });
+    return p;
+  }
+
+  it("shows other sources read-only, edits user rows with a preview and PUTs them", async () => {
+    let body: unknown;
+    renderApp(
+      "/routes/7/edit",
+      backend(fullDetail, async (req, url) => {
+        if (url.pathname !== "/api/v1/traffic-signals/9/cycles") return undefined;
+        if (req.method === "GET") return json([publicRow, userRow]);
+        if (req.method === "PUT") {
+          body = await req.json();
+          return json([
+            publicRow,
+            { ...userRow, id: 8, cycleDurationSec: 150, redDurationSec: 110 },
+          ]);
+        }
+      }),
+    );
+    const p = await openCycles();
+
+    const table = p.getByRole("table", { name: "다른 출처 주기 (읽기 전용)" });
+    expect(within(table).getByText("공공 데이터")).toBeInTheDocument();
+    expect(within(table).getByText("07:00–10:00")).toBeInTheDocument();
+    expect(within(table).queryByRole("textbox")).not.toBeInTheDocument();
+
+    expect(p.getByLabelText("1행 주기(초)")).toHaveValue(120);
+    expect(p.getByText("15.0초")).toBeInTheDocument(); // 60² / 240
+    fireEvent.change(p.getByLabelText("1행 주기(초)"), { target: { value: "150" } });
+    fireEvent.change(p.getByLabelText("1행 적색(초)"), { target: { value: "110" } });
+    expect(p.getByText("40.3초")).toBeInTheDocument();
+    expect(p.getByText(/적색 73%/)).toBeInTheDocument();
+
+    fireEvent.click(p.getByRole("button", { name: "주기 저장" }));
+    expect(await p.findByRole("status")).toHaveTextContent("저장했습니다.");
+    expect(body).toEqual({
+      cycles: [
+        {
+          dayType: "WEEKDAY",
+          timeBandStart: "08:00",
+          timeBandEnd: "09:00",
+          cycleDurationSec: 150,
+          redDurationSec: 110,
+        },
+      ],
+    });
+  });
+
+  it("blocks invalid rows client-side and shows a server 400 detail verbatim", async () => {
+    const detail400 =
+      "cycles[0]: redDurationSec must be greater than 0 and less than cycleDurationSec (90), got 95";
+    const { fetch } = renderApp(
+      "/routes/7/edit",
+      backend(fullDetail, (req, url) => {
+        if (url.pathname !== "/api/v1/traffic-signals/9/cycles") return undefined;
+        if (req.method === "GET") return json([]);
+        return json({ title: "Bad Request", status: 400, detail: detail400 }, 400);
+      }),
+    );
+    const p = await openCycles();
+    expect(p.getByText(/기본값\(주기 120초, 적색 90초, 평균 대기 33.8초\)/)).toBeInTheDocument();
+
+    fireEvent.click(p.getByRole("button", { name: "+ 시간대" }));
+    fireEvent.change(p.getByLabelText("1행 주기(초)"), { target: { value: "90" } });
+    fireEvent.change(p.getByLabelText("1행 적색(초)"), { target: { value: "95" } });
+    fireEvent.click(p.getByRole("button", { name: "주기 저장" }));
+    expect(p.getByRole("alert")).toHaveTextContent(
+      "1행: 적색(95초)은 주기(90초)보다 짧아야 합니다.",
+    );
+    expect(calls(fetch, "PUT", "/api/v1/traffic-signals/9/cycles")).toHaveLength(0);
+
+    // 서버 규칙이 바뀌어 클라이언트가 놓친 경우를 흉내 낸다: 맞는 값으로 보내고 서버가 400을 준다.
+    fireEvent.change(p.getByLabelText("1행 적색(초)"), { target: { value: "60" } });
+    fireEvent.click(p.getByRole("button", { name: "주기 저장" }));
+    expect(await p.findByRole("alert")).toHaveTextContent(`저장하지 못했습니다: ${detail400}`);
+  });
+});

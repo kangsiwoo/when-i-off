@@ -324,6 +324,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/traffic-signals/{id}/cycles": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["listCycles"];
+    put: operations["replaceCycles"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/transit-lines": {
     parameters: {
       query?: never;
@@ -730,6 +746,9 @@ export interface components {
     ReplaceSignalCrossingsRequest: {
       crossings: components["schemas"]["SignalCrossingRequest"][];
     };
+    ReplaceTrafficSignalCyclesRequest: {
+      cycles: components["schemas"]["TrafficSignalCycleRequest"][];
+    };
     RetentionRunResponse: {
       /** Format: date-time */
       at: string;
@@ -852,6 +871,32 @@ export interface components {
       skipped: number;
       /** Format: int32 */
       updated: number;
+    };
+    TrafficSignalCycleRequest: {
+      /** Format: int32 */
+      cycleDurationSec: number;
+      /** @enum {string} */
+      dayType: "WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY";
+      /** Format: int32 */
+      redDurationSec: number;
+      timeBandEnd: string;
+      timeBandStart: string;
+    };
+    TrafficSignalCycleResponse: {
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: int32 */
+      cycleDurationSec: number;
+      /** @enum {string} */
+      dayType: "WEEKDAY" | "SATURDAY" | "SUNDAY_HOLIDAY";
+      /** Format: int64 */
+      id: number;
+      /** Format: int32 */
+      redDurationSec: number;
+      /** @enum {string} */
+      source: "PUBLIC_API" | "USER_OBSERVED" | "DEFAULT_ASSUMPTION";
+      timeBandEnd: string;
+      timeBandStart: string;
     };
     TrafficSignalResponse: {
       /** Format: date-time */
@@ -1520,6 +1565,54 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["TrafficSignalResponse"][];
+        };
+      };
+    };
+  };
+  listCycles: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["TrafficSignalCycleResponse"][];
+        };
+      };
+    };
+  };
+  replaceCycles: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReplaceTrafficSignalCyclesRequest"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["TrafficSignalCycleResponse"][];
         };
       };
     };

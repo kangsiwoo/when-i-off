@@ -45,6 +45,7 @@ route 1 (동탄→수서 출근), p=0.95
   target date           2026-09-22
   model version         v2
   leg 1: walk, speed 1.35±0.06m/s calibrated n=12
+      signal 1: cycle 100s red 40s, mean wait 8.0s (USER_OBSERVED)
   leg 2: vehicle 2026-09-22 08:00:00 KST of 13 candidates
       be at the stop by 2026-09-22 07:59:35 KST
       catch p=0.9500, arrive-in-time p=1.0000
@@ -54,7 +55,9 @@ departure_recommendations id=2 (created)
 ```
 
 구간마다 쓴 입력과 그 출처(`calibrated` / `inherited` / `default`, 아래 "계산")를 찍는다. TRANSIT
-구간은 고른 차량에 쓴 예측 오차(bias±σ)와 차내 시간(평균±σ)이다.
+구간은 고른 차량에 쓴 예측 오차(bias±σ)와 차내 시간(평균±σ)이다. WALK 구간은 건너는 교차로마다 고른 신호
+주기와 평균 대기 `R²/(2C)`, 그 행의 출처(`USER_OBSERVED` > `PUBLIC_API` > `DEFAULT_ASSUMPTION`, 행이 없으면
+`default` = C=120초·R=90초)를 찍는다 (#78).
 
 ### 활성 경로 일괄 (`--all-active-routes`, #68)
 

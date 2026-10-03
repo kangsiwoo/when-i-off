@@ -16,6 +16,7 @@ import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import java.time.Instant
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 
 @Entity
 @Table(name = "traffic_signal_cycles")
@@ -44,6 +45,7 @@ class TrafficSignalCycle(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null
 
+    // DB(TIMESTAMPTZ) 정밀도에 맞춘다. PUT 응답(방금 저장한 엔티티)과 이후 GET이 같은 값을 준다.
     @Column(nullable = false, updatable = false)
-    val createdAt: Instant = Instant.now()
+    val createdAt: Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
 }

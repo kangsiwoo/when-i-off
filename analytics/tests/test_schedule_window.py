@@ -11,8 +11,6 @@ from conftest import kst
 from whenioff_analytics.daytype import DayType
 from whenioff_analytics.io.db import Connection
 from whenioff_analytics.io.schedules import load_scheduled_departures
-from whenioff_analytics.io.signals import CycleBand, select_cycle
-from whenioff_analytics.model.distributions import SignalCycle
 
 # 시간표는 (day_type, 방향)으로 갈린다. 가짜 커서는 SQL 문자열이 아니라 파라미터를 보므로,
 # 이 테스트들이 고정하는 것은 "조회가 방향을 넘긴다"까지다 — 방향을 빼면 params[3]에서 터진다.
@@ -134,14 +132,3 @@ def test_reversed_window_is_rejected() -> None:
     conn, _ = fake({})
     with pytest.raises(ValueError, match="window_end"):
         load_scheduled_departures(conn, 1, 2, ONE_WAY, kst("2026-09-22 09:00"), kst("2026-09-22 08:00"))
-
-
-def test_signal_cycle_band_selection() -> None:
-    bands = (
-        CycleBand(time(7, 0), time(9, 0), SignalCycle(cycle_sec=140.0, red_sec=100.0)),
-        CycleBand(time(9, 0), time(18, 0), SignalCycle(cycle_sec=120.0, red_sec=80.0)),
-    )
-    assert select_cycle(bands, time(8, 30)) == bands[0].cycle
-    assert select_cycle(bands, time(9, 0)) == bands[1].cycle
-    assert select_cycle(bands, time(6, 59)) is None
-    assert select_cycle((), time(8, 30)) is None

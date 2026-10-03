@@ -246,6 +246,16 @@ fallback이고, 실시간이 있어도 "지금 현시 이후"를 추정할 때 �
 공공 데이터로 채우거나(`PUBLIC_API`), 사용자 관찰값(`USER_OBSERVED`), 기본 가정값
 (`DEFAULT_ASSUMPTION`)을 넣는다.
 
+- **시간대**: KST 하루 중 `[time_band_start, time_band_end)`. 자정을 넘지 않는다(넘으면 두 행).
+  사용자 행은 API(`PUT /traffic-signals/{id}/cycles`, #78)가 같은 day_type 안의 겹침을 막는다
+- **출처 우선순위** (#78): 출처가 다른 행은 시간대가 겹쳐도 된다. 어떤 시각을 담는 행이 여럿이면
+  `USER_OBSERVED > PUBLIC_API > DEFAULT_ASSUMPTION` 순으로 하나를 쓴다 — 현장에서 잰 값이 공공 데이터보다,
+  공공 데이터가 가정값보다 낫다. 같은 출처끼리 겹치면 시작 시각이 이른 행. 담는 행이 하나도 없으면 analytics
+  기본값 `defaults.DEFAULT_SIGNAL_CYCLE`(C=120초, R=90초). 구현은 analytics `io/signals.py`의 `select_cycle` /
+  `resolve_cycle`, 정렬 기준은 backend `SignalCycleRules.SOURCE_PRIORITY`
+- 사용자 행을 바꾸는 것은 PUT 하나뿐이고 그것도 `USER_OBSERVED` 행만 교체한다. 다른 출처 행은 그 출처의
+  적재 작업만 쓴다 (지금은 둘 다 없다 — `PUBLIC_API`는 커버 교차로가 생기면, ALGORITHM 5절)
+
 ### `commute_trips`
 그 경로로 실제 이동한 하루 1건. `left_home_at`(집 geofence 이탈)과
 `arrived_destination_at`(목적지 geofence 진입)은 경로 전체에 한 번씩만 존재하는 사건이므로
