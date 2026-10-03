@@ -107,6 +107,8 @@ public struct RetryPolicy: Codable, Sendable, Equatable {
             switch status {
             case 401, 403: return .pause
             case 408, 425, 429, 500...599: return .retry
+            // 지우려던 trip이 없다: 앞선 삭제가 응답만 잃었거나 이미 지워졌다. 원하던 결과다 (#88).
+            case 404 where command.isDeleteTrip: return .treatAsDelivered
             default: return .reject
             }
         case .decoding:
@@ -203,6 +205,12 @@ public struct Outbox<Store: OutboxStore> {
             blocked.insert(lane)
             if entry.inFlight { continue }
             if let notBefore = entry.notBefore, notBefore > now { continue }
+            // 삭제는 그 trip의 다른 lane(GPS)까지 끝난 뒤에 나간다. 먼저 지우면 늦게 닿은 GPS가 404로 거부된다.
+            if case .deleteTrip(let key) = entry.command,
+                state.entries.contains(where: { $0.id != entry.id && $0.command.tripKey == key })
+            {
+                continue
+            }
             guard let request = resolve(entry.command) else { continue }
             state.entries[index].inFlight = true
             try persist()
@@ -223,6 +231,8 @@ public struct Outbox<Store: OutboxStore> {
         case .uploadGps(let key, let points):
             guard let key else { return .uploadGps(GpsTraceBatchRequest(tripId: nil, points: points)) }
             return state.tripIds[key].map { .uploadGps(GpsTraceBatchRequest(tripId: $0, points: points)) }
+        case .deleteTrip(let key):
+            return state.tripIds[key].map { .deleteTrip(tripId: $0) }
         }
     }
 
@@ -242,7 +252,7 @@ public struct Outbox<Store: OutboxStore> {
             if let key = command.tripKey, case .createTrip = command { state.tripIds[key] = id }
             state.entries.remove(at: index)
         case .delivered:
-            state.entries.remove(at: index)
+            delivered(at: index)
         case .failed(let error):
             switch retry.decide(error, for: command) {
             case .retry:
@@ -254,7 +264,7 @@ public struct Outbox<Store: OutboxStore> {
                 state.entries[index].inFlight = false
                 state.paused = .unauthorized
             case .treatAsDelivered:
-                state.entries.remove(at: index)
+                delivered(at: index)
             case .reject:
                 state.entries.remove(at: index)
                 state.deadLetters.append(
@@ -266,9 +276,16 @@ public struct Outbox<Store: OutboxStore> {
         try persist()
     }
 
+    private mutating func delivered(at index: Int) {
+        let command = state.entries.remove(at: index).command
+        // 지운 trip의 id는 더 쓸 일이 없다. 같은 키로 다시 만들면 새 id를 받아야 한다.
+        if case .deleteTrip(let key) = command { state.tripIds[key] = nil }
+    }
+
     /// trip 생성이 거부되면 그 trip에 딸린 명령은 영원히 보낼 수 없다. 함께 버리고 알린다.
+    /// 삭제 명령은 알리지 않는다 — 서버에 trip이 없으니 지울 것도 없다.
     private mutating func rejectDependents(of key: TripKey, now: Date) {
-        let dependents = state.entries.filter { $0.command.tripKey == key }
+        let dependents = state.entries.filter { $0.command.tripKey == key && !$0.command.isDeleteTrip }
         state.entries.removeAll { $0.command.tripKey == key }
         state.deadLetters += dependents.map { DeadLetter(command: $0.command, reason: .tripRejected(key), at: now) }
     }
@@ -287,9 +304,32 @@ public struct Outbox<Store: OutboxStore> {
         try persist()
     }
 
-    /// 사용자가 기록을 취소한 trip의 명령을 버린다. 이미 보낸 것은 서버에 남는다 (지우는 API는 없다).
-    public mutating func discard(trip key: TripKey) throws {
-        state.entries.removeAll { $0.command.tripKey == key && !$0.inFlight }
+    /// 사용자가 기록을 취소한 trip (#88). 아직 보내지 않은 명령은 버리고, 서버에 trip이 있을 수 있으면 지우는 명령을
+    /// 넣는다.
+    ///
+    /// - 보내는 중(`inFlight`)인 명령은 결과를 기다린다. 삭제는 record lane 맨 뒤에 서고, 다른 lane(GPS)의 보내는 중인
+    ///   명령까지 끝난 뒤에 나간다(``next(now:)``) — 먼저 지우면 늦게 닿은 기록이 404로 거부되거나 trip 없이 남는다
+    /// - 서버에 trip이 있을 수 있는 때: 생성 응답으로 id를 알거나, 생성 요청이 이미 한 번 나갔다(보내는 중이거나
+    ///   결과를 모른 채 재시도 대기). 뒤의 경우 생성 명령을 버리지 않는다 — 다시 보내면 서버가 같은 trip의 id를
+    ///   돌려주고(#37), 그 id로 지운다. 서버가 그때 처음 만들었더라도 바로 지워지므로 결과는 같다
+    /// - 생성이 한 번도 나가지 않았으면 서버에 아무것도 없다. 버리기만 한다
+    public mutating func discard(trip key: TripKey, now: Date) throws {
+        let createMayHaveLanded = state.entries.contains { entry in
+            guard case .createTrip(key, _) = entry.command else { return false }
+            return entry.inFlight || entry.failures > 0
+        }
+        let deleting = state.entries.contains { $0.command == .deleteTrip(key) }
+        state.entries.removeAll { entry in
+            guard entry.command.tripKey == key, !entry.inFlight else { return false }
+            switch entry.command {
+            case .createTrip: return !createMayHaveLanded
+            case .deleteTrip: return false
+            default: return true
+            }
+        }
+        if !deleting, state.tripIds[key] != nil || createMayHaveLanded {
+            append(.deleteTrip(key), now: now)
+        }
         try persist()
     }
 

@@ -127,6 +127,7 @@ I/O 없는 값 타입. `handle(_ event) -> [RecorderEffect]`이고 상태(`Recor
 | `upsertAttempt` | `(trip, routeLegId, attemptSeq)` (#38) | 같은 행 갱신, `null` 필드는 그대로 |
 | `updateTrip` | trip id | 같은 값을 다시 씀 |
 | `uploadGps` | `(user, recordedAt)` | `ignored`로 흡수 |
+| `deleteTrip` | trip id (#88) | 이미 지웠으면 `404` — 성공으로 본다 |
 
 - **서버 id 매핑은 trip id 하나뿐이다.** 앱은 trip을 `TripKey(경로, leftHomeAt)`로 가리키고, trip에 딸린 명령은 그
   trip의 생성 명령 뒤에 줄을 선다. 생성 응답(201/200)의 id를 `tripIds[TripKey]`에 기억하면 줄이 풀린다. 생성 응답을
@@ -145,7 +146,7 @@ I/O 없는 값 타입. `handle(_ event) -> [RecorderEffect]`이고 상태(`Recor
   |---|---|
   | 전송 실패, 408·425·429·5xx | 재시도 |
   | 401·403 | outbox 전체 **정지**(지우지 않음). 설정에서 토큰을 고치면 `resume()` |
-  | 400·404·409·422, 클라이언트 거부 | **버리고**(다시 보내도 같은 답) `DeadLetter`로 남긴다. 같은 lane의 다음 명령은 계속 간다 |
+  | 400·404·409·422, 클라이언트 거부 | **버리고**(다시 보내도 같은 답) `DeadLetter`로 남긴다. 같은 lane의 다음 명령은 계속 간다. 단 `deleteTrip`의 404는 성공(#88) |
   | trip 생성이 거부됨 | 그 trip에 딸린 명령도 함께 `DeadLetter(.tripRejected)` — 보낼 곳이 없다 |
   | 2xx인데 본문을 못 읽음 | 서버에는 반영됐으니 성공으로 본다. 단 생성은 id가 필요해 거부로 본다(앱이 백엔드보다 낡음) |
 
@@ -155,8 +156,18 @@ I/O 없는 값 타입. `handle(_ event) -> [RecorderEffect]`이고 상태(`Recor
   Support의 JSON 파일(원자적 쓰기, `completeUntilFirstUserAuthentication` 보호 — 잠긴 기기에서 깨어나도 읽고 쓴다).
   보내던 중(`inFlight`)에 죽은 항목은 다시 시작할 때 재전송 대상으로 돌린다
 - **실행기**: 앱의 actor 하나가 직렬로 `next → APIClient.send → complete`를 돈다. 깨우는 때: 명령이 들어올 때,
-  포그라운드, 네트워크 복구, `nextWakeAt`, BGAppRefreshTask. 사용자가 trip을 취소하면 대기 명령을 버린다(이미 간 것은
-  서버에 남는다 — 지우는 API는 없다)
+  포그라운드, 네트워크 복구, `nextWakeAt`, BGAppRefreshTask
+- **취소**(#88, `Outbox.discard(trip:now:)`): 사용자가 trip을 취소하면 그 trip의 대기 명령을 버리고, 서버에 trip이 있을
+  수 있으면 `deleteTrip`(`DELETE /commute-trips/{id}`)을 넣는다
+  - 서버에 있을 수 있는 때: 생성 응답으로 id를 알거나, 생성 요청이 이미 한 번 나갔다(보내는 중, 또는 결과를 모른 채
+    재시도 대기). 뒤의 경우 생성 명령은 버리지 않는다 — 다시 보내면 같은 trip의 id가 오고(#37) 그 id로 지운다.
+    생성이 한 번도 나가지 않았으면 서버에 아무것도 없으니 버리기만 한다
+  - 보내는 중인 명령은 되돌릴 수 없으므로 결과를 기다린다. 삭제는 record lane 맨 뒤에 서고, 같은 trip의 GPS lane에
+    보내는 중인 것이 있어도 그것이 끝난 뒤에 나간다 — 먼저 지우면 늦게 닿은 기록이 `404`로 거부된다
+  - 삭제의 `404`는 성공(이미 지웠다, 앞선 삭제가 응답만 잃었다). 생성이 거부되면 삭제는 거부 기록 없이 사라진다.
+    성공하면 `tripIds`에서 그 키를 지운다
+  - 저장된 outbox는 `OutboxCommand`의 합성 `Codable` 형식이라 사례 추가는 업데이트 전 파일을 그대로 읽는다(테스트로
+    고정). 반대로 이 버전이 쓴 `deleteTrip`이 든 파일은 이전 앱이 읽지 못한다(앱 되돌리기는 하지 않는다)
 
 ### 6. GPS 수집
 - trip 중에만 `CLLocationManager.startUpdatingLocation`(`allowsBackgroundLocationUpdates`, `UIBackgroundModes:
@@ -239,6 +250,8 @@ I/O 없는 값 타입. `handle(_ event) -> [RecorderEffect]`이고 상태(`Recor
   - 앱 타깃은 Swift 5 언어 모드(엄격 동시성 minimal)다. 델리게이트 격리를 Swift 6에 맞추는 것은 실기기 확인 뒤
 - 실기기에서 확인할 것(#4 완료 기준): 지역 감시의 백그라운드 전달·재실행(강제 종료 후 포함), 전달 시각과 실제 진입의
   차이, 지하역 진입 지연의 실제 크기, 백그라운드에서 GPS 시작이 되는지, 잠긴 기기에서 알림 액션 → 전송까지
+- 취소한 trip의 서버 기록은 처음에는 남았다(지우는 API가 없었다). #88에서 `DELETE /commute-trips/{id}`와 outbox의
+  `deleteTrip`을 더해 지운다(§5 "취소")
 - 저장된 outbox는 Kit 요청 타입의 JSON이다. Kit DTO를 바꾸는 앱 업데이트 뒤 읽기에 실패하면 파일을 옆으로 옮기고
   기록 확인 화면에 알린다(조용히 버리지 않는다)
 - **콜드스타트 판정을 서버 값으로 옮겼다(#86).** analytics `recommend`가 고른 차량들의 예측 오차·차내 시간 입력이 기댄

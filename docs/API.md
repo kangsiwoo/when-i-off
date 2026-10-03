@@ -150,6 +150,7 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
 |---|---|---|---|
 | ✔ | POST | `/commute-trips` | 이동 시작 (`routeId`, `tripDate`, `leftHomeAt?`) → `201`, 재전송이면 `200` (아래) |
 | ✔ | PATCH | `/commute-trips/{id}` | `leftHomeAt`, `arrivedDestinationAt` 갱신. 이미 기록된 attempt가 새 범위 밖이 되면 400 |
+| ✔ | DELETE | `/commute-trips/{id}` | 잘못 시작된 trip과 딸린 기록 삭제 → `204`. 없거나 남의 trip이면 `404` (아래, #88) |
 | ✔ | GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts 포함, 히스토리 화면용). `to < from`이면 400 |
 | ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도(차 한 대) **upsert** (아래) |
 | ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`). id로 한 건만. 예측 스냅샷 채움은 upsert와 같다 |
@@ -167,6 +168,22 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
   클라이언트 버그(KST 대신 UTC)를 조용히 가리지 않기 위해서다
 - `leftHomeAt` 없이 만든 trip은 키가 없으므로 매번 새로 만든다. 재전송해도 안전하려면 `leftHomeAt`을
   생성 요청에 넣는다
+
+### trip 삭제 (#88)
+앱에서 "기록 취소"한 trip(평소와 다른 방향의 시작 등, ADR 0003 §3)을 서버에서도 지운다. 생성은 출발 직후 바로
+나가므로 취소된 trip은 거의 항상 서버에 이미 있다.
+
+- 내 trip이면 `204 No Content`(본문 없음). 없거나 남의 trip이면 `404` — 다른 trip API와 같다
+- **함께 지워지는 것**: 탑승 시도, 도보 구간(`walking_segments`), 추천 평가(`recommendation_evaluations`)는
+  FK `ON DELETE CASCADE`. 그 trip에 묶인 **GPS 포인트도 지운다** — FK는 `ON DELETE SET NULL`이라 그냥 두면
+  상시 수집분으로 바뀌어 남는데, 사용자가 버린 기록의 위치를 다른 이름으로 남기지 않는다. 추천
+  (`departure_recommendations`)은 trip의 파생이 아니라 남는다. 한 트랜잭션이다
+- **멱등**: 이미 지운 trip을 다시 지우면 `404`. 재전송하는 클라이언트(앱 outbox)는 DELETE의 `404`를 성공으로 본다.
+  `204`로 통일하지 않은 것은 "없는 id"와 "남의 trip"을 구분하지 않는 다른 API의 404 규약을 지키기 위해서다
+- **도착한 trip도 지울 수 있다**(진행 중으로 제한하지 않는다). "실측 기록은 지우지 않는다"는 원칙은 구간 교체·보관
+  정책 같은 **부수 효과**로 지우지 않는다는 뜻이고, 이것은 사용자가 "이 기록은 틀렸다"고 명시적으로 판단한 삭제다.
+  진행 중으로 제한하면 도착 PATCH가 먼저 닿은 취소가 `409`로 남고, 데스크탑에서 잘못 기록된 trip을 정리할 길도 없다
+- 이미 계산된 파생값(보정 테이블, `user_walking_profiles`)은 다음 배치가 다시 계산할 때 빠진다
 
 ### 기록 시각은 trip 안에 있어야 한다 (#37)
 attempt의 `arrivedAtStopAt`, `vehicleActualDepartureAt`, `alightedAt`은 trip의

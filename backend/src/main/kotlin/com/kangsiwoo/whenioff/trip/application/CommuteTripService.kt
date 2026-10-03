@@ -20,6 +20,7 @@ import com.kangsiwoo.whenioff.trip.domain.BoardingAttempt
 import com.kangsiwoo.whenioff.trip.domain.BoardingAttemptRepository
 import com.kangsiwoo.whenioff.trip.domain.CommuteTrip
 import com.kangsiwoo.whenioff.trip.domain.CommuteTripRepository
+import com.kangsiwoo.whenioff.trip.domain.GpsTraceRepository
 import com.kangsiwoo.whenioff.user.domain.User
 import com.kangsiwoo.whenioff.user.domain.UserRepository
 import org.springframework.data.domain.Sort
@@ -49,6 +50,7 @@ class CommuteTripService(
     private val routeLegRepository: RouteLegRepository,
     private val commuteTripRepository: CommuteTripRepository,
     private val boardingAttemptRepository: BoardingAttemptRepository,
+    private val gpsTraceRepository: GpsTraceRepository,
     private val nextVehicleSnapshotResolver: NextVehicleSnapshotResolver,
 ) {
     fun create(
@@ -101,6 +103,26 @@ class CommuteTripService(
         // 바꿔 같은 모순을 만들 수 있다 (#37).
         attempts.forEach { requireWithinTrip(trip, it) }
         return CommuteTripResponse.from(trip, attempts)
+    }
+
+    /**
+     * 잘못 시작된 기록을 지운다 (#88). 앱의 "기록 취소"가 outbox로 보낸다.
+     *
+     * 탑승 시도·도보 구간·추천 평가는 FK `ON DELETE CASCADE`로 함께 지워진다(파생값이거나 trip 없이는 뜻이 없다).
+     * GPS 포인트는 FK가 `ON DELETE SET NULL`이라 그냥 두면 "상시 수집분"으로 남으므로 먼저 지운다 — 사용자가 버린
+     * 기록의 위치를 다른 이름으로 남기지 않는다.
+     *
+     * 도착이 기록된 trip도 지울 수 있다. 사용자가 명시적으로 "이 기록은 틀렸다"고 판단한 것이라, 구간 교체·보관
+     * 정책 같은 부수 효과로 지우지 않는다는 원칙과 부딪치지 않는다. 없거나 남의 trip이면 404 —
+     * 이미 지운 trip을 다시 지우는 재전송도 404이고, 클라이언트(outbox)는 그것을 성공으로 본다.
+     */
+    fun delete(
+        userId: Long,
+        tripId: Long,
+    ) {
+        val trip = findTrip(userId, tripId)
+        gpsTraceRepository.deleteByCommuteTripId(tripId)
+        commuteTripRepository.delete(trip)
     }
 
     fun upsertBoardingAttempt(

@@ -248,14 +248,163 @@ struct OutboxTests {
         #expect(sizes == [500, 500, 200])
     }
 
-    @Test func discardDropsOnlyThatTripsPendingCommands() throws {
+    // MARK: 취소 (#88)
+
+    /// 생성이 한 번도 나가지 않았으면 서버에는 아무것도 없다. 버리기만 하고 삭제는 넣지 않는다.
+    @Test func discardBeforeTheCreateWasSentOnlyDropsCommands() throws {
         var outbox = try Outbox(store: InMemoryOutboxStore())
         let other = TripKey(routeId: 2, leftHomeAt: kst(18, 30))
         try outbox.enqueue(.createTrip(key, tripDate: date), now: kst(7, 31))
         try outbox.enqueue(attempt(1, arrived: kst(7, 38)), now: kst(7, 38))
         try outbox.enqueue(.createTrip(other, tripDate: date), now: kst(18, 30))
-        try outbox.discard(trip: key)
+        try outbox.discard(trip: key, now: kst(18, 31))
         #expect(outbox.pending.map(\.command) == [.createTrip(other, tripDate: date)])
+    }
+
+    /// 서버에 만들어진 trip을 취소하면 대기 명령을 버리고 삭제를 보낸다. 지운 trip의 id 매핑도 지운다.
+    @Test func discardOfACreatedTripDeletesItOnTheServer() async throws {
+        let backend = FakeBackend()
+        let client = api(backend)
+        var outbox = try Outbox(store: InMemoryOutboxStore())
+        try outbox.enqueue(.createTrip(key, tripDate: date), now: kst(7, 31))
+        try await drain(&outbox, client, now: kst(7, 31))
+        let tripId = try #require(outbox.tripId(for: key))
+
+        // 오프라인에서 쌓인 기록은 서버에 갈 필요가 없다
+        try outbox.enqueue(attempt(1, arrived: kst(7, 38)), now: kst(7, 38))
+        try outbox.enqueue(.uploadGps(key, [GpsPoint(recordedAt: kst(7, 32), lat: 37.2, lng: 127.1)]), now: kst(7, 38))
+        try outbox.discard(trip: key, now: kst(7, 40))
+        #expect(outbox.pending.map(\.command) == [.deleteTrip(key)])
+
+        let dispatch = try #require(try outbox.next(now: kst(7, 40)))
+        #expect(dispatch.request == .deleteTrip(tripId: tripId))
+        try outbox.complete(dispatch.entryId, await client.send(dispatch.request), now: kst(7, 40))
+        #expect(outbox.pending.isEmpty)
+        #expect(outbox.deadLetters.isEmpty)
+        #expect(outbox.tripId(for: key) == nil)
+        #expect(await backend.trips.isEmpty)
+        #expect(await backend.gpsTimes.isEmpty)
+
+        // 두 번 취소해도 삭제는 하나다
+        try outbox.discard(trip: key, now: kst(7, 41))
+        #expect(outbox.pending.isEmpty)
+    }
+
+    /// 삭제가 응답만 잃었으면 다시 보낸다. 서버는 이미 지워 404를 주고, 그것을 성공으로 본다 (DeadLetter 없음).
+    @Test func deleteThatLostItsResponseTreats404AsDone() async throws {
+        let backend = FakeBackend()
+        let client = api(backend)
+        var outbox = try Outbox(store: InMemoryOutboxStore())
+        try outbox.enqueue(.createTrip(key, tripDate: date), now: kst(7, 31))
+        try await drain(&outbox, client, now: kst(7, 31))
+        try outbox.discard(trip: key, now: kst(7, 32))
+
+        await backend.setMode(.dropResponses)
+        #expect(try await drain(&outbox, client, now: kst(7, 33)) == 1)
+        #expect(await backend.trips.isEmpty)
+        #expect(outbox.pending.first?.failures == 1)
+
+        await backend.setMode(.online)
+        try outbox.expediteRetries()
+        try await drain(&outbox, client, now: kst(7, 34))
+        #expect(outbox.pending.isEmpty)
+        #expect(outbox.deadLetters.isEmpty)
+        #expect(outbox.tripId(for: key) == nil)
+    }
+
+    /// 생성 요청이 처리됐는데 응답만 잃은 채 취소됐다. 서버에 trip이 있을 수 있으므로 생성 명령은 남겨 id를 알아내고
+    /// (재전송은 같은 trip을 200으로 돌려준다) 그 id로 지운다.
+    @Test func discardAfterAnUnansweredCreateStillDeletesTheServerTrip() async throws {
+        let backend = FakeBackend()
+        let client = api(backend)
+        var outbox = try Outbox(store: InMemoryOutboxStore())
+        try outbox.enqueue(.createTrip(key, tripDate: date), now: kst(7, 31))
+        try outbox.enqueue(attempt(1, arrived: kst(7, 38)), now: kst(7, 38))
+        await backend.setMode(.dropResponses)
+        try await drain(&outbox, client, now: kst(7, 39))
+        #expect(await backend.trips.count == 1)
+        #expect(outbox.tripId(for: key) == nil)
+
+        try outbox.discard(trip: key, now: kst(7, 40))
+        #expect(outbox.pending.map(\.command) == [.createTrip(key, tripDate: date), .deleteTrip(key)])
+
+        await backend.setMode(.online)
+        try outbox.expediteRetries()
+        try await drain(&outbox, client, now: kst(7, 41))
+        #expect(outbox.pending.isEmpty)
+        #expect(outbox.deadLetters.isEmpty)
+        #expect(await backend.trips.isEmpty)
+        #expect(await backend.attemptCount(trip: 31) == 0)
+    }
+
+    /// 보내는 중인 요청은 되돌릴 수 없다. 삭제는 그 trip의 보내는 중인 요청이 모두 끝난 뒤에 나간다 — GPS lane 포함.
+    @Test func deleteWaitsForInFlightCommandsOfThatTrip() throws {
+        var outbox = try Outbox(store: InMemoryOutboxStore(seeded(tripId: 31)))
+        try outbox.enqueue(attempt(1, arrived: kst(7, 38)), now: kst(7, 38))
+        try outbox.enqueue(.uploadGps(key, [GpsPoint(recordedAt: kst(7, 32), lat: 37.2, lng: 127.1)]), now: kst(7, 38))
+        try outbox.enqueue(attempt(2, departed: kst(7, 45), result: .caught), now: kst(7, 45))
+        let upsert = try #require(try outbox.next(now: kst(7, 46)))
+        let gps = try #require(try outbox.next(now: kst(7, 46)))
+
+        try outbox.discard(trip: key, now: kst(7, 47))
+        #expect(outbox.pending.map(\.id) == [upsert.entryId, gps.entryId, 4])
+        #expect(try outbox.next(now: kst(7, 47)) == nil)
+
+        try outbox.complete(upsert.entryId, .delivered, now: kst(7, 47))
+        #expect(try outbox.next(now: kst(7, 47)) == nil)  // GPS가 아직 가는 중
+
+        try outbox.complete(gps.entryId, .delivered, now: kst(7, 47))
+        #expect(try outbox.next(now: kst(7, 47))?.request == .deleteTrip(tripId: 31))
+    }
+
+    /// 보내던 생성이 거부되면 서버에 trip이 없다. 삭제는 거부 기록 없이 사라진다.
+    @Test func deleteOfARejectedCreateIsDroppedSilently() async throws {
+        let backend = FakeBackend()
+        await backend.fail("POST", "/commute-trips", status: 409)
+        var outbox = try Outbox(store: InMemoryOutboxStore())
+        try outbox.enqueue(.createTrip(key, tripDate: date), now: kst(7, 31))
+        let create = try #require(try outbox.next(now: kst(7, 31)))
+        try outbox.discard(trip: key, now: kst(7, 32))
+        #expect(outbox.pending.map(\.command) == [.createTrip(key, tripDate: date), .deleteTrip(key)])
+
+        try outbox.complete(create.entryId, await api(backend).send(create.request), now: kst(7, 32))
+        #expect(outbox.pending.isEmpty)
+        #expect(outbox.deadLetters.map(\.reason) == [.rejected(status: 409, message: "forced")])
+    }
+
+    /// 업데이트 전 앱이 저장한 outbox 파일(합성 `Codable` 형식, 날짜는 기준일 이후 초)이 그대로 읽힌다.
+    /// 읽은 뒤 취소하면 삭제가 붙는다.
+    @Test func outboxSavedBeforeDeleteTripStillDecodes() throws {
+        let trip = #"{"leftHomeAt":812241060,"routeId":1}"#
+        let json = """
+            {"deadLetters":[],"entries":[
+            {"command":{"createTrip":{"_0":\(trip),"tripDate":"2026-09-28"}},"enqueuedAt":812241060,"failures":1,
+             "id":1,"inFlight":false,"notBefore":812241065},
+            {"command":{"upsertAttempt":{"_0":\(trip),"_1":{"arrivedAtStopAt":812241480,"attemptSeq":1,"routeLegId":2}}},
+             "enqueuedAt":812241480,"failures":0,"id":2,"inFlight":false},
+            {"command":{"uploadGps":{"_0":\(trip),"_1":[{"lat":37.2,"lng":127.1,"recordedAt":812241120}]}},
+             "enqueuedAt":812241480,"failures":0,"id":3,"inFlight":false},
+            {"command":{"updateTrip":{"_0":\(trip),"_1":{"arrivedDestinationAt":812244900}}},
+             "enqueuedAt":812244900,"failures":0,"id":4,"inFlight":true}
+            ],"nextId":5,"tripIds":[{"leftHomeAt":812230000,"routeId":2},77]}
+            """
+        let saved = try JSONDecoder().decode(OutboxState.self, from: Data(json.utf8))
+        #expect(
+            saved.entries.map(\.command) == [
+                .createTrip(key, tripDate: date),
+                attempt(1, arrived: kst(7, 38)),
+                .uploadGps(key, [GpsPoint(recordedAt: kst(7, 32), lat: 37.2, lng: 127.1)]),
+                .updateTrip(key, UpdateCommuteTripRequest(arrivedDestinationAt: kst(8, 35))),
+            ])
+        let otherKey = TripKey(routeId: 2, leftHomeAt: Date(timeIntervalSinceReferenceDate: 812_230_000))
+        #expect(saved.tripIds == [otherKey: 77])
+
+        // 앱 재시작: 보내던 중이던 도착은 다시 보낼 대상이 된다. 생성은 한 번 실패한 적 있다(결과 모름)
+        var outbox = try Outbox(store: InMemoryOutboxStore(saved))
+        try outbox.discard(trip: key, now: kst(8, 40))
+        #expect(outbox.pending.map(\.command) == [.createTrip(key, tripDate: date), .deleteTrip(key)])
+        let reloaded = try JSONDecoder().decode(OutboxState.self, from: JSONEncoder().encode(outbox.state))
+        #expect(reloaded == outbox.state)
     }
 
     @Test func everyChangeIsPersisted() throws {
@@ -294,6 +443,14 @@ struct RetryPolicyTests {
     @Test(arguments: [400, 404, 409, 422])
     func clientErrorsAreRejected(status: Int) {
         #expect(policy.decide(.http(status: status, problem: nil, body: nil), for: gps) == .reject)
+    }
+
+    /// 지우려던 trip이 이미 없다 = 원하던 결과 (#88). 다른 거부는 그대로 거부다.
+    @Test func deleteOfAMissingTripIsDone() {
+        let delete = OutboxCommand.deleteTrip(TripKey(routeId: 1, leftHomeAt: kst(7, 31)))
+        #expect(policy.decide(.http(status: 404, problem: nil, body: nil), for: delete) == .treatAsDelivered)
+        #expect(policy.decide(.http(status: 409, problem: nil, body: nil), for: delete) == .reject)
+        #expect(policy.decide(.http(status: 503, problem: nil, body: nil), for: delete) == .retry)
     }
 
     @Test func classifiesTheRest() {

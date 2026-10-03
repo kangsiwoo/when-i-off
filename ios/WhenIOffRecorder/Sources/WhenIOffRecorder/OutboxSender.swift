@@ -14,6 +14,8 @@ extension APIClient {
                 _ = try await upsertBoardingAttempt(tripId: tripId, body)
             case .uploadGps(let body):
                 _ = try await uploadGpsTraces(body)
+            case .deleteTrip(let tripId):
+                try await deleteTrip(id: tripId)
             }
             return .delivered
         } catch {

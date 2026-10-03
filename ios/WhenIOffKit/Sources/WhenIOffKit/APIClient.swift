@@ -50,6 +50,14 @@ public struct APIClient: Sendable {
         try await send("PATCH", ["commute-trips", String(id)], body: request)
     }
 
+    /// 잘못 시작된 trip과 딸린 기록(탑승 시도, GPS, 도보 구간, 추천 평가)을 지운다 (#88). 성공은 `204`(본문 없음).
+    ///
+    /// 없거나 이미 지운 trip은 ``APIError/http(status:problem:body:)`` 404다. 재전송하는 쪽(outbox)은 404를 성공으로
+    /// 본다 — 지운 결과는 같다.
+    public func deleteTrip(id: Int64) async throws(APIError) {
+        _ = try await perform("DELETE", ["commute-trips", String(id)], query: [], body: nil)
+    }
+
     /// 모든 조건은 선택이다. 날짜는 `tripDate`(KST 달력) 기준이고 서버는 `to < from`이면 400을 준다.
     public func trips(routeId: Int64? = nil, from: LocalDate? = nil, to: LocalDate? = nil)
         async throws(APIError) -> [CommuteTrip]
@@ -110,7 +118,7 @@ public struct APIClient: Sendable {
         _ path: [String],
         query: [URLQueryItem] = []
     ) async throws(APIError) -> Response {
-        try await perform(method, path, query: query, body: Data?.none)
+        try decode(method, try await perform(method, path, query: query, body: nil))
     }
 
     private func send<Body: Encodable, Response: Decodable>(
@@ -124,15 +132,26 @@ public struct APIClient: Sendable {
         } catch {
             throw .invalidRequest("could not encode request body: \(error)")
         }
-        return try await perform(method, path, query: [], body: data)
+        return try decode(method, try await perform(method, path, query: [], body: data))
     }
 
-    private func perform<Response: Decodable>(
+    private func decode<Response: Decodable>(_ method: String, _ response: (body: Data, url: URL)) throws(APIError)
+        -> Response
+    {
+        do {
+            return try WhenIOffJSON.decoder().decode(Response.self, from: response.body)
+        } catch {
+            throw .decoding("\(method) \(response.url.path): \(error)")
+        }
+    }
+
+    /// 2xx면 응답 본문(과 보낸 URL)을 돌려준다. 해석은 부르는 쪽 몫이다 — `204`처럼 본문이 없는 응답도 있다.
+    private func perform(
         _ method: String,
         _ path: [String],
         query: [URLQueryItem],
         body: Data?
-    ) async throws(APIError) -> Response {
+    ) async throws(APIError) -> (body: Data, url: URL) {
         let url = try makeURL(path, query: query)
         var headers = [
             "X-Api-Token": configuration.apiToken,
@@ -153,12 +172,7 @@ public struct APIClient: Sendable {
             let text = problem == nil ? String(data: response.body, encoding: .utf8) : nil
             throw .http(status: response.status, problem: problem, body: text)
         }
-
-        do {
-            return try WhenIOffJSON.decoder().decode(Response.self, from: response.body)
-        } catch {
-            throw .decoding("\(method) \(url.path): \(error)")
-        }
+        return (response.body, url)
     }
 
     private func makeURL(_ path: [String], query: [URLQueryItem]) throws(APIError) -> URL {

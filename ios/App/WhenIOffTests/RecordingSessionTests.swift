@@ -115,6 +115,34 @@ struct RecordingSessionTests {
         #expect(session.outbox.outbox.tripId(for: TripKey(routeId: 1, leftHomeAt: kst(7, 30))) == 31)
     }
 
+    /// 서버에 이미 만들어진 trip을 취소하면 대기 명령은 버리고 서버 trip을 지운다 (#88).
+    @Test func cancellingACreatedTripDeletesItOnTheServer() async throws {
+        let session = try makeSession()
+        session.updateRoutes([Sample.toWork], names: [1: "출근"])
+        session.handle(.regionExited(region(.origin(routeId: 1), session), at: kst(7, 30)))
+
+        let transport = FakeTransport()
+        transport.responses = [
+            "POST /api/v1/commute-trips": FakeTransport.json(
+                201,
+                #"{"id":31,"routeId":1,"tripDate":"2026-09-28","leftHomeAt":"2026-09-27T22:30:00Z","#
+                    + #""createdAt":"2026-09-27T22:30:01Z","boardingAttempts":[]}"#),
+            "DELETE /api/v1/commute-trips/31": HTTPResponse(status: 204, body: Data()),
+        ]
+        session.outbox.client = AppConfiguration(baseURL: URL(string: "http://wio.test"), debugAPIToken: nil)
+            .client(token: "t", transport: transport)
+        await session.outbox.flush()
+
+        session.handle(.userCancelledTrip(nil, at: kst(7, 32)))
+        await session.outbox.flush()
+
+        #expect(transport.requests.map(\.method) == ["POST", "DELETE"])
+        #expect(transport.requests.last?.url.path == "/api/v1/commute-trips/31")
+        #expect(session.outbox.summary.pendingCount == 0)
+        #expect(session.outbox.summary.deadLetters.isEmpty)
+        #expect(session.outbox.outbox.tripId(for: TripKey(routeId: 1, leftHomeAt: kst(7, 30))) == nil)
+    }
+
     @Test func offlineKeepsCommandsForRetry() async throws {
         let session = try makeSession()
         session.updateRoutes([Sample.toWork], names: [1: "출근"])

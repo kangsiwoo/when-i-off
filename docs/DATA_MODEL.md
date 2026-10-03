@@ -399,7 +399,10 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
 - `traffic_signal_states`는 30일. 실시간 신호 원본은 교차로 × 방향 × 종류 × 수집시각마다 한 행이라 폴링 한
   번에 교차로당 수십 행이 생겨 가장 빨리 커지고, 소비자(ALGORITHM 2.1)는 **최신 상태**만 읽는다. 원본으로
   주기를 다시 추정하려 해도 4주면 요일유형별 패턴을 여러 번 담는다. (지금은 비어 있다 — 위 커버리지 참고)
-- trip·`walking_segments`·보정·추천·평가 테이블과 `boarding_attempts`는 지우지 않는다. 행이 작고 학습의 원재료다
+- trip·`walking_segments`·보정·추천·평가 테이블과 `boarding_attempts`는 지우지 않는다. 행이 작고 학습의 원재료다.
+  예외는 사용자가 지운 trip 하나다(`DELETE /commute-trips/{id}`, #88, 앱의 "기록 취소"). 그 trip의 탑승 시도·
+  `walking_segments`·추천 평가는 FK `ON DELETE CASCADE`로, GPS 포인트는(FK가 `ON DELETE SET NULL`이라 상시
+  수집분으로 남지 않게) 명시적으로 함께 지운다 (API.md "trip 삭제")
 - **도보 재파생과의 관계**: 점이 지워진 trip을 다시 파생하면 거리가 GPS 대신 fallback(`planned_distance_m`/
   대권거리)으로 바뀌어 기존 행을 덮어쓴다. 그래서 analytics cron은 최근 30일 trip만 재파생하고
   (`analytics/cron.example`), 90일보다 오래된 범위를 수동으로 다시 파생하지 않는다 (analytics/README.md)
