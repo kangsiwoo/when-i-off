@@ -266,4 +266,8 @@ public struct DepartureRecommendation: Codable, Sendable, Equatable {
     public let modelVersion: String
     /// analytics가 이 추천을 계산한 시각.
     public let computedAt: Date
+    /// 이 확률 뒤에 있는 실측 표본 수 (#86): TRANSIT 구간마다 고른 차량의 예측 오차·차내 시간 입력이 기댄 표본 수 중
+    /// 최솟값. 0이면 어느 입력이 콜드스타트 기본값이다. 표본 수를 기록하기 전에 계산된 추천이나 TRANSIT 구간이 없는
+    /// 경로면 백엔드가 키를 빼므로 `nil`이다.
+    public let minTransitSampleCount: Int?
 }

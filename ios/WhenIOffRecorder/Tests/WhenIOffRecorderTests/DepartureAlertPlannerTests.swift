@@ -116,6 +116,45 @@ struct ColdStartTests {
         #expect(ColdStart.isColdStart(modelVersion: "v2", transitLegIds: [2], samplesByLeg: [:]))
     }
 
+    func advice(modelVersion: String = "v2", samples: Int?) -> DepartureAdvice {
+        DepartureAdvice(
+            routeId: 1, recommendedLeaveHomeAt: kst(8, 0), targetArrivalAt: kst(9, 0), catchProbability: 0.9,
+            modelVersion: modelVersion, minTransitSampleCount: samples)
+    }
+
+    @Test func serverSampleCountWinsOverTheHistoryHeuristic() {
+        // 이력으로는 넉넉해도 모델이 기본값으로 내려간 입력을 썼다(0) — 콜드스타트다.
+        #expect(ColdStart.isColdStart(advice(samples: 0), transitLegIds: [2], samplesByLeg: [2: 50]))
+        #expect(ColdStart.isColdStart(advice(samples: 4), transitLegIds: [2], samplesByLeg: [2: 50]))
+        // 이력에는 아직 없어도(보정 행이 다른 밴드를 합친 값) 서버가 5 이상이라면 콜드스타트가 아니다.
+        #expect(!ColdStart.isColdStart(advice(samples: 5), transitLegIds: [2], samplesByLeg: [:]))
+    }
+
+    @Test func missingServerCountFallsBackToTheHistoryHeuristic() {
+        #expect(ColdStart.isColdStart(advice(samples: nil), transitLegIds: [2, 5], samplesByLeg: [2: 9, 5: 4]))
+        #expect(!ColdStart.isColdStart(advice(samples: nil), transitLegIds: [2, 5], samplesByLeg: [2: 9, 5: 5]))
+        // TRANSIT 구간이 없는 경로는 서버도 값을 주지 않고, 휴리스틱도 콜드스타트로 보지 않는다.
+        #expect(!ColdStart.isColdStart(advice(samples: nil), transitLegIds: [], samplesByLeg: [:]))
+    }
+
+    @Test func v1IsColdStartEvenWithAServerCount() {
+        #expect(ColdStart.isColdStart(advice(modelVersion: "v1", samples: 30), transitLegIds: [2], samplesByLeg: [:]))
+    }
+
+    @Test func adviceCarriesTheServerCount() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            Timestamp.parse(try decoder.singleValueContainer().decode(String.self))!
+        }
+        let json = """
+            {"recommendedLeaveHomeAt":"2026-09-27T23:00:00Z","targetArrivalAt":"2026-09-28T00:00:00Z",
+             "catchProbability":0.9,"bufferSeconds":300,"modelVersion":"v2","computedAt":"2026-09-27T21:00:00Z",
+             "minTransitSampleCount":7}
+            """
+        let recommendation = try decoder.decode(DepartureRecommendation.self, from: Data(json.utf8))
+        #expect(DepartureAdvice(routeId: 1, recommendation) == advice(samples: 7))
+    }
+
     @Test func countsAttemptsWithAnObservedDeparture() throws {
         let json = """
             [{"id":31,"routeId":1,"tripDate":"2026-09-28","createdAt":"2026-09-27T22:31:06Z","boardingAttempts":[

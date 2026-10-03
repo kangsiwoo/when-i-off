@@ -277,12 +277,18 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
   "targetArrivalAt": "2026-09-21T00:00:00Z",
   "catchProbability": 0.91,
   "bufferSeconds": 660,
-  "modelVersion": "v1",
-  "computedAt": "2026-09-20T21:00:00Z"
+  "modelVersion": "v2",
+  "computedAt": "2026-09-20T21:00:00Z",
+  "minTransitSampleCount": 7
 }
 ```
 
 - `computedAt`은 analytics가 그 추천을 계산한 시각이다 (`departure_recommendations.computed_at`)
+- `minTransitSampleCount`(선택, #86)는 이 확률 뒤에 있는 실측 표본 수다 — TRANSIT 구간마다 고른 차량의 예측 오차·
+  차내 시간 입력이 기댄 표본 수 중 최솟값(`departure_recommendations.min_transit_sample_count`). `0`이면 어느 입력이
+  콜드스타트 기본값으로 내려갔다는 뜻이고, `0`이 아니면 analytics의 사용 기준(`MIN_CALIBRATION_SAMPLES` = 5) 이상이다.
+  표본 수를 기록하기 전(V8 이전)에 계산된 추천과 TRANSIT 구간이 없는 경로에는 **키가 없다**("모름" — `0`과 다르다).
+  아래 추천 이력의 `recommendations`도 같은 필드를 갖는다
 - `targetArrivalAt`은 **필수**이고 ISO-8601 절대 시각이다. 없거나 파싱 실패면 `400`
 - `/latest`는 목표 시각을 가리지 않고 그 경로에서 가장 늦게 계산된 한 건을 준다
 - 추천이 한 건도 없으면 `404`다 (빈 `200`이 아니라). 경로가 없거나 내 것이 아닐 때도 같은 `404`

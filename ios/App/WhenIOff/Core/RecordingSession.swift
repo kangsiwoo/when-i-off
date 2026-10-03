@@ -146,7 +146,8 @@ final class RecordingSession {
             let fetched: (advice: DepartureAdvice?, trips: [CommuteTrip])
             do {
                 let recommendation = try await client.latestRecommendation(routeId: route.id)
-                // 콜드스타트 판정(구간별 샘플 5건)과 "그날 이미 나섰나"에 쓴다. 석 달이면 충분하다.
+                // 콜드스타트 판정(서버 표본 수가 없을 때만 구간별 샘플 5건, #86)과 "그날 이미 나섰나"에 쓴다.
+                // 석 달이면 충분하다.
                 let trips = try await client.trips(
                     routeId: route.id, from: LocalDate(now.addingTimeInterval(-90 * 24 * 3600)))
                 fetched = (DepartureAdvice(routeId: route.id, recommendation), trips)
@@ -169,7 +170,7 @@ final class RecordingSession {
                 } ?? false,
                 isColdStart: advice.map {
                     ColdStart.isColdStart(
-                        modelVersion: $0.modelVersion, transitLegIds: route.transitLegs.map(\.legId),
+                        $0, transitLegIds: route.transitLegs.map(\.legId),
                         samplesByLeg: ColdStart.samplesByLeg(trips))
                 } ?? false,
                 now: now

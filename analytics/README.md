@@ -44,6 +44,7 @@ route 1 (동탄→수서 출근), p=0.95
   buffer                102s
   target date           2026-09-22
   model version         v2
+  min transit samples   8
   leg 1: walk, speed 1.35±0.06m/s calibrated n=12
       signal 1: cycle 100s red 40s, mean wait 8.0s (USER_OBSERVED)
   leg 2: vehicle 2026-09-22 08:00:00 KST of 13 candidates
@@ -54,7 +55,9 @@ route 1 (동탄→수서 출근), p=0.95
 departure_recommendations id=2 (created)
 ```
 
-구간마다 쓴 입력과 그 출처(`calibrated` / `inherited` / `default`, 아래 "계산")를 찍는다. TRANSIT
+구간마다 쓴 입력과 그 출처(`calibrated` / `inherited` / `default`, 아래 "계산")를 찍는다. `min transit samples`는
+고른 차량들의 예측 오차·차내 시간 입력 표본 수 중 최솟값(기본값이면 0, TRANSIT 구간이 없으면 `-`)으로, 추천과 함께
+`departure_recommendations.min_transit_sample_count`에 적재되어 추천 응답의 `minTransitSampleCount`가 된다(#86). TRANSIT
 구간은 고른 차량에 쓴 예측 오차(bias±σ)와 차내 시간(평균±σ)이다. WALK 구간은 건너는 교차로마다 고른 신호
 주기와 평균 대기 `R²/(2C)`, 그 행의 출처(`USER_OBSERVED` > `PUBLIC_API` > `DEFAULT_ASSUMPTION`, 행이 없으면
 `default` = C=120초·R=90초)를 찍는다 (#78).
@@ -96,7 +99,7 @@ done: computed 1, failed 0, skipped 1
 ```
 
 **멱등성**: `(commute_route_id, target_date, target_arrival_at, model_version)`당 한 행을 유지한다.
-값이 그대로면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). V1 스키마에 이 조합의
+값(표본 수 포함, #86)이 그대로면 아무것도 쓰지 않아 `computed_at`까지 남는다(`unchanged`). V1 스키마에 이 조합의
 UNIQUE가 없어서 `ON CONFLICT` 대신 조회 후 갱신하는 방식이다. `model_version`이 키에 들어 있어 v2가 같은
 목표 시각을 다시 계산해도 v1 행은 그대로 남는다 (두 버전의 추천을 같은 trip과 비교할 수 있다).
 

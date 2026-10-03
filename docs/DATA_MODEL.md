@@ -346,6 +346,11 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
 나가라 (성공 확률 P)"를 기록한다. 앱/웹은 이 테이블을 읽기만 한다. 과거 추천도 삭제하지
 않고 누적해서 같은 날짜의 `commute_trips`와 비교해 모델 성능을 추적한다 (비교 결과는
 `recommendation_evaluations`).
+- `min_transit_sample_count` (V8, #86): 그 확률 뒤에 있는 실측 표본 수. TRANSIT 구간마다 **고른 차량**의 예측 오차·
+  차내 시간 입력(ALGORITHM 5절 조회 순서로 고른 행 또는 합친 값)의 `sample_count` 중 최솟값이다. 기본값으로 내려간
+  입력은 0이라 0이면 콜드스타트, 그 밖에는 `MIN_CALIBRATION_SAMPLES`(5) 이상이다. 성공확률은 TRANSIT 입력으로만
+  계산되므로 도보 표본은 세지 않는다. NULL은 V8 이전 행 또는 TRANSIT 구간이 없는 경로("모름")
+- 적재는 값(출발 시각·확률·여유·표본 수)이 최신 행과 같으면 아무것도 쓰지 않고, 하나라도 다르면 새 행을 덧붙인다
 
 ### `recommendation_evaluations`
 추천 성과 평가 (V7, #72). (경로, `target_date`, `model_version`)마다 한 행으로 "추천대로 나갔을 때 실제로

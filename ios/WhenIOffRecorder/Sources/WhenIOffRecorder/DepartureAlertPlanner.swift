@@ -8,19 +8,23 @@ public struct DepartureAdvice: Sendable, Equatable {
     public var targetArrivalAt: Date
     public var catchProbability: Double
     public var modelVersion: String
+    /// 서버가 준 표본 수 (``DepartureRecommendation/minTransitSampleCount``). 없으면 `nil`.
+    public var minTransitSampleCount: Int?
 
     public init(
         routeId: Int64,
         recommendedLeaveHomeAt: Date,
         targetArrivalAt: Date,
         catchProbability: Double,
-        modelVersion: String
+        modelVersion: String,
+        minTransitSampleCount: Int? = nil
     ) {
         self.routeId = routeId
         self.recommendedLeaveHomeAt = recommendedLeaveHomeAt
         self.targetArrivalAt = targetArrivalAt
         self.catchProbability = catchProbability
         self.modelVersion = modelVersion
+        self.minTransitSampleCount = minTransitSampleCount
     }
 
     public init(routeId: Int64, _ recommendation: DepartureRecommendation) {
@@ -29,18 +33,35 @@ public struct DepartureAdvice: Sendable, Equatable {
             recommendedLeaveHomeAt: recommendation.recommendedLeaveHomeAt,
             targetArrivalAt: recommendation.targetArrivalAt,
             catchProbability: recommendation.catchProbability,
-            modelVersion: recommendation.modelVersion
+            modelVersion: recommendation.modelVersion,
+            minTransitSampleCount: recommendation.minTransitSampleCount
         )
     }
 }
 
 /// 콜드스타트 판정 (#8: 구간별 샘플 5 미만이면 "아직 데이터가 적어 보수적으로 추천").
 ///
-/// 추천 응답에는 샘플 수가 없다. 그래서 앱이 이미 가진 이력(`GET /commute-trips?routeId=`)에서 구간별로 **출발 시각이
-/// 기록된 시도 수**를 세고, `model_version`이 v1(콜드스타트 기본값만 쓰는 모델)이면 무조건 콜드스타트로 본다.
+/// `model_version`이 v1(콜드스타트 기본값만 쓰는 모델)이면 무조건 콜드스타트다. 그 밖에는
+/// 1. 추천 응답에 표본 수(`minTransitSampleCount`, #86)가 있으면 그것을 쓴다 — 모델이 고른 차량의 입력이 실제로 기댄
+///    표본 수라 이력에서 센 값보다 정확하다(보정 배치 전, 밴드별 상속, 기본값으로 내려간 입력을 반영한다)
+/// 2. 없으면(표본 수를 기록하기 전의 추천, TRANSIT 구간이 없는 경로) 앱이 가진 이력(`GET /commute-trips?routeId=`)에서
+///    구간별로 **출발 시각이 기록된 시도 수**를 센다
+///
 /// 기준 5는 analytics `MIN_CALIBRATION_SAMPLES`와 같다.
 public enum ColdStart {
     public static let minSamplesPerLeg = 5
+
+    /// 서버 표본 수를 먼저, 없으면 이력 휴리스틱(``isColdStart(modelVersion:transitLegIds:samplesByLeg:)``).
+    public static func isColdStart(
+        _ advice: DepartureAdvice,
+        transitLegIds: [Int64],
+        samplesByLeg: @autoclosure () -> [Int64: Int]
+    ) -> Bool {
+        if advice.modelVersion == "v1" { return true }
+        if let count = advice.minTransitSampleCount { return count < minSamplesPerLeg }
+        return isColdStart(
+            modelVersion: advice.modelVersion, transitLegIds: transitLegIds, samplesByLeg: samplesByLeg())
+    }
 
     public static func samplesByLeg(_ trips: [CommuteTrip]) -> [Int64: Int] {
         var counts: [Int64: Int] = [:]
@@ -119,7 +140,7 @@ public struct DepartureAlertPlanner: Sendable {
     ///   - pending: 이 경로로 지금 예약돼 있는 알림
     ///   - delivered: 이미 울린 알림 식별자 — 같은 날 두 번 울리지 않는다
     ///   - alreadyLeft: 오늘 이 경로의 trip이 이미 시작됐다 (이미 나섰으면 알릴 필요가 없다)
-    ///   - isColdStart: ``ColdStart/isColdStart(modelVersion:transitLegIds:samplesByLeg:)``
+    ///   - isColdStart: ``ColdStart/isColdStart(_:transitLegIds:samplesByLeg:)``
     public func plan(
         advice: DepartureAdvice?,
         pending: LocalAlert?,

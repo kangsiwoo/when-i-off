@@ -23,6 +23,7 @@ from whenioff_analytics.model.distributions import planned_walk_distance_m, walk
 from whenioff_analytics.model.lookup import (
     Resolved,
     ResolvedCandidate,
+    min_sample_count,
     resolve_candidate,
     resolve_walking_speed,
 )
@@ -88,6 +89,13 @@ class RecommendationResult:
                 return inputs.candidates[leg.candidates.index(candidate)]
         raise KeyError(route_leg_id)
 
+    def min_transit_sample_count(self) -> int | None:
+        """고른 차량들의 입력 표본 수 중 최솟값 (#86). TRANSIT 구간이 없으면 `None`."""
+        return min_sample_count(
+            self.candidate_inputs(chosen.route_leg_id, chosen.candidate)
+            for chosen in self.recommendation.chosen
+        )
+
 
 def compute_recommendation(
     conn: Connection,
@@ -113,8 +121,12 @@ def compute_recommendation(
 
 
 def store(conn: Connection, result: RecommendationResult) -> tuple[SaveOutcome, int]:
+    return save_recommendation(conn, recommendation_row(result))
+
+
+def recommendation_row(result: RecommendationResult) -> RecommendationRow:
     recommendation = result.recommendation
-    row = RecommendationRow(
+    return RecommendationRow(
         user_id=result.route.user_id,
         commute_route_id=result.route.id,
         target_date=kst_date_of(result.target_arrival_at),
@@ -124,8 +136,8 @@ def store(conn: Connection, result: RecommendationResult) -> tuple[SaveOutcome, 
         catch_probability=recommendation.catch_probability,
         buffer_seconds=recommendation.buffer_seconds,
         model_version=defaults.MODEL_VERSION,
+        min_transit_sample_count=result.min_transit_sample_count(),
     )
-    return save_recommendation(conn, row)
 
 
 def _build_legs(
@@ -236,5 +248,6 @@ __all__ = [
     "NoCandidateVehiclesError",
     "RecommendationResult",
     "compute_recommendation",
+    "recommendation_row",
     "store",
 ]
