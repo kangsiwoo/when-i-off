@@ -79,7 +79,7 @@ when-i-off/
   폐기. TAGO 버스도착정보(`15098530`)가 정류장 단위 도착예측을 직접 주므로 이 경로 자체가
   필요 없어졌다 ([ADR 0001](./adr/0001-tago-bus-arrival-prediction.md), #13). TAGO
   `getRouteNoList`/`getRouteAcctoThrghSttnList`(노선 검색 + 경유 정류장) →
-  `transit_lines`/`transit_stops`/`transit_line_stops`, `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList`
+  `transit_lines`/`transit_stops`/`transit_line_stops`, `getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList`
   (도착예측) → `transit_arrival_observations`
 - KLID 신호등 `tl_drct_info` → `traffic_signal_states` (서울·울산 커버). 마스터
   `crsrd_map_info` → `traffic_signals`

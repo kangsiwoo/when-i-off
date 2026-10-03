@@ -4,6 +4,7 @@ import com.kangsiwoo.whenioff.common.auth.ApiTokenFilter
 import com.kangsiwoo.whenioff.common.auth.DefaultUser
 import com.kangsiwoo.whenioff.common.config.WioProperties
 import com.kangsiwoo.whenioff.external.klid.KlidNoDataRegistry
+import com.kangsiwoo.whenioff.external.tago.bus.TagoRouteStop
 import com.kangsiwoo.whenioff.polling.PollingCycleService
 import com.kangsiwoo.whenioff.route.domain.CommuteDirection
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
@@ -26,6 +27,7 @@ import com.kangsiwoo.whenioff.transit.application.TagoMasterSyncService
 import com.kangsiwoo.whenioff.transit.domain.TransitArrivalObservationRepository
 import com.kangsiwoo.whenioff.transit.domain.TransitLine
 import com.kangsiwoo.whenioff.transit.domain.TransitLineRepository
+import com.kangsiwoo.whenioff.transit.domain.TransitLineStopRepository
 import com.kangsiwoo.whenioff.transit.domain.TransitMode
 import com.kangsiwoo.whenioff.transit.domain.TransitStop
 import com.kangsiwoo.whenioff.transit.domain.TransitStopRepository
@@ -72,6 +74,8 @@ class IngestionIT {
 
     @Autowired lateinit var stopRepository: TransitStopRepository
 
+    @Autowired lateinit var lineStopRepository: TransitLineStopRepository
+
     @Autowired lateinit var arrivalRepository: TransitArrivalObservationRepository
 
     @Autowired lateinit var signalRepository: TrafficSignalRepository
@@ -103,11 +107,19 @@ class IngestionIT {
     fun `syncBusRoute upserts lines stops and line stops idempotently`() {
         val first = masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
 
-        // 검색 결과의 1001-1은 번호가 정확히 같지 않아 제외된다.
-        assertEquals(listOf("GGB1001"), first.routeIds)
+        // 부분일치 검색 결과의 M4108·M4108(예약)은 번호가 정확히 같지 않아 제외된다.
+        assertEquals(listOf(ROUTE_ID), first.routeIds)
         assertEquals(1, first.lines.created)
-        assertEquals(6, first.stops.created)
-        assertEquals(6, first.lineStops.created)
+        // 정류소 13개 중 미정차 통과 지점 3개는 정류장도, 노선-정류장도 만들지 않는다.
+        assertEquals(10, first.stops.created)
+        assertEquals(3, first.stops.skipped)
+        assertEquals(10, first.lineStops.created)
+        assertEquals(3, first.lineStops.skipped)
+        // 경기 노선은 updowncd가 없어 노선 전체가 한 방향이다.
+        assertEquals(
+            setOf(TagoRouteStop.SINGLE_DIRECTION),
+            lineStopRepository.findAllByTransitLineIn(listOf(line(ROUTE_ID))).map { it.directionCode }.toSet(),
+        )
 
         val second = masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
 
@@ -115,19 +127,39 @@ class IngestionIT {
         assertEquals(0, second.stops.created + second.stops.updated)
         assertEquals(0, second.lineStops.created + second.lineStops.updated)
         assertEquals(1, lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
-        assertEquals(6, stopRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
+        assertEquals(10, stopRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
     }
 
     @Test
     fun `syncBusRoute registers every route sharing the same route number`() {
-        dispatcher.responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_multi.json") }
+        // 화성·성남 실 데이터(2026-10)에는 번호가 완전히 같은 노선이 없어 이 경우만 합성 응답을 쓴다.
+        dispatcher.responses["getRouteNoList"] = {
+            MockResponse()
+                .setHeader("Content-Type", "application/json")
+                .setBody(
+                    """{"response":{"header":{"resultCode":"00","resultMsg":"NORMAL SERVICE."},""" +
+                        """"body":{"items":{"item":[""" +
+                        """{"routeid":"$ROUTE_ID","routeno":4108,"routetp":"직행좌석버스"},""" +
+                        """{"routeid":"GGB233000999","routeno":"4108","routetp":"일반버스"}""" +
+                        """]},"numOfRows":1000,"pageNo":1,"totalCount":2}}}""",
+                )
+        }
 
         val result = masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
 
-        assertEquals(listOf("GGB1001", "GGB1001B"), result.routeIds.sorted())
+        assertEquals(listOf(ROUTE_ID, "GGB233000999"), result.routeIds.sorted())
         assertEquals(2, result.lines.created)
-        assertEquals(6, result.stops.created)
-        assertEquals(12, result.lineStops.created)
+        assertEquals(10, result.stops.created)
+        assertEquals(20, result.lineStops.created)
+    }
+
+    @Test
+    fun `syncBusRoute registers nothing when only partial matches come back and lists them`() {
+        val result = masterSync.syncBusRoute(HWASEONG, "108")
+
+        assertEquals(emptyList(), result.routeIds)
+        assertEquals(listOf("M4108(예약)", "M4108", "4108"), result.candidates)
+        assertEquals(0, lineRepository.findAllByModeAndStdgCd(TransitMode.BUS, HWASEONG).size)
     }
 
     @Test
@@ -143,8 +175,8 @@ class IngestionIT {
     @Test
     fun `predict turns arrtime into a predicted arrival and stores an observation without a vehicle number`() {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
-        val line = line("GGB1001")
-        val boardStop = stop("GGB-S002")
+        val line = line(ROUTE_ID)
+        val boardStop = stop(BOARD_NODE)
         val requestsBefore = server.requestCount
 
         val predictions = arrivalProvider.predict(line, boardStop, "0")
@@ -153,7 +185,7 @@ class IngestionIT {
         assertEquals(listOf(null, null), predictions.map { it.vehicleNo })
         val observedAt = predictions.first().observedAt
         assertEquals(
-            listOf(observedAt.plusSeconds(180), observedAt.plusSeconds(620)),
+            listOf(observedAt.plusSeconds(5207), observedAt.plusSeconds(5876)),
             predictions.map { it.predictedArrivalAt },
         )
         assertEquals(requestsBefore + 1, server.requestCount)
@@ -168,8 +200,8 @@ class IngestionIT {
     @Test
     fun `predict returns nothing when the line or stop has no TAGO id`() {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
-        val line = line("GGB1001")
-        val boardStop = stop("GGB-S002")
+        val line = line(ROUTE_ID)
+        val boardStop = stop(BOARD_NODE)
         val requestsBefore = server.requestCount
         line.externalId = null
 
@@ -180,12 +212,12 @@ class IngestionIT {
     @Test
     fun `direction resolver picks the direction where the alight stop follows the board stop`() {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
-        val line = line("GGB1001")
+        val line = line(ROUTE_ID)
 
-        assertEquals("0", directionResolver.resolve(line.id!!, stop("GGB-S002").id!!, stop("GGB-S005").id))
-        assertEquals("0", directionResolver.resolve(line.id!!, stop("GGB-S002").id!!, null))
+        assertEquals("0", directionResolver.resolve(line.id!!, stop(BOARD_NODE).id!!, stop(ALIGHT_NODE).id))
+        assertEquals("0", directionResolver.resolve(line.id!!, stop(BOARD_NODE).id!!, null))
         // 경유 정류소가 등록되지 않은 노선이면 방향을 못 고른다.
-        assertNull(directionResolver.resolve(UNKNOWN_LINE_ID, stop("GGB-S002").id!!, null))
+        assertNull(directionResolver.resolve(UNKNOWN_LINE_ID, stop(BOARD_NODE).id!!, null))
     }
 
     @Test
@@ -242,10 +274,10 @@ class IngestionIT {
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.cityCode") { value(HWASEONG) }
-                jsonPath("$.routeIds[0]") { value("GGB1001") }
+                jsonPath("$.routeIds[0]") { value(ROUTE_ID) }
                 jsonPath("$.lines.created") { value(1) }
-                jsonPath("$.stops.created") { value(6) }
-                jsonPath("$.lineStops.created") { value(6) }
+                jsonPath("$.stops.created") { value(10) }
+                jsonPath("$.lineStops.created") { value(10) }
             }
 
         mockMvc
@@ -274,6 +306,18 @@ class IngestionIT {
                 param("cityCode", HWASEONG)
                 param("routeNo", "9999")
             }.andExpect { status { isNotFound() } }
+
+        // 부분일치로만 걸린 노선은 등록하지 않고 번호를 안내한다.
+        dispatcher.responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_ok.json") }
+        mockMvc
+            .post("/api/v1/admin/sync/tago/bus-route") {
+                header(ApiTokenFilter.HEADER, properties.apiToken)
+                param("cityCode", HWASEONG)
+                param("routeNo", "108")
+            }.andExpect {
+                status { isNotFound() }
+                jsonPath("$.detail") { value(org.hamcrest.Matchers.containsString("similar: M4108(예약), M4108, 4108")) }
+            }
     }
 
     @Test
@@ -322,9 +366,9 @@ class IngestionIT {
     fun `polling cycle covers active routes only and calls TAGO once per leg`() {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
         intersectionSync.syncIntersections(SEOUL)
-        val line = line("GGB1001")
-        val board = stop("GGB-S002")
-        val alight = stop("GGB-S005")
+        val line = line(ROUTE_ID)
+        val board = stop(BOARD_NODE)
+        val alight = stop(ALIGHT_NODE)
         val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
         seedActiveRoute(line, board, alight, signal)
         val inactive =
@@ -364,8 +408,8 @@ class IngestionIT {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
         intersectionSync.syncIntersections(SEOUL)
         val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
-        seedActiveRoute(line("GGB1001"), stop("GGB-S002"), stop("GGB-S005"), signal)
-        dispatcher.responses["getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList"] = {
+        seedActiveRoute(line(ROUTE_ID), stop(BOARD_NODE), stop(ALIGHT_NODE), signal)
+        dispatcher.responses["getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList"] = {
             MockResponse().setResponseCode(500).setBody("Internal Server Error")
         }
 
@@ -516,7 +560,12 @@ class IngestionIT {
     companion object {
         /** TAGO cityCode (KLID stdgCd와 코드 체계가 다르다 — fixture 값). */
         const val HWASEONG = "31240"
-        const val ROUTE_NO = "1001"
+        const val ROUTE_NO = "4108"
+
+        /** 아래 값은 fixture(#17 실 응답): 4108 직행좌석, 동탄 방면 예당마을.롯데캐슬(55) → 나루마을(60). */
+        const val ROUTE_ID = "GGB233000270"
+        const val BOARD_NODE = "GGB233001282"
+        const val ALIGHT_NODE = "GGB233001713"
         const val SEOUL = "1100000000"
         const val UNKNOWN_LINE_ID = -1L
 

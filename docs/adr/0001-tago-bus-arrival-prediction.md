@@ -43,7 +43,7 @@ KLID `rte/mst_info`·`ps_info`는 `stdgCd`(지자체) 단위로 **전체를 벌�
 
 ### 2. 위치→ETA 기하 계산이 없어진다
 TAGO는 정류장 단위로 **도착예측(도착까지 남은 시간)을 직접** 주므로
-(`getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList`, 파라미터 `cityCode`+`nodeId`+`routeId`),
+(`getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList`, 파라미터 `cityCode`+`nodeId`+`routeId`),
 `KlidPositionEtaProvider`의 폴리라인 투영/속도 기반 ETA 계산이 필요 없다. 새 구현체
 (`TagoArrivalPredictionProvider`)는 TAGO 응답의 `arrtime`(초)을 그대로 `predictedArrivalAt`
 계산에 쓴다.
@@ -98,9 +98,27 @@ TAGO 도착예측 응답은 차량 번호(차대/차량 식별자)를 주지 않
   `findAllByLineAndStopIds`로 충분하다
 
 ## 후속 (이 PR 범위 밖)
-- TAGO 실 키 발급(공공데이터포털 활용신청) — 사람이 해야 하는 외부 작업. 키가 없으면
-  `TAGO_BUS_ARVL_API`(가칭)가 빈 문자열이라 기존 KLID와 같은 방식으로 503을 낸다
-- 실 키로 화성/동탄 권역 커버리지 재확인. 비어 있으면 GBIS 병행을 다시 검토
-- TAGO fixture는 공공데이터포털 API 문서(Swagger)의 필드 설명만으로 작성했고 실 응답으로
-  검증되지 않았다 — KLID 때와 같은 패턴("실제 키를 받은 첫 세션의 확인 체크리스트")을
-  `backend/README.md`에 TAGO용으로 추가해 둔다
+- ~~TAGO 실 키 발급(공공데이터포털 활용신청)~~ — 2026-10 승인됨. 키 환경변수는 `TAGO_BUS_API`
+  (비어 있으면 KLID와 같은 방식으로 503)
+- ~~실 키로 화성/동탄 권역 커버리지 재확인~~ — #17에서 확인, 아래 "실 키 검증 결과"
+- ~~TAGO fixture를 실 응답으로 교체~~ — #17에서 교체
+- **서울 구간 승차의 도착예측 보강(GBIS 병행 검토)** — 아래 결과 3번 때문에 열려 있다
+
+## 실 키 검증 결과 (#17, 2026-10)
+결정(버스 도착예측 = TAGO)은 **경기 정류장 승차 구간에 대해 유지**한다. 다만 위 "GBIS를 제외한
+이유"의 전제 중 하나가 틀렸다.
+
+1. **화성/동탄 커버리지는 충분하다.** `getRouteNoList`(cityCode `31240`, `routeNo` 생략)가 화성
+   노선 144개(광역급행·직행좌석 59개: M4108·M4403·6001·8155·1009·G6010 등)를 주고, 동탄 정류장
+   도착예측(`arrtime`)이 실제로 채워진다. 성남(`31020`, 80개 노선)도 같다. 실 키로 백엔드를 띄워
+   폴링이 화성 4108·성남 220 구간의 `transit_arrival_observations`(`TAGO_ARVL`)를 적재하는 것까지 확인했다
+2. 어댑터가 추론으로 작성했던 부분 중 실제와 달랐던 것: 도착예측 오퍼레이션 철자(`Spcify`),
+   경기 노선의 `updowncd` 부재, `(미정차)` 통과 지점, 숫자 타입 값, 부분일치 검색의 범위.
+   상세는 ARCHITECTURE.md "TAGO 응답 규약"
+3. **"TAGO는 서울을 같은 방식으로 다룰 수 있다"는 전제는 틀렸다.** `getCtyCodeList`에 서울이 없고,
+   경기 광역버스의 **서울 구간 정류장**(`GGB1…`)은 노선 정류소 목록에는 나오지만 도착예측이 운행
+   중에도 항상 0건이다. 즉 TAGO도 GBIS와 마찬가지로 서울에서 타는 구간을 못 덮는다 — GBIS를 제외한
+   이유("서울 미커버")가 TAGO와의 비교에서는 더 이상 차별점이 아니다. 퇴근길처럼 서울에서 경기
+   광역버스를 타는 구간은 현재 관측이 쌓이지 않고 정적 시간표/보정 없는 값으로 떨어진다.
+   보강 후보는 GBIS 병행(위 "대안 검토"의 TAGO + GBIS)이고, GBIS가 경기 버스의 서울 구간 정류장
+   도착예측을 주는지는 GBIS 키로 따로 확인해야 한다

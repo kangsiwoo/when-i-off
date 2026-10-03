@@ -431,7 +431,7 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 |---|---|---|---|
 | ✔ | POST | `/admin/sync/tago/bus-route?cityCode=&routeNo=` | `getRouteNoList`로 `routeId` 검색 + `getRouteAcctoThrghSttnList` → `transit_lines`, `transit_stops`, `transit_line_stops` upsert (노선 하나 단위) |
 | ✔ | POST | `/admin/sync/klid/intersections?stdgCd=` | `crsrd_map_info` → `traffic_signals` upsert |
-| 계약 | POST | `/admin/sync/tago/bus-arrivals` | 활성 경로의 TRANSIT(BUS) 구간마다 `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList` 1회 수집 → `transit_arrival_observations` (`source='TAGO_ARVL'`) |
+| 계약 | POST | `/admin/sync/tago/bus-arrivals` | 활성 경로의 TRANSIT(BUS) 구간마다 `getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList` 1회 수집 → `transit_arrival_observations` (`source='TAGO_ARVL'`) |
 | 계약 | POST | `/admin/sync/klid/signal-states?stdgCd=` | `tl_drct_info` 1회 수집 → `traffic_signal_states` |
 | ✔ | POST | `/admin/schedules/import` | 정적 시간표 CSV 업로드 (multipart, 파트명 `file`) → `transit_schedules` 교체 (아래 "정적 시간표") |
 | 계약 | GET | `/admin/sync/status` | 잡별 마지막 실행 시각/결과, 폴링 활성 여부와 현재 대상 범위 |
@@ -443,10 +443,13 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 - 응답(동기, 구현): 잡별 카운트 객체 `{ "fetched", "created", "updated", "skipped" }`를 대상 테이블마다 돌려준다.
   `bus-route` → `{ "cityCode": "...", "routeNo": "...", "routeIds": ["..."], "lines": {…}, "stops": {…}, "lineStops": {…} }`,
   `intersections` → `{ "stdgCd": "1100000000", "intersections": {…} }`.
-  `bus-route`가 `routeNo`에 매칭되는 TAGO 노선을 못 찾으면(`totalCount=0`) `404`, 여러 개 매칭되면
-  (같은 도시에 같은 번호가 지선/직행 등으로 여러 개인 경우) 전부 등록하고 `routeIds`에 각각의 `routeId`를
-  나열한다 — 이때 카운트는 매칭된 노선 전체의 합계다. `getRouteNoList`는 부분일치도 돌려주므로
-  번호가 정확히 같은 노선만 등록하고, 정확히 같은 것이 하나도 없을 때만 검색 결과를 그대로 쓴다
+  `getRouteNoList`는 부분일치(포함) 검색이라(`4108` → `M4108`·`M4108(예약)`도 온다) **번호가 정확히
+  같은 노선만** 등록한다. 정확히 같은 것이 없으면 `404`이고, 부분일치로 걸린 번호가 있으면 `detail`에
+  `(similar: M4108(예약), M4108, 4108)`처럼 나열한다 — 그중 원하는 번호로 다시 호출한다. 정확히 같은
+  번호가 여러 개면 전부 등록하고 `routeIds`에 각각의 `routeId`를 나열한다(카운트는 합계).
+  경기 노선 정류소 목록의 `…(미정차)` 통과 지점은 정류장으로 만들지 않고 `stops`/`lineStops`의
+  `skipped`로 센다. 경기 노선은 상·하행 구분(`updowncd`)이 없어 `transit_line_stops.direction_code`가
+  전부 `"0"`이다 (ARCHITECTURE "TAGO 응답 규약")
 - upsert 키: 노선 `(mode, stdgCd, externalId)` = `(BUS, cityCode, routeId)`, 정류장
   `(mode, stdgCd, externalId)` = `(BUS, cityCode, nodeId)`, 교차로 `(stdgCd, crsrdId)` (KLID, 이전과 동일).
   `stdgCd` 컬럼에 버스는 TAGO `cityCode`, 신호등은 KLID 법정동 코드가 들어가므로 값의 코드

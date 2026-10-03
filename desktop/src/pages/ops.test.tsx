@@ -44,7 +44,7 @@ const status: OpsStatus = {
       source: "tago",
       configured: true,
       ops: [
-        op("getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList", failingArrivals, failingArrivals),
+        op("getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList", failingArrivals, failingArrivals),
         op("getRouteNoList", idle, idle),
       ],
     },

@@ -24,8 +24,9 @@ data class SyncCounts(
 )
 
 /**
- * 한 번의 `bus-route` 동기화 결과. 같은 도시에 같은 번호의 노선이 여러 개(지선/직행 등)일 수 있어
+ * 한 번의 `bus-route` 동기화 결과. 같은 도시에 같은 번호의 노선이 여러 개일 수 있어
  * 매칭된 노선을 전부 등록하고 `routeIds`에 나열한다. 카운트는 매칭된 노선 전체의 합계다.
+ * `candidates`는 검색은 됐지만 번호가 정확히 같지 않아 등록하지 않은 노선번호다 (404 안내용).
  */
 data class BusRouteSyncResult(
     val cityCode: String,
@@ -34,6 +35,7 @@ data class BusRouteSyncResult(
     val lines: SyncCounts,
     val stops: SyncCounts,
     val lineStops: SyncCounts,
+    val candidates: List<String> = emptyList(),
 )
 
 @Service
@@ -49,31 +51,36 @@ class TagoMasterSyncService(
         cityCode: String,
         routeNo: String,
     ): BusRouteSyncResult {
-        val matched = matchRoutes(cityCode, routeNo)
+        val searched = searchRoutes(cityCode, routeNo)
+        val matched = searched.filter { it.routeNo.trim() == routeNo.trim() }
         if (matched.isEmpty()) {
-            return BusRouteSyncResult(cityCode, routeNo, emptyList(), EMPTY_COUNTS, EMPTY_COUNTS, EMPTY_COUNTS)
+            val candidates = searched.map { it.routeNo }.distinct()
+            return BusRouteSyncResult(
+                cityCode,
+                routeNo,
+                emptyList(),
+                EMPTY_COUNTS,
+                EMPTY_COUNTS,
+                EMPTY_COUNTS,
+                candidates,
+            )
         }
         val routeStops = matched.associateWith { routeApi.getRouteAcctoThrghSttnList(cityCode, it.routeId) }
         return transactionTemplate.execute { persist(cityCode, routeNo, routeStops) }!!
     }
 
-    // TAGO의 노선번호 검색은 부분일치도 돌려주므로(1001을 찾으면 10012도 같이 온다) 번호가 정확히 같은
-    // 것만 등록한다. 다만 정확히 같은 것이 하나도 없으면 검색 결과를 그대로 쓴다 — 지자체에 따라
-    // routeno에 접미사(1001-1 등)가 붙어 오는 경우가 있어 무조건 0건으로 떨어뜨리지 않는다.
-    private fun matchRoutes(
+    // TAGO의 노선번호 검색은 부분일치(포함)다 — 실 응답에서 `4108`을 찾으면 `M4108`·`M4108(예약)`이,
+    // `55`를 찾으면 `8155`·`1551`이 같이 온다(#17). `6002-1`·`1551B`·`(예약)`·`(출근)` 같은 접미사가 붙은
+    // 것은 별개 노선(routeId가 다름)이므로 번호가 정확히 같은 것만 등록하고, 없으면 아무것도 등록하지
+    // 않는다(예전에는 검색 결과 전체로 대체했는데, 부분일치라 엉뚱한 노선이 등록된다).
+    private fun searchRoutes(
         cityCode: String,
         routeNo: String,
-    ): List<TagoRoute> {
-        val routes =
-            routeApi
-                .getRouteNoList(
-                    cityCode,
-                    routeNo,
-                ).filter { it.routeId.isNotBlank() }
-                .distinctBy { it.routeId }
-        val exact = routes.filter { it.routeNo.trim() == routeNo.trim() }
-        return exact.ifEmpty { routes }
-    }
+    ): List<TagoRoute> =
+        routeApi
+            .getRouteNoList(cityCode, routeNo)
+            .filter { it.routeId.isNotBlank() }
+            .distinctBy { it.routeId }
 
     private fun persist(
         cityCode: String,
@@ -121,7 +128,7 @@ class TagoMasterSyncService(
         for (rs in allRouteStops.distinctBy { it.nodeId }) {
             val lat = rs.lat
             val lng = rs.lng
-            if (rs.nodeId.isBlank() || lat == null || lng == null) {
+            if (rs.nodeId.isBlank() || lat == null || lng == null || rs.isPassThrough) {
                 stopsSkipped++
                 continue
             }
@@ -161,14 +168,16 @@ class TagoMasterSyncService(
             for (rs in stops) {
                 val stop = stopsByNodeId[rs.nodeId]
                 val seqNo = rs.seqNo
-                if (line == null || stop == null || seqNo == null || rs.updownCd.isBlank()) {
+                // 미정차 지점은 위에서 정류장으로 만들지 않았으므로 stop == null로 여기서 함께 걸러진다.
+                if (line == null || stop == null || seqNo == null) {
                     lineStopsSkipped++
                     continue
                 }
-                val key = Triple(line.id, rs.updownCd, seqNo)
+                val key = Triple(line.id, rs.directionCode, seqNo)
                 val existing = existingLineStops[key]
                 if (existing == null) {
-                    existingLineStops[key] = lineStopRepository.save(TransitLineStop(line, stop, rs.updownCd, seqNo))
+                    existingLineStops[key] =
+                        lineStopRepository.save(TransitLineStop(line, stop, rs.directionCode, seqNo))
                     lineStopsCreated++
                 } else if (existing.stop.id != stop.id) {
                     existing.stop = stop

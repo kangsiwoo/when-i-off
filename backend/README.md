@@ -177,7 +177,8 @@ WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_
 TAGO는 노선번호(`routeNo`)+도시코드(`cityCode`)로 노선 하나를 검색해서 등록하는 방식이고,
 KLID 신호등은 `stdgCd`(법정동 시도코드 10자리) 단위로 그 지자체 전체를 받는다. 자주 쓰는
 KLID `stdgCd`: 서울 `1100000000`, 성남 `4113000000`, 화성 `4159000000`. TAGO `cityCode`는
-`getCtyCodeList`로 조회한다(코드 체계가 KLID `stdgCd`와 다르다).
+`getCtyCodeList`로 조회한다(코드 체계가 KLID `stdgCd`와 다르다) — 화성 `31240`, 성남 `31020`,
+수원 `31010`, 용인 `31190`. 서울은 TAGO에 없다.
 
 ```bash
 T="X-Api-Token: $WIO_API_TOKEN"; B=localhost:8080/api/v1/admin/sync
@@ -203,22 +204,43 @@ KLID 호출 한도(개발계정 일 5,000회 수준) 안에 있으려면 활성 
 
 ## 실제 키를 받은 첫 세션의 확인 체크리스트
 
-### TAGO(버스) — 이번 세션에서 처음 받으면
-키 없이 만든 코드라 응답 포맷은 포털 Swagger 문서 설명만으로 작성했다(실 응답으로 검증되지
-않음). 키를 받으면 **코드를 더 쓰기 전에** 아래를 먼저 확인한다.
+### TAGO(버스) — #17에서 확인 완료 (2026-10)
+처음엔 포털 Swagger 설명만으로 작성했던 어댑터를 실 키로 대조해 고쳤다. 결과와 응답 규약은
+[ARCHITECTURE.md](../docs/ARCHITECTURE.md) "TAGO 응답 규약"·"커버리지", 결론은
+[ADR 0001](../docs/adr/0001-tago-bus-arrival-prediction.md) "실 키 검증 결과".
 
-1. `getCtyCodeList`로 화성/성남/서울에 해당하는 TAGO `cityCode`를 확인한다 (KLID `stdgCd`와
-   다른 값이다 — 혼동 주의)
-2. 실제로 쓸 광역버스 노선 번호로 `getRouteNoList` → `routeId` 확인, `getRouteAcctoThrghSttnList`로
-   경유 정류장이 기대한 대로 나오는지(화성/동탄 권역 정류장이 포함되는지) 확인. `getRouteNoList`는
-   부분일치 검색이라 동기화는 번호가 정확히 같은 노선만 등록한다 — 원하는 노선이 걸러지지 않는지 본다
-3. `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList`로 실제 도착예측(`arrtime`)이 채워지는지
-   확인 — 비어 있으면 ADR 0001 "후속"의 경기 GBIS 병행을 검토
-4. 응답 하나를 `src/test/resources/fixtures/tago/`에 저장해 fixture를 실 응답으로 갱신한다
-   (키·개인정보 없음 확인)
-5. 키 인코딩은 KLID와 같은 규칙(Decoding/Encoding 아무거나, `%` 있으면 그대로 전송)을 따른다
-6. 응답 포맷 파라미터는 `_type=json`(KLID는 `type=json`)으로 보내고 있다. 400/XML이 오면 이 이름과
-   `response` 래퍼 유무부터 확인한다
+1. ✔ `cityCode`(`getCtyCodeList`): 화성 `31240`, 성남 `31020`, 수원 `31010`, 용인 `31190`.
+   **서울은 목록에 없다.** (KLID `stdgCd`와 다른 체계)
+2. ✔ `_type=json`이 맞고 `response` 래퍼가 있다. 0건은 `"items":""`, 1건은 `item`이 배열이 아니라 객체
+3. ✔ `getRouteNoList`는 부분일치(포함) 검색 — 동기화는 번호가 정확히 같은 것만 등록하고, 없으면
+   404에 후보 번호를 나열한다. `routeNo`를 빼면 그 도시 노선 전체가 온다
+4. ✔ 도착예측 오퍼레이션 이름은 `getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList`(**`Spcify`**).
+   `Specify`로 보내면 `400 NO_OPENAPI_SERVICE_ERROR`(12)
+5. ✔ 화성/동탄·성남 정류장 도착예측은 채워진다. **경기 광역버스의 서울 구간 정류장은 항상 0건** —
+   서울 승차 구간은 GBIS 병행 검토가 남아 있다 (ADR 0001 "후속")
+6. ✔ fixture(`src/test/resources/fixtures/tago/`)는 실 응답으로 교체했다(키 없음, 공개 정류장 이름뿐,
+   정류소 목록만 일부 잘라내고 `totalCount`를 맞춤)
+7. 키 인코딩은 KLID와 같은 규칙(Decoding/Encoding 아무거나, `%` 있으면 그대로 전송). `.env`의
+   `TAGO_BUS_API`는 계정 인증키라 `PRECISE_BUS_API`와 같은 값이어도 된다
+
+다시 확인할 때(커버리지가 바뀌었는지 등)는 키를 출력하지 않게 아래처럼 부른다. 게이트웨이가 가끔
+연결을 끊으므로(curl exit 35 / HTTP 000) 실패하면 잠시 뒤 다시 부른다.
+
+```bash
+K="$TAGO_BUS_API"; B=https://apis.data.go.kr/1613000
+# 노선 검색 → routeId
+curl -sG "$B/BusRouteInfoInqireService/getRouteNoList" --data-urlencode "serviceKey=$K" \
+  -d cityCode=31240 -d routeNo=4108 -d _type=json -d numOfRows=1000
+# 노선 경유 정류소 → nodeId (경기 노선은 updowncd 없음, (미정차) 통과 지점 섞임)
+curl -sG "$B/BusRouteInfoInqireService/getRouteAcctoThrghSttnList" --data-urlencode "serviceKey=$K" \
+  -d cityCode=31240 -d routeId=GGB233000270 -d _type=json -d numOfRows=1000
+# 정류장 하나 + 노선 하나 도착예측 (cityCode는 노선을 찾은 도시)
+curl -sG "$B/ArvlInfoInqireService/getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList" --data-urlencode "serviceKey=$K" \
+  -d cityCode=31240 -d nodeId=GGB233001282 -d routeId=GGB233000270 -d _type=json -d numOfRows=1000
+# 그 정류장에 오는 모든 노선 (어떤 노선이 지금 다가오는지 볼 때)
+curl -sG "$B/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList" --data-urlencode "serviceKey=$K" \
+  -d cityCode=31240 -d nodeId=GGB233001282 -d _type=json -d numOfRows=1000
+```
 
 ### KLID(신호등)
 1. 키 인코딩: `.env`에는 포털의 **Decoding**/**Encoding** 키 중 아무거나 넣어도 된다. 클라이언트가

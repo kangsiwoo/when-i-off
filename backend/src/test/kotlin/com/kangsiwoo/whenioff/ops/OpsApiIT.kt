@@ -61,7 +61,7 @@ class OpsApiIT
             // 이 앱이 부르는 op는 호출이 없어도 보이고, 기록된 다른 op가 뒤에 붙는다
             assertEquals(
                 listOf(
-                    "getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList",
+                    "getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList",
                     "getRouteNoList",
                     "getRouteAcctoThrghSttnList",
                     "opsProbe",

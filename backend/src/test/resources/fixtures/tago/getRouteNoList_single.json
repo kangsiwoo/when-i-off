@@ -1,0 +1,24 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": {
+          "endnodenm": "신분당선강남역(중)",
+          "endvehicletime": 2250,
+          "routeid": "GGB234000314",
+          "routeno": 6004,
+          "routetp": "직행좌석버스",
+          "startnodenm": "동탄국제고등학교",
+          "startvehicletime": "0510"
+        }
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}

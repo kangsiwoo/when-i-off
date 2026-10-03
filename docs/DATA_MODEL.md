@@ -146,7 +146,10 @@ PostgreSQL의 UNIQUE는 NULL을 서로 다른 값으로 취급하므로 수동 �
 
 ### `transit_line_stops`
 노선의 **방향별 정류장 순서**. TAGO `getRouteAcctoThrghSttnList` 한 행 = 이 테이블 한 행이며
-`(transit_line_id, direction_code, seq_no=nodeord)`으로 유일하다.
+`(transit_line_id, direction_code, seq_no=nodeord)`으로 유일하다. `direction_code`는 TAGO `updowncd`
+(`0`/`1`)인데, **경기(`GGB…`) 노선은 `updowncd`를 주지 않아 전부 `"0"`**이다 — 기점→회차→기점이
+`nodeord` 하나로 이어지고 왕복 정류장의 `nodeId`가 달라 순서만으로 방향이 정해진다. `…(미정차)`
+통과 지점 행은 적재하지 않으므로 `seq_no`에 빈 번호가 생긴다 (#17).
 
 GTX처럼 TAGO 동기화 대상이 아닌 노선은 시드(`db/seed/R__seed_gtx_a.sql`)로 채운다. 비어 있으면
 `LegDirectionResolver.resolve()`가 그 노선 구간에 대해 `null`을 돌려주고, `transit_schedules` 조회에
@@ -187,7 +190,7 @@ UNIQUE 제약이 없는 것은 의도다. import는 (노선, 정류장, `day_typ
 
 ### `transit_arrival_observations`
 "이 시점에 시스템이 받은 정류장 도착 예정 시각"의 스냅샷. 버스는 **TAGO가 정류장 단위로
-직접 주는 도착예측**(`getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList`의 `arrtime`)을 그대로
+직접 주는 도착예측**(`getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList`의 `arrtime`)을 그대로
 받아 적재한다 (`source='TAGO_ARVL'`). TAGO는 차량 식별자를 주지 않으므로 `vehicle_no`는
 보통 NULL이다(컬럼 자체는 nullable). 이전 KLID 버스 위치 기반 설계 때는 Backend가
 `bus_position_observations`를 `transit_line_stops` 폴리라인에 투영해 파생한 ETA였다

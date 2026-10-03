@@ -1,0 +1,96 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "gpslati": 36.328297,
+            "gpslong": 127.43441,
+            "nodeid": "DJB8002358",
+            "nodenm": "중앙시장",
+            "nodeno": 10060,
+            "nodeord": 45,
+            "routeid": "DJB30300037",
+            "updowncd": 0
+          },
+          {
+            "gpslati": 36.33012,
+            "gpslong": 127.433365,
+            "nodeid": "DJB8003054",
+            "nodenm": "대전역/역전시장",
+            "nodeno": 14270,
+            "nodeord": 46,
+            "routeid": "DJB30300037",
+            "updowncd": 0
+          },
+          {
+            "gpslati": 36.333885,
+            "gpslong": 127.437164,
+            "nodeid": "DJB8007268",
+            "nodenm": "대전역동광장",
+            "nodeno": 14630,
+            "nodeord": 47,
+            "routeid": "DJB30300037",
+            "updowncd": 0
+          },
+          {
+            "gpslati": 36.333828,
+            "gpslong": 127.43703,
+            "nodeid": "DJB8005504",
+            "nodenm": "대전역동광장",
+            "nodeno": 11410,
+            "nodeord": 48,
+            "routeid": "DJB30300037",
+            "updowncd": 0
+          },
+          {
+            "gpslati": 36.332943,
+            "gpslong": 127.43691,
+            "nodeid": "DJB9005504",
+            "nodenm": "대전역동광장",
+            "nodeord": 49,
+            "routeid": "DJB30300037",
+            "updowncd": 0
+          },
+          {
+            "gpslati": 36.329105,
+            "gpslong": 127.43359,
+            "nodeid": "DJB8002635",
+            "nodenm": "중앙시장",
+            "nodeno": 10030,
+            "nodeord": 50,
+            "routeid": "DJB30300037",
+            "updowncd": 1
+          },
+          {
+            "gpslati": 36.328053,
+            "gpslong": 127.439354,
+            "nodeid": "DJB8002155",
+            "nodenm": "이스트시티아파트",
+            "nodeno": 11380,
+            "nodeord": 51,
+            "routeid": "DJB30300037",
+            "updowncd": 1
+          },
+          {
+            "gpslati": 36.328762,
+            "gpslong": 127.44144,
+            "nodeid": "DJB8005881",
+            "nodenm": "대동역2번출구",
+            "nodeno": 11170,
+            "nodeord": 52,
+            "routeid": "DJB30300037",
+            "updowncd": 1
+          }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 8
+    }
+  }
+}
