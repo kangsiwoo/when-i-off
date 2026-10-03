@@ -88,7 +88,8 @@ public enum RecorderEffect: Sendable, Equatable {
     case dismissBoardingPrompt(legId: Int64)
     /// 평소 방향이 아닌 시각의 시작. "퇴근 기록을 시작했어요 — 아니면 취소" 알림을 띄운다.
     case confirmTripStart(TripKey, CommuteDirection)
-    /// outbox에서 이 trip의 대기 명령을 버린다 (``Outbox/discard(trip:)``).
+    /// 사용자가 이 trip을 취소했다. outbox에서 대기 명령을 버리고, 서버에 이미 있으면 지운다
+    /// (``Outbox/discard(trip:now:)``, #88).
     case discardOutbox(TripKey)
     case needsReview(ReviewNote)
     /// trip이 끝났다. 어댑터는 geofence 계획을 다시 세운다.

@@ -238,7 +238,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    delete?: never;
+    delete: operations["delete"];
     options?: never;
     head?: never;
     patch: operations["update"];
@@ -1485,6 +1485,26 @@ export interface operations {
         content: {
           "*/*": components["schemas"]["CommuteTripResponse"];
         };
+      };
+    };
+  };
+  delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

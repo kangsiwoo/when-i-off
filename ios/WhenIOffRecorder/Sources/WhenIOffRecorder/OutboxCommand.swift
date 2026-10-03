@@ -24,29 +24,42 @@ public struct TripKey: Codable, Sendable, Hashable, CustomStringConvertible {
 /// - `upsertAttempt`: `(trip, routeLegId, attemptSeq)` upsert, `nil` 필드는 건드리지 않는다 (#38).
 ///   하차도 PATCH(attempt id 필요) 대신 이것으로 보내 attempt id를 알 필요가 없다
 /// - `uploadGps`: `(user, recordedAt)` 중복 무시
+/// - `deleteTrip`: 사용자가 취소한 trip을 지운다 (#88). 이미 지웠으면 서버가 404를 주고, outbox는 그것을 성공으로 본다.
+///   앱이 직접 넣지 않는다 — ``Outbox/discard(trip:now:)``가 필요할 때만 넣는다
+///
+/// 저장된 outbox(JSON)는 이 enum의 합성 `Codable` 형식이다. 사례를 **추가**하는 것은 이전 파일을 그대로 읽지만,
+/// 기존 사례의 이름이나 연관값 이름을 바꾸면 업데이트 전 파일을 읽지 못한다.
 public enum OutboxCommand: Codable, Sendable, Equatable {
     case createTrip(TripKey, tripDate: LocalDate)
     case updateTrip(TripKey, UpdateCommuteTripRequest)
     case upsertAttempt(TripKey, UpsertBoardingAttemptRequest)
     case uploadGps(TripKey?, [GpsPoint])
+    case deleteTrip(TripKey)
 
     public var tripKey: TripKey? {
         switch self {
-        case .createTrip(let key, _), .updateTrip(let key, _), .upsertAttempt(let key, _): return key
+        case .createTrip(let key, _), .updateTrip(let key, _), .upsertAttempt(let key, _), .deleteTrip(let key):
+            return key
         case .uploadGps(let key, _): return key
         }
+    }
+
+    var isDeleteTrip: Bool {
+        if case .deleteTrip = self { return true }
+        return false
     }
 
     /// 순서를 지켜야 하는 묶음. 같은 lane 안에서는 앞 명령이 끝나야 다음 명령이 나간다.
     var lane: OutboxLane {
         switch self {
-        case .createTrip(let key, _), .updateTrip(let key, _), .upsertAttempt(let key, _): return .record(key)
+        case .createTrip(let key, _), .updateTrip(let key, _), .upsertAttempt(let key, _), .deleteTrip(let key):
+            return .record(key)
         case .uploadGps(let key, _): return .gps(key)
         }
     }
 }
 
-/// - `record`: trip 생성 → 탑승 시도 → 도착. 서버 순서 규칙(번호 건너뛰기 금지, 앞 시도보다 이른 출발 금지,
+/// - `record`: trip 생성 → 탑승 시도 → 도착 (→ 취소면 삭제). 서버 순서 규칙(번호 건너뛰기 금지, 앞 시도보다 이른 출발 금지,
 ///   trip 범위 밖 기록 금지)을 지키려면 기록한 순서대로 도착해야 한다
 /// - `gps`: GPS 배치. 순서는 상관없지만(서버가 시각으로 정렬) trip id가 필요하다. 기록 lane과 분리해
 ///   GPS 재시도가 탑승 기록을 막지 않게 한다
@@ -61,6 +74,7 @@ public enum OutboxRequest: Sendable, Equatable {
     case updateTrip(tripId: Int64, UpdateCommuteTripRequest)
     case upsertAttempt(tripId: Int64, UpsertBoardingAttemptRequest)
     case uploadGps(GpsTraceBatchRequest)
+    case deleteTrip(tripId: Int64)
 }
 
 public struct OutboxDispatch: Sendable, Equatable {

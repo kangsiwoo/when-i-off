@@ -10,6 +10,7 @@ import WhenIOffKit
 /// - trip 생성: `(routeId, leftHomeAt)`이 같으면 기존 trip을 200으로
 /// - 탑승 시도: `(trip, routeLegId, attemptSeq)` upsert, 보낸 필드만 덮어씀. 번호 건너뛰기는 400
 /// - GPS: `recordedAt` 중복 무시
+/// - trip 삭제: 있으면 204(시도도 함께), 없으면 404 (#88)
 ///
 /// `mode`로 네트워크를 흉내 낸다: `.offline`은 서버에 닿지 않고, `.dropResponses`는 서버가 처리한 뒤 응답이 사라진다
 /// (지하에서 가장 곤란한 경우 — 앱은 처리됐는지 모른다).
@@ -35,6 +36,8 @@ actor FakeBackend: HTTPTransport {
     private(set) var gpsTimes: Set<String> = []
     private(set) var requestCount = 0
     private var forcedStatus: [String: Int] = [:]
+    /// 지운 trip의 id를 다시 쓰지 않는다 (서버의 BIGSERIAL처럼).
+    private var nextTripId: Int64 = 31
 
     func setMode(_ mode: Mode) { self.mode = mode }
 
@@ -73,8 +76,8 @@ actor FakeBackend: HTTPTransport {
                 return json(200, tripJSON(existing))
             }
             let trip = Trip(
-                id: Int64(trips.count + 31), routeId: routeId, tripDate: body["tripDate"] as! String,
-                leftHomeAt: leftHomeAt)
+                id: nextTripId, routeId: routeId, tripDate: body["tripDate"] as! String, leftHomeAt: leftHomeAt)
+            nextTripId += 1
             trips.append(trip)
             return json(201, tripJSON(trip))
         case ("PATCH", 2, "commute-trips"):
@@ -84,6 +87,12 @@ actor FakeBackend: HTTPTransport {
             if let left = body["leftHomeAt"] as? String { trips[index].leftHomeAt = left }
             if let arrived = body["arrivedDestinationAt"] as? String { trips[index].arrivedDestinationAt = arrived }
             return json(200, tripJSON(trips[index]))
+        case ("DELETE", 2, "commute-trips"):
+            guard let index = trips.firstIndex(where: { String($0.id) == parts[1] }) else {
+                return problem(404, "no trip")
+            }
+            attempts[trips.remove(at: index).id] = nil
+            return HTTPResponse(status: 204, body: Data())
         case ("POST", 3, "commute-trips"):
             guard let tripId = Int64(parts[1]), trips.contains(where: { $0.id == tripId }) else {
                 return problem(404, "no trip")

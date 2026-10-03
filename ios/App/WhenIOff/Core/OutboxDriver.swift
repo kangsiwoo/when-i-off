@@ -38,8 +38,10 @@ final class OutboxDriver {
         record { try $0.enqueue(command, now: clock()) }
     }
 
+    /// 사용자가 취소한 trip: 대기 명령을 버리고, 서버에 이미 있으면 지우는 명령을 넣는다 (#88).
+    /// 넣은 삭제는 이 사건 처리 끝의 ``kick()``으로 나간다.
     func discard(_ key: TripKey) {
-        record { try $0.discard(trip: key) }
+        record { try $0.discard(trip: key, now: clock()) }
     }
 
     /// 토큰을 고친 뒤.

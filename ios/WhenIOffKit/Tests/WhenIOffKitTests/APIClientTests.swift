@@ -62,6 +62,29 @@ struct APIClientTests {
         #expect(requests[1].bodyText == #"{"result":"CAUGHT"}"#)
     }
 
+    /// 취소한 trip 삭제 (#88). 성공은 본문 없는 204라 디코딩하지 않는다.
+    @Test func deleteTripSendsNoBodyAndAcceptsEmpty204() async throws {
+        let transport = RecordingTransport([.response(HTTPResponse(status: 204, body: Data()))])
+        try await client(transport).deleteTrip(id: 7)
+        let request = try #require(await transport.requests.first)
+        #expect(request.method == "DELETE")
+        #expect(request.url.absoluteString == "http://localhost:8080/api/v1/commute-trips/7")
+        #expect(request.body == nil)
+        #expect(request.headers["Content-Type"] == nil)
+        #expect(request.headers["X-Api-Token"] == "test-token")
+    }
+
+    /// 없거나 이미 지운 trip은 404로 그대로 올린다. 성공으로 볼지는 outbox가 정한다.
+    @Test func deleteTripOfMissingTripIsHTTP404() async throws {
+        let transport = RecordingTransport.ok(
+            404,
+            json: #"{"type":"about:blank","title":"Not Found","status":404,"detail":"commute trip 7 not found"}"#
+        )
+        let error = await #expect(throws: APIError.self) { try await client(transport).deleteTrip(id: 7) }
+        #expect(error?.status == 404)
+        #expect(error?.message == "commute trip 7 not found")
+    }
+
     @Test func getRequestsCarryNoBody() async throws {
         let transport = try RecordingTransport.ok(fixture: "routes_list")
         _ = try await client(transport).routes()

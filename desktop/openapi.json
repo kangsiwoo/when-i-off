@@ -2949,6 +2949,28 @@
       }
     },
     "/api/v1/commute-trips/{id}": {
+      "delete": {
+        "operationId": "delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "commute-trip-controller"
+        ]
+      },
       "patch": {
         "operationId": "update",
         "parameters": [
