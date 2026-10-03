@@ -15,7 +15,7 @@ public struct APIConfiguration: Sendable, Equatable {
 /// when-i-off 백엔드 `/api/v1` 클라이언트.
 ///
 /// **자동 재시도를 하지 않는다.** ``APIError/transport(_:)``는 "서버에 도달했는지 모른다"는 뜻이고,
-/// 언제 다시 보낼지는 오프라인 큐(후속)가 정한다.
+/// 언제 다시 보낼지는 오프라인 outbox(`WhenIOffRecorder`의 `Outbox`, ADR 0003)가 정한다.
 ///
 /// 다시 보내는 것 자체는 안전하다. `POST /commute-trips`는 `leftHomeAt`이 있으면 `(경로, leftHomeAt)`으로
 /// 재전송을 흡수해 기존 trip을 돌려주고(#37), 탑승 시도 upsert와 GPS 배치도 서버가 중복을 흡수한다.
