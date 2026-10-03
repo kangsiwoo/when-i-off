@@ -97,7 +97,7 @@
 |---|---|---|---|
 | TAGO 버스노선정보 | `getRouteNoList` 노선번호 검색 → `routeId` | (조회만, 저장 안 함) | 수동, 노선 등록 시 |
 | | `getRouteAcctoThrghSttnList` 노선 경유 정류소 순서 | `transit_lines`, `transit_stops`, `transit_line_stops` | 수동, 노선 등록 시 |
-| TAGO 버스도착정보 | `getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList` 정류소별 특정노선 도착예정 | `transit_arrival_observations` (`source='TAGO_ARVL'`) | 출퇴근 시간대 폴링 |
+| TAGO 버스도착정보 | `getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList` 정류소별 특정노선 도착예정 (포털 표기 `Spcify`) | `transit_arrival_observations` (`source='TAGO_ARVL'`) | 출퇴근 시간대 폴링 |
 | KLID 신호등 `rti` | `crsrd_map_info` 교차로 마스터 | `traffic_signals` | 수동 / 일 1회 |
 | | `tl_drct_info` 신호 잔여시간 (**현재 울산만 제공 — 아래 참고**) | `traffic_signal_states` | 출퇴근 시간대 폴링 |
 
@@ -142,6 +142,48 @@ KLID와 게이트웨이·인증 방식(`serviceKey` 인코딩 규칙 포함, 아
 `numOfRows` 페이지네이션은 동일하게 지원한다. 응답 포맷 파라미터 이름은 KLID의 `type`이 아니라
 `_type`(`_type=json`)이고, 조회 필터도 `stdgCd` 하나가 아니라 오퍼레이션별로 다르다
 (`cityCode`+`routeNo` / `cityCode`+`routeId` / `cityCode`+`nodeId`+`routeId`).
+
+#17에서 실 키로 대조해 확정한 것 (2026-10, 화성 `31240`·성남 `31020`·대전 `25`):
+- **오퍼레이션 이름 철자**: 정류소별 특정노선 도착예정은 포털 표기 그대로
+  `getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList`(**`Spcify`**)다. 영어 철자 `Specify`로 보내면
+  `400` + `{"OpenAPI_ServiceResponse":{"cmmMsgHeader":{"errMsg":"NO_OPENAPI_SERVICE_ERROR","returnReasonCode":"12"}}}`.
+  키 등록 전에는 같은 호출이 `403`/`30`으로 와서 경로 오류가 가려져 있었다
+- **`items` 모양 세 가지**: 여러 건 → `{"item":[…]}`, **1건 → `{"item":{…}}`(배열 아님)**, 0건 →
+  `"items":""`(빈 문자열). 클라이언트가 셋 다 목록으로 바꾼다
+- **값 타입**: 숫자로 보이는 값은 JSON 숫자다(`arrtime: 377`, `nodeord: 1`, `gpslati: 37.19`,
+  `routeno: 4108`). 같은 필드가 값에 따라 문자열이기도 하다(`routeno: "M4108"`, `startvehicletime: "0500"`).
+  클라이언트는 item 값을 전부 문자열로 바꿔 DTO에 넘긴다
+- **선택 필드는 키가 빠진다**: 값이 없으면 `null`이 아니라 키 자체가 없다(`routetp` 없는 DRT 노선,
+  `nodeno` 없는 정류소, `endvehicletime` 없는 노선)
+- **경기(`GGB…`) 노선에는 `updowncd`가 없다**: 정류소 목록이 기점→회차→기점을 `nodeord` 하나로 이어서
+  오고, 왕복 정류장은 `nodeId`가 서로 다르다. 그래서 `updowncd`가 없으면 노선 전체를 방향 `"0"` 하나로
+  적재하고 승·하차 방향은 `nodeord` 순서로만 정한다. 대전 등은 `updowncd`를 숫자 `0`/`1`로 준다
+- **미정차 통과 지점**: 경기 노선 정류소 목록에는 `…(미정차)` 이름의 통과 지점(IC·TG 등, `nodeno` 없음)이
+  섞여 온다. 4108 기준 60개 중 42개. 탈 수 없는 곳이라 정류장/노선-정류장으로 적재하지 않는다(`skipped`)
+- **노선번호 검색은 부분일치(포함)**: `4108` → `4108`·`M4108`·`M4108(예약)`, `55` → `8155`·`1551`·`1551B`.
+  `(예약)`·`(출근)`·`-1`·`B` 같은 접미사가 붙은 것은 `routeId`가 다른 별개 노선이다. 그래서 동기화는
+  번호가 정확히 같은 것만 등록하고 없으면 `404`(부분일치 후보를 메시지에 나열)다. `routeNo`를 빼면
+  그 도시 노선 전체가 온다(화성 144개, 성남 80개). 화성·성남에는 번호가 완전히 같은 노선이 없었다
+- **도착예측의 `cityCode`는 노선을 등록한 지자체 기준**: 같은 판교 정류장을 `31020`으로 물으면 성남
+  노선, `31010`으로 물으면 수원 노선, `31240`으로 물으면 0건이다. 동기화 때 노선을 찾은 `cityCode`
+  (`transit_lines.stdg_cd`)를 그대로 쓰므로 맞물린다
+- **도착예측 항목은 `arrtime` 순으로 정렬되어 있지 않다.** 차량 번호는 없고 `vehicletp`(저상버스/일반차량)만 있다
+- **일시 오류**: 게이트웨이가 가끔 연결을 끊고(`Connection reset`, 재시도 대상), 드물게 `200`에
+  `cmmMsgHeader` `returnReasonCode=04`(`HTTP_ERROR`)를 준다. 후자는 지금 `502`/폴링 실패로 처리되고
+  재시도하지 않는다 — 다음 폴링 주기에 회복된다
+
+#### 커버리지 (#17, 2026-10 실 키 확인)
+| 구간 | 노선 마스터 | 도착예측 |
+|---|---|---|
+| 화성(`31240`) 경기 정류장 | 144개 노선, 광역급행·직행좌석 59개(M4108·M4403·6001·8155·1009·G6010 등) | ✔ (4108·G6010·15-1 등 실측) |
+| 성남(`31020`) 경기 정류장 | 80개 노선, 광역급행·직행좌석 30개(9003·9004·M4102 등) | ✔ (9003·9004·220 등 실측) |
+| 경기 광역버스의 **서울 구간 정류장**(`GGB1…`) | 정류소 목록에는 나온다 | **✘ 항상 0건** — 운행 중인 4108·6001·M4108의 서울 정류장 전부 0건 |
+| 서울 시내버스 | `getCtyCodeList`에 서울 없음 | ✘ |
+
+즉 **경기 정류장에서 타는 구간(출근길 동탄·판교 승차)은 TAGO로 충분**하고, **서울에서 타는 구간
+(퇴근길 강남·서울역 승차)은 TAGO로 예측을 받을 수 없다.** 이 경우 폴링은 에러 없이 0건을 받고
+관측이 쌓이지 않으므로 추천은 정적 시간표/보정 없는 값으로 떨어진다. 보강은 ADR 0001 "후속"의
+경기 GBIS 병행 검토다(GBIS가 경기 버스의 서울 구간 정류장 도착예측을 주는지는 GBIS 키로 따로 확인해야 한다).
 
 ### 왜 KLID(신호등)인가
 행정안전부·한국지역정보개발원(KLID)의 **전국통합데이터**가 신호등 실시간 잔여시간을

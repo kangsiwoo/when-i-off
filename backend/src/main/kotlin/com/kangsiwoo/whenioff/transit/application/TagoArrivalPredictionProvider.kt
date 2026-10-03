@@ -37,7 +37,7 @@ class TagoArrivalPredictionProvider(
 
         val observedAt = clock.instant()
         return arrivalApi
-            .getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList(cityCode, nodeId, routeId)
+            .getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList(cityCode, nodeId, routeId)
             .mapNotNull { arrival ->
                 val seconds = arrival.arrivalInSeconds ?: return@mapNotNull null
                 // TAGO는 차량 식별자를 주지 않는다(차량유형 vehicletp만) — vehicleNo는 항상 null이다.

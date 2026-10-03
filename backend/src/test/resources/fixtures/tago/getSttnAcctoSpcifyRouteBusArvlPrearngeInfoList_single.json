@@ -1,0 +1,25 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": {
+          "arrprevstationcnt": 3,
+          "arrtime": 377,
+          "nodeid": "GGB233003128",
+          "nodenm": "동탄호수공원.센트럴시티",
+          "routeid": "GGB233000327",
+          "routeno": "G6010",
+          "routetp": "직행좌석버스",
+          "vehicletp": "일반차량"
+        }
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 1
+    }
+  }
+}

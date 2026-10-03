@@ -1,0 +1,37 @@
+{
+  "response": {
+    "header": {
+      "resultCode": "00",
+      "resultMsg": "NORMAL SERVICE."
+    },
+    "body": {
+      "items": {
+        "item": [
+          {
+            "arrprevstationcnt": 37,
+            "arrtime": 5207,
+            "nodeid": "GGB233001282",
+            "nodenm": "예당마을.롯데캐슬(중)",
+            "routeid": "GGB233000270",
+            "routeno": 4108,
+            "routetp": "직행좌석버스",
+            "vehicletp": "일반차량"
+          },
+          {
+            "arrprevstationcnt": 43,
+            "arrtime": 5876,
+            "nodeid": "GGB233001282",
+            "nodenm": "예당마을.롯데캐슬(중)",
+            "routeid": "GGB233000270",
+            "routeno": 4108,
+            "routetp": "직행좌석버스",
+            "vehicletp": "일반차량"
+          }
+        ]
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 2
+    }
+  }
+}

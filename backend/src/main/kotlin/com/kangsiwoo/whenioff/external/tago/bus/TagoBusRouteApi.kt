@@ -35,8 +35,12 @@ class TagoBusRouteApi(
     }
 }
 
-// 필드 이름은 공공데이터포털 API 문서(Swagger) 설명만 보고 적었고 실 응답으로 검증하지 않았다.
-// 실 키를 받으면 backend/README.md "실제 키를 받은 첫 세션의 확인 체크리스트"대로 fixture와 함께 갱신한다.
+// 필드 이름은 #17에서 실 응답(화성 31240·성남 31020·대전 25)으로 대조했다. 실 응답에서 확인한 것:
+//  - 숫자로 보이는 값은 JSON 숫자로 온다(`routeno: 4108`, `nodeord: 1`, `gpslati: 37.19`). 같은 필드가 값에
+//    따라 문자열(`"M4108"`)이기도 하다 — `TagoHttpClient`가 전부 문자열로 바꿔 주므로 DTO는 문자열로 받는다.
+//  - 선택 필드는 값이 없으면 키가 통째로 빠진다(`routetp`가 없는 DRT 노선, `nodeno`가 없는 미정차 지점).
+//  - 노선번호 검색은 부분일치(포함)다 — `4108`을 찾으면 `M4108`·`M4108(예약)`도 같이 온다.
+//  - 응답에는 `startvehicletime`/`endvehicletime`(첫차/막차 HHmm)도 있지만 쓰지 않아 매핑하지 않는다.
 data class TagoRoute(
     val routeId: String,
     val routeNo: String,
@@ -69,6 +73,16 @@ data class TagoRouteStop(
     val lat: Double? get() = gpsLati.trim().toDoubleOrNull()
     val lng: Double? get() = gpsLong.trim().toDoubleOrNull()
 
+    /**
+     * 경기(`GGB…`) 노선은 `updowncd`를 아예 주지 않는다 — 기점→회차→기점을 `nodeord` 하나로 이어서 주고
+     * 왕복 정류장은 `nodeId`가 서로 다르다. 그래서 값이 없으면 노선 전체를 한 방향([SINGLE_DIRECTION])으로
+     * 본다. 승·하차 방향은 `nodeord` 순서만으로 정해진다 (`LegDirectionResolver`). 대전 등은 `0`/`1`을 준다.
+     */
+    val directionCode: String get() = updownCd.trim().ifEmpty { SINGLE_DIRECTION }
+
+    /** 경기 노선 정류소 목록에 섞여 오는 통과 지점(`…(미정차)`, `nodeno` 없음) — 탈 수 없는 곳이다. */
+    val isPassThrough: Boolean get() = nodeNm.contains(PASS_THROUGH_MARK)
+
     companion object {
         fun from(item: Map<String, String>) =
             TagoRouteStop(
@@ -80,6 +94,9 @@ data class TagoRouteStop(
                 gpsLong = item.str("gpslong"),
                 updownCd = item.str("updowncd"),
             )
+
+        const val SINGLE_DIRECTION = "0"
+        const val PASS_THROUGH_MARK = "(미정차)"
     }
 }
 

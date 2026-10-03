@@ -25,7 +25,8 @@ class TagoAdminSyncController(
                 required(routeNo, "routeNo"),
             )
         if (result.routeIds.isEmpty()) {
-            throw NotFoundException("no TAGO route matched cityCode=$cityCode routeNo=$routeNo")
+            val hint = if (result.candidates.isEmpty()) "" else " (similar: ${result.candidates.joinToString()})"
+            throw NotFoundException("no TAGO route matched cityCode=$cityCode routeNo=$routeNo$hint")
         }
         return BusRouteSyncResponse(
             cityCode = result.cityCode,

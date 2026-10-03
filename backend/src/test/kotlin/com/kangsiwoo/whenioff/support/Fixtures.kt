@@ -34,8 +34,8 @@ class PublicDataFixtureDispatcher : Dispatcher() {
         responses.clear()
         responses["getRouteNoList"] = { Fixtures.json("tago/getRouteNoList_ok.json") }
         responses["getRouteAcctoThrghSttnList"] = { Fixtures.json("tago/getRouteAcctoThrghSttnList_ok.json") }
-        responses["getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList"] = {
-            Fixtures.json("tago/getSttnAcctoSpecifyRouteBusArvlPrearngeInfoList_ok.json")
+        responses["getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList"] = {
+            Fixtures.json("tago/getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList_ok.json")
         }
         responses["crsrd_map_info"] = { Fixtures.json("klid/crsrd_map_info_ok.json") }
         responses["tl_drct_info"] = { Fixtures.json("klid/tl_drct_info_ok.json") }

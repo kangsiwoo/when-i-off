@@ -5,27 +5,40 @@
       "resultMsg": "NORMAL SERVICE."
     },
     "body": {
-      "totalCount": 2,
-      "pageNo": 1,
-      "numOfRows": 1000,
       "items": {
         "item": [
           {
-            "routeid": "GGB1001",
-            "routeno": "1001",
-            "routetp": "직행좌석버스",
-            "startnodenm": "동탄역",
-            "endnodenm": "병점역"
+            "endnodenm": "서울역버스환승센터(6번승강장)(중)",
+            "endvehicletime": 2250,
+            "routeid": "GGB233000466",
+            "routeno": "M4108(예약)",
+            "routetp": "광역급행버스",
+            "startnodenm": "나루마을.월드반도",
+            "startvehicletime": "0500"
           },
           {
-            "routeid": "GGB1001A",
-            "routeno": "1001-1",
-            "routetp": "일반버스",
-            "startnodenm": "동탄역",
-            "endnodenm": "오산역"
+            "endnodenm": "서울역버스환승센터(6번승강장)(중)",
+            "endvehicletime": 2250,
+            "routeid": "GGB234001245",
+            "routeno": "M4108",
+            "routetp": "광역급행버스",
+            "startnodenm": "나루마을.월드반도",
+            "startvehicletime": "0500"
+          },
+          {
+            "endnodenm": "서울역버스환승센터(6번승강장)(중)",
+            "endvehicletime": 2240,
+            "routeid": "GGB233000270",
+            "routeno": 4108,
+            "routetp": "직행좌석버스",
+            "startnodenm": "나루마을.월드반도",
+            "startvehicletime": "0520"
           }
         ]
-      }
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 3
     }
   }
 }

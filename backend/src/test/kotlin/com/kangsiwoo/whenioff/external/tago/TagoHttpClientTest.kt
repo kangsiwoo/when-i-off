@@ -22,7 +22,7 @@ class TagoHttpClientTest {
     private lateinit var metrics: ExternalCallMetrics
     private lateinit var client: TagoHttpClient
 
-    private val routeParams = mapOf("cityCode" to CITY, "routeNo" to "1001")
+    private val routeParams = mapOf("cityCode" to CITY, "routeNo" to "4108")
 
     @BeforeEach
     fun setUp() {
@@ -51,12 +51,14 @@ class TagoHttpClientTest {
 
         val page = client.fetchPage(endpoint, "getRouteNoList", routeParams, 1, 1000)
 
-        assertEquals(2, page.totalCount)
-        assertEquals(listOf("GGB1001", "GGB1001A"), page.items.map { it["routeid"] })
+        assertEquals(3, page.totalCount)
+        assertEquals(listOf("GGB233000466", "GGB234001245", "GGB233000270"), page.items.map { it["routeid"] })
+        // 실 응답은 routeno를 값에 따라 문자열("M4108") 또는 숫자(4108)로 준다 — 둘 다 문자열로 읽힌다.
+        assertEquals(listOf("M4108(예약)", "M4108", "4108"), page.items.map { it["routeno"] })
         val request = server.takeRequest()
         assertEquals(
             "/BusRouteInfoInqireService/getRouteNoList" +
-                "?serviceKey=dec%2Boded%2Fkey%3D&pageNo=1&numOfRows=1000&_type=json&cityCode=$CITY&routeNo=1001",
+                "?serviceKey=dec%2Boded%2Fkey%3D&pageNo=1&numOfRows=1000&_type=json&cityCode=$CITY&routeNo=4108",
             request.path,
         )
         assertEquals(1, metrics.todayCount(ExternalSource.TAGO))
@@ -136,13 +138,29 @@ class TagoHttpClientTest {
     }
 
     @Test
+    fun `an unknown operation name surfaces NO_OPENAPI_SERVICE_ERROR as reason code 12`() {
+        // 실 키로 확인한 형태: 오퍼레이션 철자가 틀리면(Specify ↔ 포털 표기 Spcify) 400에 게이트웨이 봉투가 온다.
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(400)
+                .setHeader("Content-Type", "application/json")
+                .setBody(Fixtures.read("tago/no_openapi_service.json")),
+        )
+
+        val e = assertThrows<TagoApiException> { client.fetchAll(endpoint, "getRouteNoList", routeParams) }
+        assertEquals("12", e.resultCode)
+        assertEquals("NO_OPENAPI_SERVICE_ERROR / 해당 오픈API 서비스가 없거나 폐기됨", e.resultMsg)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
     fun `429 is retried and the following success is returned`() {
         server.enqueue(MockResponse().setResponseCode(429).setBody("Too Many Requests"))
         server.enqueue(Fixtures.json("tago/getRouteNoList_ok.json"))
 
         val items = client.fetchAll(endpoint, "getRouteNoList", routeParams)
 
-        assertEquals(2, items.size)
+        assertEquals(3, items.size)
         assertEquals(2, server.requestCount)
     }
 

@@ -5,67 +5,123 @@
       "resultMsg": "NORMAL SERVICE."
     },
     "body": {
-      "totalCount": 6,
-      "pageNo": 1,
-      "numOfRows": 1000,
       "items": {
         "item": [
           {
-            "nodeid": "GGB-S001",
-            "nodenm": "동탄역",
-            "nodeno": "20001",
-            "nodeord": "1",
-            "gpslati": "37.200000",
-            "gpslong": "127.070000",
-            "updowncd": "0"
+            "gpslati": 37.1908,
+            "gpslong": 127.0765167,
+            "nodeid": "GGB233001448",
+            "nodenm": "나루마을.월드반도",
+            "nodeno": 36678,
+            "nodeord": 1,
+            "routeid": "GGB233000270"
           },
           {
-            "nodeid": "GGB-S002",
-            "nodenm": "동탄중앙공원",
-            "nodeno": "20002",
-            "nodeord": "2",
-            "gpslati": "37.203000",
-            "gpslong": "127.070000",
-            "updowncd": "0"
+            "gpslati": 37.1930333,
+            "gpslong": 127.0724167,
+            "nodeid": "GGB277102522",
+            "nodenm": "새강마을사거리(미정차)",
+            "nodeord": 2,
+            "routeid": "GGB233000270"
           },
           {
-            "nodeid": "GGB-S003",
-            "nodenm": "반송동주민센터",
-            "nodeno": "20003",
-            "nodeord": "3",
-            "gpslati": "37.206000",
-            "gpslong": "127.071000",
-            "updowncd": "0"
+            "gpslati": 37.1958167,
+            "gpslong": 127.0696333,
+            "nodeid": "GGB233001450",
+            "nodenm": "솔빛마을.화성동탄중앙도서관",
+            "nodeno": 36680,
+            "nodeord": 3,
+            "routeid": "GGB233000270"
           },
           {
-            "nodeid": "GGB-S004",
-            "nodenm": "동탄시범단지",
-            "nodeno": "20004",
-            "nodeord": "4",
-            "gpslati": "37.206000",
-            "gpslong": "127.075000",
-            "updowncd": "0"
+            "gpslati": 37.21095,
+            "gpslong": 127.0720667,
+            "nodeid": "GGB233001281",
+            "nodenm": "예당마을.롯데캐슬(중)",
+            "nodeno": 36672,
+            "nodeord": 7,
+            "routeid": "GGB233000270"
           },
           {
-            "nodeid": "GGB-S005",
-            "nodenm": "능동마을",
-            "nodeno": "20005",
-            "nodeord": "5",
-            "gpslati": "37.209000",
-            "gpslong": "127.076000",
-            "updowncd": "0"
+            "gpslati": 37.21655,
+            "gpslong": 127.0915667,
+            "nodeid": "GGB277101908",
+            "nodenm": "기흥동탄TG(미정차)",
+            "nodeord": 8,
+            "routeid": "GGB233000270"
           },
           {
-            "nodeid": "GGB-S006",
-            "nodenm": "병점역",
-            "nodeno": "20006",
-            "nodeord": "6",
-            "gpslati": "37.212000",
-            "gpslong": "127.076000",
-            "updowncd": "0"
+            "gpslati": 37.5643167,
+            "gpslong": 126.98785,
+            "nodeid": "GGB101000002",
+            "nodenm": "국가인권위.안중근활동터(중)",
+            "nodeord": 26,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.56615,
+            "gpslong": 126.9807667,
+            "nodeid": "GGB101000303",
+            "nodenm": "서울시청",
+            "nodeord": 28,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.55515,
+            "gpslong": 126.9727333,
+            "nodeid": "GGB101000006",
+            "nodenm": "서울역버스환승센터(6번승강장)(중)",
+            "nodeord": 31,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.5644333,
+            "gpslong": 126.9825333,
+            "nodeid": "GGB101000334",
+            "nodenm": "명동입구B",
+            "nodeord": 35,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.2169833,
+            "gpslong": 127.0917,
+            "nodeid": "GGB277101884",
+            "nodenm": "기흥동탄TG(미정차)",
+            "nodeord": 54,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.21175,
+            "gpslong": 127.073,
+            "nodeid": "GGB233001282",
+            "nodenm": "예당마을.롯데캐슬(중)",
+            "nodeno": 37587,
+            "nodeord": 55,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.2003833,
+            "gpslong": 127.06735,
+            "nodeid": "GGB233001220",
+            "nodenm": "다은마을(중)",
+            "nodeno": 37693,
+            "nodeord": 58,
+            "routeid": "GGB233000270"
+          },
+          {
+            "gpslati": 37.1913167,
+            "gpslong": 127.07455,
+            "nodeid": "GGB233001713",
+            "nodenm": "나루마을.한화꿈에그린2차",
+            "nodeno": 37745,
+            "nodeord": 60,
+            "routeid": "GGB233000270"
           }
         ]
-      }
+      },
+      "numOfRows": 1000,
+      "pageNo": 1,
+      "totalCount": 13
     }
   }
 }
