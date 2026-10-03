@@ -55,6 +55,41 @@
 | ✔ | GET | `/transit-lines/{id}/schedules/next?stopId=&direction=&at=&limit=` | 정적 시간표 기준 다음 출발 N대 (아래 "정적 시간표") |
 | ✔ | POST | `/traffic-signals` | 교차로 수동 등록 (좌표 + 이름) |
 | ✔ | GET | `/traffic-signals/nearby?lat=&lng=&radiusM=` | 근처 교차로 |
+| ✔ | GET | `/traffic-signals/{id}/cycles` | 그 교차로의 신호 주기 행 전부 (출처 무관, 아래 "신호 주기") |
+| ✔ | PUT | `/traffic-signals/{id}/cycles` | 사용자 관측(`USER_OBSERVED`) 주기 행 전체 교체 (#78) |
+
+### 신호 주기 (#78)
+실시간 신호가 없는 교차로(지금은 전부, #30)의 보행 대기는 주기 모델 `E[W] = R²/(2C)`로 계산한다
+(ALGORITHM 2.1(a)). 행이 없으면 기본값(C=120초, R=90초)이라, 현장에서 잰 적색·주기를 넣는 API다.
+
+```json
+// GET /traffic-signals/12/cycles  (PUT 응답도 같은 모양: 교체 후 전체 목록)
+[
+  { "id": 31, "dayType": "WEEKDAY", "timeBandStart": "07:00:00", "timeBandEnd": "10:00:00",
+    "cycleDurationSec": 150, "redDurationSec": 110, "source": "USER_OBSERVED", "createdAt": "…" },
+  { "id": 7, "dayType": "WEEKDAY", "timeBandStart": "07:00:00", "timeBandEnd": "10:00:00",
+    "cycleDurationSec": 140, "redDurationSec": 100, "source": "PUBLIC_API", "createdAt": "…" }
+]
+```
+
+- **GET**은 출처(`USER_OBSERVED` / `PUBLIC_API` / `DEFAULT_ASSUMPTION`)와 무관하게 전부 준다. 정렬은
+  `dayType`(`WEEKDAY` → `SATURDAY` → `SUNDAY_HOLIDAY`) → `timeBandStart` → 출처 우선순위
+- **PUT** 본문 `{ "cycles": [ { "dayType", "timeBandStart", "timeBandEnd", "cycleDurationSec", "redDurationSec" } ] }`
+  (최대 100행). 그 교차로의 `USER_OBSERVED` 행을 **통째로 바꾼다**. 빈 배열이면 사용자 행을 모두 지운다.
+  다른 출처 행은 건드리지 않는다
+- 시간대는 KST 하루 중 `[timeBandStart, timeBandEnd)` — 끝 시각은 포함하지 않는다. `HH:mm[:ss]`, 초 미만은 버린다.
+  하루 끝까지는 `23:59:59`(마지막 1초는 기본값으로 떨어지지만 무시할 만하다)
+- 검증 실패는 `400`이고 `detail`에 요청 배열의 행 번호(`cycles[i]`)를 넣는다. 하나라도 틀리면 아무것도 바꾸지 않는다
+  - `30 ≤ cycleDurationSec ≤ 300` — 도심 교차로 주기(보통 1~3분)를 넉넉히 감싼 범위. 초/분 오타를 막는다
+  - `0 < redDurationSec < cycleDurationSec` — DB CHECK와 같이 **적색이 주기 전체일 수는 없다** (초록이 0초인 보행 신호는 없다)
+  - `timeBandStart < timeBandEnd` — 자정을 넘는 시간대는 두 행으로 나눈다 (스키마 주석의 가정)
+  - 같은 `dayType` 안에서 시간대가 겹치면 안 된다. 끝과 시작이 맞닿는 것(`07:00–09:00`, `09:00–12:00`)은 된다
+  - 필드 누락·알 수 없는 `dayType`은 본문 해석 실패로 `400`
+- 다른 출처 행과는 **겹쳐도 된다**. 같은 시각을 담는 행이 여럿이면 analytics가 출처 우선순위
+  `USER_OBSERVED > PUBLIC_API > DEFAULT_ASSUMPTION`으로 하나를 고른다 (DATA_MODEL `traffic_signal_cycles`).
+  그래서 사용자 행은 공공 데이터가 나중에 들어와도 지워지거나 가려지지 않는다
+- 교차로는 사용자 소유가 아닌 공용 마스터라(`POST /traffic-signals`, `/nearby`와 같이) 소유자 검사는 없다.
+  없는 교차로는 `404`
 
 ### 기본 목표 도착 시각 (#68)
 경로는 일괄 추천(analytics `recommend --all-active-routes`, cron 한 줄)이 쓸 기본 목표를 갖는다.

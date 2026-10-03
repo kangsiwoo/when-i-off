@@ -227,6 +227,14 @@ def _report(result: RecommendationResult) -> None:
             if inputs.walking_speed is not None:
                 speed = _resolved(inputs.walking_speed, "m/s", 2)
                 typer.echo(f"  leg {leg.route_leg_id}: walk, speed {speed}")
+            for crossing in inputs.crossings:
+                cycle = crossing.resolved.cycle
+                source = crossing.resolved.source or "default"
+                typer.echo(
+                    f"      signal {crossing.traffic_signal_id}:"
+                    f" cycle {cycle.cycle_sec:.0f}s red {cycle.red_sec:.0f}s,"
+                    f" mean wait {cycle.wait().mean:.1f}s ({source})"
+                )
             continue
         chosen = chosen_by_leg[leg.route_leg_id]
         used = result.candidate_inputs(leg.route_leg_id, chosen.candidate)

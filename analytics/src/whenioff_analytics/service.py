@@ -17,9 +17,9 @@ from whenioff_analytics.io.line_stops import resolve_leg_direction
 from whenioff_analytics.io.recommendations import RecommendationRow, SaveOutcome, save_recommendation
 from whenioff_analytics.io.routes import CommuteRoute, RouteLeg, load_route
 from whenioff_analytics.io.schedules import load_scheduled_departures
-from whenioff_analytics.io.signals import CycleBand, load_signal_cycles, select_cycle
+from whenioff_analytics.io.signals import CycleBand, ResolvedCycle, load_signal_cycles, resolve_cycle
 from whenioff_analytics.model.calibration import WalkingProfile
-from whenioff_analytics.model.distributions import Moments, planned_walk_distance_m, walk_time
+from whenioff_analytics.model.distributions import planned_walk_distance_m, walk_time
 from whenioff_analytics.model.lookup import (
     Resolved,
     ResolvedCandidate,
@@ -52,12 +52,24 @@ class IncompleteLegError(Exception):
 
 
 @dataclass(frozen=True)
+class CrossingInput:
+    """WALK 구간이 건너는 교차로 하나에 쓴 신호 주기와 그 출처 (#78)."""
+
+    traffic_signal_id: int
+    resolved: ResolvedCycle
+
+
+@dataclass(frozen=True)
 class LegInputs:
-    """구간 하나의 입력 출처. WALK는 `walking_speed`, TRANSIT은 `candidates`(후보 순서 그대로)."""
+    """구간 하나의 입력 출처.
+
+    WALK는 `walking_speed`와 `crossings`(교차로 순서), TRANSIT은 `candidates`(후보 순서 그대로).
+    """
 
     route_leg_id: int
     walking_speed: Resolved | None = None
     candidates: tuple[ResolvedCandidate, ...] = ()
+    crossings: tuple[CrossingInput, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -146,18 +158,21 @@ def _walk_leg(
     cycles: dict[int, tuple[CycleBand, ...]],
     band_time: time,
 ) -> tuple[WalkLeg, LegInputs]:
-    waits = tuple(_crossing_wait(cycles, crossing.traffic_signal_id, band_time) for crossing in leg.crossings)
+    crossings = tuple(
+        CrossingInput(c.traffic_signal_id, _crossing_cycle(cycles, c.traffic_signal_id, band_time))
+        for c in leg.crossings
+    )
+    waits = tuple(c.resolved.cycle.wait() for c in crossings)
     speed = resolve_walking_speed(profiles, leg.id)
     walk = WalkLeg(route_leg_id=leg.id, duration=walk_time(_walk_distance_m(leg), speed.value, waits))
-    return walk, LegInputs(route_leg_id=leg.id, walking_speed=speed)
+    return walk, LegInputs(route_leg_id=leg.id, walking_speed=speed, crossings=crossings)
 
 
-def _crossing_wait(
+def _crossing_cycle(
     cycles: dict[int, tuple[CycleBand, ...]], traffic_signal_id: int, band_time: time
-) -> Moments:
+) -> ResolvedCycle:
     """실시간 신호 상태(ALGORITHM 2.1(b))가 들어올 자리. 지금은 주기 모델뿐이다."""
-    cycle = select_cycle(cycles.get(traffic_signal_id, ()), band_time) or defaults.DEFAULT_SIGNAL_CYCLE
-    return cycle.wait()
+    return resolve_cycle(cycles.get(traffic_signal_id, ()), band_time)
 
 
 def _walk_distance_m(leg: RouteLeg) -> float:

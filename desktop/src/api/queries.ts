@@ -12,6 +12,7 @@ import {
   type CreateCommuteRouteRequest,
   type RouteLegRequest,
   type SignalCrossingRequest,
+  type TrafficSignalCycleRequest,
   type TransitMode,
   type UpdateBoardingAttemptRequest,
   type UpdateCommuteRouteRequest,
@@ -255,6 +256,37 @@ export function useCreateSignal() {
     mutationFn: async (body: { lat: number; lng: number; name?: string }) =>
       unwrap(await api.POST("/api/v1/traffic-signals", { body })),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["traffic-signals"] }),
+  });
+}
+
+/** 교차로의 신호 주기 행 전부 (#78). 출처 무관, day_type → 시간대 → 출처 우선순위 순. */
+export function useSignalCycles(signalId: number) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["traffic-signals", signalId, "cycles"],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/traffic-signals/{id}/cycles", {
+          params: { path: { id: signalId } },
+          signal,
+        }),
+      ),
+  });
+}
+
+/** `USER_OBSERVED` 행 전체 교체 (#78). 응답(교체 후 전체 목록)을 바로 캐시에 넣는다. */
+export function useReplaceSignalCycles(signalId: number) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (cycles: TrafficSignalCycleRequest[]) =>
+      unwrap(
+        await api.PUT("/api/v1/traffic-signals/{id}/cycles", {
+          params: { path: { id: signalId } },
+          body: { cycles },
+        }),
+      ),
+    onSuccess: (rows) => queryClient.setQueryData(["traffic-signals", signalId, "cycles"], rows),
   });
 }
 

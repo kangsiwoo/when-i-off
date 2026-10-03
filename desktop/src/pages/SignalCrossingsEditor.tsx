@@ -12,6 +12,7 @@ import {
   type CrossingDraft,
 } from "../legs/legRules";
 import { formatLatLng, type LatLng } from "../map/geo";
+import { SignalCycleEditor } from "./SignalCycleEditor";
 import { SaveStatus } from "./Status";
 
 /**
@@ -50,6 +51,8 @@ export function SignalCrossingsEditor({
   const [newName, setNewName] = useState("");
   // 방금 등록한 교차로는 근처 목록을 다시 받기 전에도 이름이 보이게 따로 들고 있는다.
   const [created, setCreated] = useState<TrafficSignal[]>([]);
+  // 신호 주기 편집기를 연 교차로 (#78). 교차로는 공용 마스터라 crossing 저장과 무관하게 바로 연다.
+  const [cyclesOf, setCyclesOf] = useState<number | null>(null);
   const byId = new Map([...created, ...(signals ?? [])].map((s) => [s.id, s]));
   const unused = (signals ?? []).filter((s) => !items.some((i) => i.trafficSignalId === s.id));
 
@@ -141,9 +144,23 @@ export function SignalCrossingsEditor({
               >
                 빼기
               </button>
+              <button
+                type="button"
+                className="link-button"
+                aria-expanded={cyclesOf === it.trafficSignalId}
+                onClick={() =>
+                  setCyclesOf(cyclesOf === it.trafficSignalId ? null : it.trafficSignalId)
+                }
+              >
+                신호 주기
+              </button>
             </li>
           ))}
         </ol>
+      )}
+
+      {cyclesOf != null && items.some((it) => it.trafficSignalId === cyclesOf) && (
+        <SignalCycleEditor signalId={cyclesOf} name={signalName(byId.get(cyclesOf), cyclesOf)} />
       )}
 
       <p className="small">
