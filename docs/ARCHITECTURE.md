@@ -47,12 +47,12 @@
 ```
 
 ### iOS 앱 (Swift)
-- 등록된 출퇴근 경로(집 → 정류장/역 → 목적지)에 대해 백그라운드 위치 수집
-  (Significant Location Change + 정류장 근처 Geofence로 배터리 절약)
-- "탑승 시도" 이벤트 기록: 자동 감지(정류장 geofence 진입 후 일정 속도로 이동 시작 =
-  탑승 추정) + 사용자가 직접 탔다/못 탔다를 눌러 보정
-- GPS trace, 탑승 기록을 backend에 업로드
-- backend가 계산한 "언제 나가야 하는지" 추천을 알림/위젯으로 표시
+- 등록된 출퇴근 경로(집 → 정류장/역 → 목적지)의 지점에 geofence를 걸고, 연속 GPS는 trip 중에만 켠다
+  (배터리). 구조와 결정은 [ADR 0003](./adr/0003-ios-app-architecture.md)
+- "탑승 시도" 이벤트 기록: 정류장 geofence 진입 + 알림의 **탔음/놓쳤음** 버튼(v1). 놓치면 같은 구간의
+  다음 시도(`attemptSeq` + 1). 속도로 탑승을 추정하는 자동 감지는 기록이 쌓인 뒤 후속
+- GPS trace, 탑승 기록을 오프라인 outbox에 쌓았다가 서버의 멱등 키로 업로드 (지하에서도 유실 없이)
+- backend가 계산한 "언제 나가야 하는지" 추천을 로컬 알림으로 표시 (위젯·Live Activity는 후속)
 
 ### Backend (Kotlin + Spring)
 - 도메인 모델의 단일 진실 소스(source of truth), REST API 제공 ([API.md](./API.md))
