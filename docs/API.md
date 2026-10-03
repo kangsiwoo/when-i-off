@@ -257,6 +257,7 @@ upsert(`POST …/boarding-attempts`)와 `PATCH /boarding-attempts/{id}` 모두, 
 | ✔ | GET | `/commute-routes/{id}/recommendation?targetArrivalAt=` | 목표 도착 시각 기준 추천 출발 시각 조회 |
 | ✔ | GET | `/commute-routes/{id}/recommendation/latest` | 목표 시각과 무관하게 가장 최근 계산된 추천 |
 | ✔ | GET | `/commute-routes/{id}/recommendation-history?from=&to=` | 날짜별 추천(버전별 마지막 계산)과 그날 trip 결과 (추천 vs 실제, #62) |
+| ✔ | GET | `/commute-routes/{id}/recommendation-evaluations?from=&to=` | 기간의 추천 성과 평가 행과 `modelVersion`별 요약 (#79) |
 
 `recommendation` 엔드포인트는 Backend가 직접 계산하지 않고, Analytics가 미리 계산해
 `departure_recommendations`에 적재해 둔 값을 읽거나(캐시), 캐시가 없으면 즉석 계산을
@@ -332,6 +333,68 @@ Analytics 내부 API(`analytics-service:/internal/recommend`)에 위임하는 �
 - `trips`: 그날 이 경로의 trip 전부, `leftHomeAt` 순(없으면 뒤). `allLegsCaught`는 경로의 TRANSIT 구간마다
   `CAUGHT` 시도가 있는가(TRANSIT 구간이 없는 경로면 `true`), `missedCount`는 `MISSED` 시도 수(놓친 차 대수)
 - 추천 대비 출발 차이, 목표 대비 도착 차이(지각) 같은 파생값은 화면이 계산한다
+
+### 추천 성과 평가 (#79)
+
+`GET /commute-routes/{id}/recommendation-evaluations?from=2026-09-01&to=2026-09-30`
+
+```json
+{
+  "summaries": [
+    {
+      "modelVersion": "v1",
+      "n": 3,
+      "lateCount": 0,
+      "withArrival": 2,
+      "lateRate": 0.0,
+      "meanDepartureDiffSec": -2176.6666666666665,
+      "meanStopWaitSec": 532.5,
+      "allLegsCaughtCount": 2,
+      "allLegsCaughtRate": 0.6666666666666666
+    }
+  ],
+  "evaluations": [
+    {
+      "date": "2026-09-29",
+      "modelVersion": "v1",
+      "targetArrivalAt": "2026-09-29T00:00:00Z",
+      "recommendedLeaveHomeAt": "2026-09-28T22:58:50Z",
+      "actualLeftHomeAt": "2026-09-28T22:20:00Z",
+      "actualArrivedAt": "2026-09-28T23:17:00Z",
+      "departureDiffSec": -2330,
+      "arrivalDiffSec": -2580,
+      "isLate": false,
+      "allLegsCaught": true,
+      "missedCount": 1,
+      "avgStopWaitSec": 990,
+      "evaluatedAt": "2026-10-01T04:39:40.334602Z"
+    },
+    {
+      "date": "2026-10-01",
+      "modelVersion": "v1",
+      "targetArrivalAt": "2026-10-01T00:00:00Z",
+      "recommendedLeaveHomeAt": "2026-09-30T23:00:00Z",
+      "actualLeftHomeAt": "2026-09-30T22:18:00Z",
+      "departureDiffSec": -2520,
+      "allLegsCaught": false,
+      "missedCount": 1,
+      "evaluatedAt": "2026-10-01T04:40:52.605799Z"
+    }
+  ]
+}
+```
+
+- analytics `evaluate`(#72)가 쌓은 `recommendation_evaluations`([DATA_MODEL.md](./DATA_MODEL.md))를 읽기만 한다. 행이 생기는
+  조건(같은 날 추천과 trip이 둘 다 있어야 한다)과 값의 정의는 analytics/README.md `evaluate`. 배치가 돌기 전에는 비어 있다
+- `from`·`to`는 추천 이력과 같다: **필수** KST 날짜(`target_date`, 양끝 포함), 없거나 형식이 틀리거나 `to < from`이면 `400`,
+  경로가 없거나 내 것이 아니면 `404`. 평가가 없으면 두 배열 모두 빈 `200`
+- `evaluations`: 날짜 → `modelVersion` 순. 값이 없는 필드(도착 기록이 없으면 `actualArrivedAt`·`arrivalDiffSec`·`isLate` 등)는 키째로 빠진다
+- `summaries`: `modelVersion`별, 문자열 순. 정의는 analytics `summarize()`(CLI 요약 줄)와 같다
+  - `n`: 평가 수(= 평가한 날 수). `lateCount`/`withArrival`: 지각 수 / 도착 기록이 있는(`isLate`가 있는) 평가 수,
+    `lateRate = lateCount / withArrival`(0~1, 분모가 0이면 빠진다)
+  - `meanDepartureDiffSec`, `meanStopWaitSec`: 값이 있는 행만의 평균(초, 소수). 값이 있는 행이 없으면 빠진다
+  - `allLegsCaughtCount`/`allLegsCaughtRate`: 전 구간 탑승한 평가 수와 그 비율(분모 `n`)
+- 표시용 반올림·"표본 적음" 같은 판단은 화면이 한다
 
 ## 외부 데이터 동기화 (TAGO/KLID) — 관리 API
 

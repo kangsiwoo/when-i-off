@@ -1085,6 +1085,165 @@
         ],
         "type": "object"
       },
+      "RecommendationEvaluationResponse": {
+        "properties": {
+          "actualArrivedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actualLeftHomeAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "allLegsCaught": {
+            "type": "boolean"
+          },
+          "arrivalDiffSec": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "avgStopWaitSec": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "departureDiffSec": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "evaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "isLate": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "missedCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "recommendedLeaveHomeAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "targetArrivalAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allLegsCaught",
+          "date",
+          "evaluatedAt",
+          "missedCount",
+          "modelVersion",
+          "recommendedLeaveHomeAt",
+          "targetArrivalAt"
+        ],
+        "type": "object"
+      },
+      "RecommendationEvaluationSummaryResponse": {
+        "properties": {
+          "allLegsCaughtCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "allLegsCaughtRate": {
+            "format": "double",
+            "type": "number"
+          },
+          "lateCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "lateRate": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "meanDepartureDiffSec": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "meanStopWaitSec": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "n": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "withArrival": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "allLegsCaughtCount",
+          "allLegsCaughtRate",
+          "lateCount",
+          "modelVersion",
+          "n",
+          "withArrival"
+        ],
+        "type": "object"
+      },
+      "RecommendationEvaluationsResponse": {
+        "properties": {
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationEvaluationResponse"
+            },
+            "type": "array"
+          },
+          "summaries": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationEvaluationSummaryResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "evaluations",
+          "summaries"
+        ],
+        "type": "object"
+      },
       "RecommendationHistoryDayResponse": {
         "properties": {
           "date": {
@@ -2567,6 +2726,55 @@
         },
         "tags": [
           "departure-recommendation-controller"
+        ]
+      }
+    },
+    "/api/v1/commute-routes/{routeId}/recommendation-evaluations": {
+      "get": {
+        "operationId": "recommendationEvaluations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "routeId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationEvaluationsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "recommendation-evaluation-controller"
         ]
       }
     },

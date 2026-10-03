@@ -1,6 +1,10 @@
 import { lazy, Suspense } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
-import { useCommuteRoute, useRecommendationHistory } from "../api/queries";
+import {
+  useCommuteRoute,
+  useRecommendationEvaluations,
+  useRecommendationHistory,
+} from "../api/queries";
 import { addDays, formatKstTime, kstDate, kstToday } from "../kst";
 import {
   buildTableRows,
@@ -8,6 +12,7 @@ import {
   type Arrival,
   type TableRow,
 } from "../recommendations/history";
+import { EvaluationSummary } from "./EvaluationSummary";
 import { RouteTabs } from "./RouteTabs";
 import { ErrorMessage, Loading } from "./Status";
 
@@ -52,6 +57,7 @@ function RouteRecommendations({ id }: { id: number }) {
   const [{ from, to }, setRange] = useRange();
   const valid = DATE.test(from) && DATE.test(to) && from <= to;
   const history = useRecommendationHistory(id, from, to, valid);
+  const evaluations = useRecommendationEvaluations(id, from, to, valid);
   const today = kstToday();
 
   return (
@@ -112,6 +118,13 @@ function RouteRecommendations({ id }: { id: number }) {
       ) : (
         // 기간을 바꾸는 동안 앞 결과를 흐리게 들고 있는다 (레이아웃이 뛰지 않게).
         <div style={{ opacity: history.isPlaceholderData ? 0.5 : 1 }}>
+          {evaluations.isPending ? (
+            <Loading />
+          ) : evaluations.error ? (
+            <ErrorMessage error={evaluations.error} />
+          ) : (
+            <EvaluationSummary data={evaluations.data} days={history.data} from={from} to={to} />
+          )}
           <Suspense fallback={<Loading />}>
             <RecommendationCharts days={history.data} />
           </Suspense>

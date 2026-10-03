@@ -81,6 +81,26 @@ export function useRecommendationHistory(id: number, from: string, to: string, e
   });
 }
 
+/**
+ * 추천 성과 평가(#79): 기간의 평가 행과 `modelVersion`별 요약. 행은 analytics `evaluate` 배치가 만들므로 trip을
+ * 고쳐도 다음 배치 전까지 바뀌지 않는다(그래서 trip 보정 뒤 무효화하지 않는다).
+ */
+export function useRecommendationEvaluations(id: number, from: string, to: string, enabled = true) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["commute-routes", id, "recommendation-evaluations", from, to],
+    queryFn: async ({ signal }) =>
+      unwrap(
+        await api.GET("/api/v1/commute-routes/{routeId}/recommendation-evaluations", {
+          params: { path: { routeId: id }, query: { from, to } },
+          signal,
+        }),
+      ),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
 /** `GET /commute-trips`의 필터. 날짜는 KST 기준 trip 날짜(`yyyy-MM-dd`). */
 export interface TripFilter {
   routeId?: number;

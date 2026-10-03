@@ -24,6 +24,9 @@ export type DayType = PredictionCalibrationRow["dayType"];
 export type DepartureRecommendation = components["schemas"]["DepartureRecommendationResponse"];
 export type RecommendationHistoryDay = components["schemas"]["RecommendationHistoryDayResponse"];
 export type RecommendationHistoryTrip = components["schemas"]["RecommendationHistoryTripResponse"];
+export type RecommendationEvaluations = components["schemas"]["RecommendationEvaluationsResponse"];
+export type RecommendationEvaluationSummary =
+  components["schemas"]["RecommendationEvaluationSummaryResponse"];
 export type CreateCommuteRouteRequest = components["schemas"]["CreateCommuteRouteRequest"];
 export type UpdateCommuteRouteRequest = components["schemas"]["UpdateCommuteRouteRequest"];
 export type RouteLegRequest = components["schemas"]["RouteLegRequest"];

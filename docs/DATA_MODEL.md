@@ -362,7 +362,8 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
 - 원본(추천·trip·경로)이 지워지면 함께 지운다(`ON DELETE CASCADE`) — 다시 돌리면 같은 값이 나오는 파생값이다.
   배치는 평가한 날짜 범위 안에서 더는 매칭되지 않는 키의 행도 지운다. `evaluated_at`은 값이 바뀐 때만 움직인다
 
-자세한 규칙과 요약 출력은 analytics/README.md의 `evaluate`. desktop의 버전 비교 화면은 후속이다.
+자세한 규칙과 요약 출력은 analytics/README.md의 `evaluate`. backend는 읽기만 한다 — 기간의 행과 버전별 요약을
+`GET /commute-routes/{id}/recommendation-evaluations`(API.md, #79)로 주고 desktop "추천 vs 실제" 탭이 버전별 stat tile로 보여 준다.
 
 ## 보관 정책
 
