@@ -30,7 +30,7 @@ Phase 2(#4)의 iOS 앱은 실측 기록(`commute_trips`, `boarding_attempts`, `g
 |---|---|---|---|
 | `ios/WhenIOffKit` (기존) | API DTO, `APIClient`, `Timestamp`, `LocalDate`(KST) | Foundation | Linux `swift test` |
 | `ios/WhenIOffRecorder` (신규) | `GeofencePlanner`, `DirectionPolicy`, `Recorder`(상태기계), `Outbox`·`RetryPolicy`, `DepartureAlertPlanner`·`ColdStart`, `APIClient.send(_: OutboxRequest)` | Kit (경로 의존) | Linux `swift test` |
-| 앱 타깃 (다음 이슈) | CoreLocation·UserNotifications·BackgroundTasks·Keychain 어댑터, 파일 저장소, outbox 실행기(actor), SwiftUI 화면 | 두 패키지 | Xcode (macOS CI) |
+| 앱 타깃 `ios/App` (#84) | CoreLocation·UserNotifications·BackgroundTasks·Keychain 어댑터, 파일 저장소, outbox 실행기(메인 액터), SwiftUI 화면 | 두 패키지 | Xcode (macOS CI `ios-app-ci`) |
 
 **판단은 전부 Recorder에, 앱은 번역만 한다.** 시스템 이벤트를 `RecorderEvent`로 바꿔 넣고, 나온
 `RecorderEffect`(outbox 명령, GPS 켜기/끄기, 알림 띄우기)를 실행한다. 어댑터에 `if`가 생기면 그 판단을 Recorder로
@@ -82,7 +82,7 @@ geofence 반경은 "도착 근사"다. trip 중에는 GPS가 켜져 있어 이�
 
 ### 4. 기록 상태기계 (`Recorder`)
 I/O 없는 값 타입. `handle(_ event) -> [RecorderEffect]`이고 상태(`RecorderState`)는 `Codable`이라 앱이 매번 저장한다.
-사건의 시각은 **사건이 일어난 시각**이다 — geofence는 `CLMonitor.Event.date`, 버튼은 누른 시각.
+사건의 시각은 **사건이 일어난 시각**이다 — geofence는 `CLMonitor.Event.date`(`CLLocationManager` 어댑터는 전달된 시각 — 결과 참고), 버튼은 누른 시각.
 
 | 사건 | 조건 | 명령 |
 |---|---|---|
@@ -209,14 +209,34 @@ I/O 없는 값 타입. `handle(_ event) -> [RecorderEffect]`이고 상태(`Recor
 - **Core Data/SwiftData outbox**: 항목이 많아야 수백 개라 JSON 파일 하나면 충분하고 Linux에서 같은 코드로 테스트된다.
   커지면 `OutboxStore` 구현만 바꾼다
 - **`CLMonitor` 대신 `CLLocationManager` 지역 감시**: 상태기계와 무관하다(어댑터 교체). 1순위는 `CLMonitor`
-  (iOS 17, 이벤트에 `date`가 있고 조건이 재실행 뒤에도 유지된다). 실기기에서 백그라운드 전달이 불안정하면 교체한다
+  (iOS 17, 이벤트에 `date`가 있고 조건이 재실행 뒤에도 유지된다). 실기기에서 백그라운드 전달이 불안정하면 교체한다.
+  → #84는 `CLLocationManager`로 시작했다(결과 참고). 실기기에서 전달 시각이 실제 진입보다 많이 늦으면 `CLMonitor`로
+  바꿔 `date`를 쓴다
 
 ## 결과
 - `ios/WhenIOffRecorder` 패키지와 테스트가 이 결정을 구현한다(#82). `ios-ci`가 두 패키지를 matrix로 포맷·빌드
   (`-warnings-as-errors`)·테스트한다
-- 앱 타깃(XcodeGen `project.yml`, 어댑터, 화면, macOS CI 빌드)은 다음 이슈. 그때 실기기에서 확인할 것:
-  `CLMonitor` 백그라운드 전달·재실행(강제 종료 후 포함), 이벤트 `date`의 신뢰도, 지하역 진입 지연의 실제 크기,
-  백그라운드에서 GPS 시작이 되는지
+- 앱 타깃(XcodeGen `ios/App/project.yml`, 어댑터, 화면, macOS CI `ios-app-ci`)은 #84에서 만들었다. 구현하며
+  정한 것:
+  - **지역 감시는 `CLLocationManager.startMonitoring(for: CLCircularRegion)`으로 시작했다**(§대안의 1순위
+    `CLMonitor`가 아니다). 백그라운드 재실행 동작이 오래 알려진 API를 먼저 실기기에서 확인하기 위해서다. 대가로
+    사건에 발생 시각이 없어 **전달된 시각**을 사건 시각으로 쓴다(§4의 `CLMonitor.Event.date` 대신). 진입이 늦게 오는
+    만큼 시각도 늦게 잡히고, 그래서 trip 상세의 시각 보정이 필요하다. `CLMonitor`로 바꾸는 것은
+    `Platform/LocationService.swift` 하나의 교체다
+  - **outbox 실행기는 별도 actor가 아니라 메인 액터**(`OutboxDriver`)다. 사건 처리(`RecordingSession`)와 같은
+    액터라서 상태기계가 낸 명령이 낸 순서대로 outbox에 들어간다 — 다른 actor로 넘기면 `await` 사이에 순서가 바뀔 수
+    있고, 같은 trip의 기록은 순서가 서버 규칙이다. 네트워크 대기만 메인 밖에서 돈다
+  - 등록된 지역과 계획의 비교(`GeofencePlan.sync(registered:)`), "그날 이미 나섰나"(`DepartureAlertPlanner.alreadyLeft`),
+    지난 알림의 취소 버튼 거르기(`RecorderEvent.userCancelledTrip(TripKey?, at:)`)는 판단이라 Recorder에 두었다
+  - `UIBackgroundModes`는 `location`, `fetch`(BGAppRefreshTask)만. `processing`은 쓰는 작업이 없다
+  - 사건마다 순서: 상태기계 → 효과 실행(outbox 저장 포함) → 상태 저장. 둘 사이에 죽으면 상태기계가 한 걸음 뒤로
+    가지만 서버로 갈 기록은 남는다
+  - trip 상세의 시각 보정은 outbox를 거치지 않고 바로 PATCH한다(결과·400을 바로 보여 줘야 한다). 그 trip에 아직 보내지
+    않은 명령이 있으면 보정을 막는다(뒤에 나간 upsert가 고친 값을 덮어쓸 수 있다)
+  - Time Sensitive 알림 엔타이틀먼트는 아직 없다(무료 팀 서명 확인 전). 없으면 집중 모드에서 일반 알림으로 간다
+  - 앱 타깃은 Swift 5 언어 모드(엄격 동시성 minimal)다. 델리게이트 격리를 Swift 6에 맞추는 것은 실기기 확인 뒤
+- 실기기에서 확인할 것(#4 완료 기준): 지역 감시의 백그라운드 전달·재실행(강제 종료 후 포함), 전달 시각과 실제 진입의
+  차이, 지하역 진입 지연의 실제 크기, 백그라운드에서 GPS 시작이 되는지, 잠긴 기기에서 알림 액션 → 전송까지
 - 저장된 outbox는 Kit 요청 타입의 JSON이다. Kit DTO를 바꾸는 앱 업데이트 뒤 읽기에 실패하면 파일을 옆으로 옮기고
   기록 확인 화면에 알린다(조용히 버리지 않는다)
 - 후속 후보: trip 중 GPS로 지점 진입을 직접 판정해 시각을 보정(소프트웨어 geofence), 추천 응답에 구간별 샘플 수를 실어

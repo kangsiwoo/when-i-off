@@ -1,0 +1,14 @@
+// 앱 빌드 설정 (커밋됨). 기기·서버마다 다른 값은 Secrets.xcconfig(커밋 금지)에서 덮어쓴다.
+// 형식은 Secrets.example.xcconfig 참고. 파일이 없어도 빌드된다 (시뮬레이터·CI).
+
+WIO_BUNDLE_ID = com.kangsiwoo.whenioff
+DEVELOPMENT_TEAM =
+WIO_BASE_URL =
+WIO_API_TOKEN =
+
+#include? "Secrets.xcconfig"
+
+// ADR 0003 §9: 토큰은 Debug 빌드에서만 Info.plist에 실려 첫 실행에 Keychain으로 옮겨진다.
+// Release 번들에는 빈 값이 들어간다.
+WIO_BUNDLED_API_TOKEN =
+WIO_BUNDLED_API_TOKEN[config=Debug] = $(WIO_API_TOKEN)

@@ -1,0 +1,84 @@
+# XcodeGen 프로젝트 정의 (ADR 0003 §2). `.xcodeproj`는 생성물이라 커밋하지 않는다.
+#   cd ios/App && xcodegen generate && open WhenIOff.xcodeproj
+#
+# 앱은 얇은 어댑터다: 판단은 ../WhenIOffRecorder, API는 ../WhenIOffKit (둘 다 Linux CI에서 테스트됨).
+name: WhenIOff
+
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: ko
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+# 서명 팀·번들 ID·서버 주소는 Config/Base.xcconfig → (선택) Config/Secrets.xcconfig 에서 온다.
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # 앱 타깃은 Swift 5 언어 모드로 둔다. CoreLocation·UserNotifications 델리게이트의 액터 격리를 Swift 6 모드로
+    # 맞추는 일은 실기기 확인 뒤에 한다. 패키지(Kit, Recorder)는 자기 Package.swift대로 Swift 6 모드다.
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+packages:
+  WhenIOffKit:
+    path: ../WhenIOffKit
+  WhenIOffRecorder:
+    path: ../WhenIOffRecorder
+
+targets:
+  WhenIOff:
+    type: application
+    platform: iOS
+    sources:
+      - path: WhenIOff
+    settings:
+      base:
+        PRODUCT_NAME: WhenIOff
+        PRODUCT_BUNDLE_IDENTIFIER: $(WIO_BUNDLE_ID)
+        INFOPLIST_FILE: Support/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        # 호스트 앱에 붙는 단위 테스트가 패키지 심볼을 앱 실행 파일에서 찾는다. Debug에서 앱이 쓰지 않는
+        # 패키지 코드가 지워지지 않게 한다.
+        DEAD_CODE_STRIPPING: NO
+      configs:
+        Release:
+          DEAD_CODE_STRIPPING: YES
+    dependencies:
+      - package: WhenIOffKit
+      - package: WhenIOffRecorder
+
+  WhenIOffTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: WhenIOffTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(WIO_BUNDLE_ID).tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - target: WhenIOff
+
+schemes:
+  WhenIOff:
+    build:
+      targets:
+        WhenIOff: all
+        WhenIOffTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - WhenIOffTests
+    archive:
+      config: Release

@@ -33,6 +33,12 @@ ios/**/*.xcuserstate
 ios/**/DerivedData/
 ios/**/*.xcconfig
 !ios/**/*.example.xcconfig
+# 비밀이 없는 공용 빌드 설정 (Secrets.xcconfig를 선택적으로 include)
+!ios/App/Config/Base.xcconfig
+# XcodeGen 생성물 (ios/App/project.yml이 진실)
+ios/**/*.xcodeproj/
+ios/**/*.xcworkspace/
+ios/App/build/
 ios/**/Pods/
 # SwiftPM 빌드 산출물, Xcode가 패키지를 열 때 만드는 설정
 ios/**/.build/

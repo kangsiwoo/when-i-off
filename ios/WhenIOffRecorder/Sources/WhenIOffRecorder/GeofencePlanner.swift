@@ -16,8 +16,11 @@ public enum RegionRole: Codable, Sendable, Hashable {
         }
     }
 
+    /// 이 앱이 거는 지역 식별자의 접두사. 다른 접두사의 지역은 동기화에서 건드리지 않는다.
+    public static let identifierPrefix = "wio."
+
     /// 앱을 다시 설치하거나 계획을 다시 세워도 같은 지점은 같은 식별자를 갖는다 — 어댑터가 등록된 지역과
-    /// 계획을 식별자로 비교해 바뀐 것만 다시 건다.
+    /// 계획을 식별자로 비교해 바뀐 것만 다시 건다 (``GeofencePlan/sync(registered:tolerance:)``).
     var identifier: String {
         switch self {
         case .origin(let routeId): return "wio.o.\(routeId)"
@@ -134,5 +137,58 @@ public struct GeofencePlanner: Sendable {
             }
         }
         return plan
+    }
+}
+
+// MARK: - 등록 동기화
+
+/// 지금 OS에 등록돼 있는 지역. 어댑터가 `CLCircularRegion`에서 옮긴다.
+public struct MonitoredRegion: Sendable, Equatable {
+    public var identifier: String
+    public var center: Coordinate
+    public var radius: Double
+
+    public init(identifier: String, center: Coordinate, radius: Double) {
+        self.identifier = identifier
+        self.center = center
+        self.radius = radius
+    }
+}
+
+/// 등록된 지역을 계획에 맞추려면 할 일. 한도(20개) 때문에 `stop`을 먼저 실행한다.
+public struct GeofenceSync: Sendable, Equatable {
+    /// 그만 감시할 식별자 (정렬됨).
+    public var stop: [String]
+    /// 새로 (또는 다시) 걸 지역 (계획 순).
+    public var start: [PlannedRegion]
+
+    public var isEmpty: Bool { stop.isEmpty && start.isEmpty }
+}
+
+extension GeofencePlan {
+    /// 식별자는 역할에서 만들어지므로 다시 계획해도 같은 지점은 같은 식별자다. 바뀐 것만 다시 건다 —
+    /// 그대로 둔 지역은 OS가 이미 아는 안/밖 상태를 잃지 않는다.
+    ///
+    /// 이 앱의 식별자(``RegionRole/identifierPrefix``)가 아닌 지역은 건드리지 않는다. 같은 식별자라도 중심이나
+    /// 반경이 `tolerance`(m)보다 많이 바뀌었으면(경로의 정류장을 고쳤다) 내렸다가 다시 건다.
+    public func sync(registered: [MonitoredRegion], tolerance: Double = 1) -> GeofenceSync {
+        let ours = registered.filter { $0.identifier.hasPrefix(RegionRole.identifierPrefix) }
+        let wanted = Dictionary(regions.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
+        var keep = Set<String>()
+        var stop: [String] = []
+        for region in ours {
+            if let planned = wanted[region.identifier], !keep.contains(region.identifier),
+                planned.center.distance(to: region.center) <= tolerance,
+                abs(planned.radius - region.radius) <= tolerance
+            {
+                keep.insert(region.identifier)
+            } else {
+                stop.append(region.identifier)
+            }
+        }
+        return GeofenceSync(
+            stop: Array(Set(stop)).sorted(),
+            start: regions.filter { !keep.contains($0.identifier) }
+        )
     }
 }

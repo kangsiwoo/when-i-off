@@ -1,0 +1,75 @@
+name: ios-app-ci
+
+# iOS 앱 타깃 (ios/App, XcodeGen). 패키지(Kit, Recorder)의 포맷·Linux 테스트는 ios-ci가 한다.
+# 여기서는 Xcode로 앱을 만들 수 있는지와 앱 단위 테스트(어댑터 ↔ 기록 코어)를 시뮬레이터에서 본다.
+# 서명은 하지 않는다 (팀·비밀이 필요 없다). 실기기 확인은 scripts/ios-device-run.sh.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-app-ci.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-app-ci.yml"
+
+concurrency:
+  group: ios-app-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: WhenIOff (simulator)
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: ios/App
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Generate project
+        # 비밀 없이 빌드한다: 예시를 그대로 복사하면 서버 주소만 예시 값이고 팀·토큰은 비어 있다.
+        run: |
+          cp Config/Secrets.example.xcconfig Config/Secrets.xcconfig
+          xcodegen generate
+
+      - name: Pick simulator
+        # 러너 이미지마다 설치된 시뮬레이터 이름이 달라 이름을 고정하지 않는다. 가장 최신 iOS의 첫 iPhone.
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((k for k in devices if ".iOS-" in k),
+                            key=lambda k: [int(x) for x in k.split(".iOS-")[1].split("-")])
+          for runtime in reversed(runtimes):
+              for d in devices[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit(0)
+          sys.exit("no iPhone simulator")
+          ')
+          echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Build for testing
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project WhenIOff.xcodeproj -scheme WhenIOff -configuration Debug \
+            -destination "id=$SIMULATOR_UDID" -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project WhenIOff.xcodeproj -scheme WhenIOff -configuration Debug \
+            -destination "id=$SIMULATOR_UDID" -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO

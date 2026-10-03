@@ -19,7 +19,8 @@ public struct LocationSample: Codable, Sendable, Equatable {
     }
 }
 
-/// 상태기계에 들어가는 사건. 시각은 **사건이 일어난 시각**이다 (geofence는 `CLMonitor.Event.date`, 버튼은 누른 시각).
+/// 상태기계에 들어가는 사건. 시각은 **사건이 일어난 시각**이다 (geofence는 OS가 준 시각 — `CLMonitor.Event.date`,
+/// 그것이 없는 `CLLocationManager` 어댑터는 전달된 시각 — 버튼은 누른 시각).
 public enum RecorderEvent: Sendable, Equatable {
     case regionExited(String, at: Date)
     case regionEntered(String, at: Date)
@@ -28,8 +29,9 @@ public enum RecorderEvent: Sendable, Equatable {
     case userCaught(legId: Int64?, attemptSeq: Int?, at: Date, departedAt: Date?)
     /// 놓쳤음. 같은 구간의 다음 차는 `attemptSeq` + 1로 기록한다 (#38).
     case userMissed(legId: Int64?, attemptSeq: Int?, at: Date, departedAt: Date?, notes: String?)
-    /// 평소와 다른 시각에 시작된 기록을 사용자가 취소했다.
-    case userCancelledTrip(at: Date)
+    /// 평소와 다른 시각에 시작된 기록을 사용자가 취소했다. `trip`은 알림에 실어 둔 키다 — 지금 기록 중인 trip과
+    /// 다르면 지난 알림을 누른 것이라 무시한다. `nil`이면(앱 화면의 버튼) 지금 trip을 취소한다.
+    case userCancelledTrip(TripKey?, at: Date)
     case location(LocationSample)
     /// 주기 신호 (GPS 묶음 업로드, 오래된 trip 정리). 앱이 깨어 있을 때 30초마다, 그리고 깨어날 때마다.
     case tick(Date)
@@ -208,8 +210,8 @@ public struct Recorder: Sendable {
         case .userMissed(let legId, let attemptSeq, let at, let departedAt, let notes):
             userAnswered(
                 legId: legId, attemptSeq: attemptSeq, departedAt: departedAt ?? at, missed: notes ?? "", &effects)
-        case .userCancelledTrip:
-            cancelTrip(&effects)
+        case .userCancelledTrip(let key, _):
+            if key == nil || key == state.trip?.key { cancelTrip(&effects) }
         case .location(let sample):
             location(sample, &effects)
         case .tick(let now):
