@@ -53,6 +53,9 @@
   다음 시도(`attemptSeq` + 1). 속도로 탑승을 추정하는 자동 감지는 기록이 쌓인 뒤 후속
 - GPS trace, 탑승 기록을 오프라인 outbox에 쌓았다가 서버의 멱등 키로 업로드 (지하에서도 유실 없이)
 - backend가 계산한 "언제 나가야 하는지" 추천을 로컬 알림으로 표시 (위젯·Live Activity는 후속)
+- 코드는 셋으로 나뉜다: API 클라이언트 `ios/WhenIOffKit`, 판단(geofence 계획·기록 상태기계·outbox)
+  `ios/WhenIOffRecorder` — 둘 다 Linux CI에서 테스트 — 그리고 시스템 프레임워크를 잇는 얇은 앱 타깃 `ios/App`
+  (XcodeGen, macOS CI). [ios/README.md](../ios/README.md)
 
 ### Backend (Kotlin + Spring)
 - 도메인 모델의 단일 진실 소스(source of truth), REST API 제공 ([API.md](./API.md))

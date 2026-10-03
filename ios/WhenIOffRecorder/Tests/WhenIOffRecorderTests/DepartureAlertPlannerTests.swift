@@ -133,3 +133,51 @@ struct ColdStartTests {
         #expect(ColdStart.samplesByLeg(trips) == [2: 2])
     }
 }
+
+@Suite("DepartureAlertPlanner.alreadyLeft")
+struct AlreadyLeftTests {
+    /// 2026-09-28 08:00 출발 권장.
+    let advice = DepartureAdvice(
+        routeId: 1, recommendedLeaveHomeAt: kst(8, 0), targetArrivalAt: kst(9, 0), catchProbability: 0.9,
+        modelVersion: "v2")
+
+    func serverTrip(routeId: Int64, tripDate: String) throws -> CommuteTrip {
+        let json = """
+            {"id":31,"routeId":\(routeId),"tripDate":"\(tripDate)","createdAt":"2026-09-27T22:31:06Z",
+             "boardingAttempts":[]}
+            """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            Timestamp.parse(try decoder.singleValueContainer().decode(String.self))!
+        }
+        return try decoder.decode(CommuteTrip.self, from: Data(json.utf8))
+    }
+
+    @Test func nothingRecordedThatDay() throws {
+        let yesterday = try serverTrip(routeId: 1, tripDate: "2026-09-27")
+        let otherRoute = try serverTrip(routeId: 2, tripDate: "2026-09-28")
+        #expect(
+            !DepartureAlertPlanner.alreadyLeft(
+                for: advice, serverTrips: [yesterday, otherRoute], recorder: RecorderState()))
+    }
+
+    @Test func serverAlreadyHasTheTrip() throws {
+        let today = try serverTrip(routeId: 1, tripDate: "2026-09-28")
+        #expect(DepartureAlertPlanner.alreadyLeft(for: advice, serverTrips: [today], recorder: RecorderState()))
+    }
+
+    /// 지하에서 나서 trip 생성이 아직 outbox에만 있어도 이미 나선 것이다.
+    @Test func localTripInProgressCounts() {
+        var recorder = Sample.recorder(at: kst(7, 0))
+        _ = recorder.handle(.regionExited(Sample.homeRegion, at: kst(7, 30)))
+        #expect(DepartureAlertPlanner.alreadyLeft(for: advice, serverTrips: [], recorder: recorder.state))
+    }
+
+    @Test func localTripEndedThatDayCounts() {
+        var state = RecorderState()
+        state.lastTripEndedAt[1] = kst(7, 40)
+        #expect(DepartureAlertPlanner.alreadyLeft(for: advice, serverTrips: [], recorder: state))
+        state.lastTripEndedAt[1] = kst(-5, 0)  // 전날 KST 19:00
+        #expect(!DepartureAlertPlanner.alreadyLeft(for: advice, serverTrips: [], recorder: state))
+    }
+}

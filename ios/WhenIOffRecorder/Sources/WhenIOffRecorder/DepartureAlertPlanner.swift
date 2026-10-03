@@ -180,6 +180,20 @@ public struct DepartureAlertPlanner: Sendable {
         return "\(pad(c.hour)):\(pad(c.minute))"
     }
 
+    /// 추천이 가리키는 날(출발 권장 시각의 KST 날짜)에 이 경로로 이미 나섰나 — ``plan(advice:pending:delivered:alreadyLeft:isColdStart:now:)``의
+    /// `alreadyLeft`. 서버 이력에 그날 trip이 있거나, 아직 올라가지 않은 로컬 기록이 그날 시작했거나 끝났다
+    /// (지하에서 나서 outbox에만 있는 trip도 센다).
+    public static func alreadyLeft(for advice: DepartureAdvice, serverTrips: [CommuteTrip], recorder: RecorderState)
+        -> Bool
+    {
+        let day = LocalDate(advice.recommendedLeaveHomeAt)
+        if serverTrips.contains(where: { $0.routeId == advice.routeId && $0.tripDate == day }) { return true }
+        if let trip = recorder.trip, trip.route.id == advice.routeId, LocalDate(trip.key.leftHomeAt) == day {
+            return true
+        }
+        return recorder.lastTripEndedAt[advice.routeId].map { LocalDate($0) == day } ?? false
+    }
+
     /// 다음에 추천을 다시 조회할 시각 (BGAppRefreshTask의 `earliestBeginDate`). 목표 120분 전부터 15분마다,
     /// 출발 시각이 지나면 `nil`(다음 조회는 앱을 열 때).
     public func nextRefreshAt(advice: DepartureAdvice?, now: Date) -> Date? {

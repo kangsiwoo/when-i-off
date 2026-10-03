@@ -160,3 +160,38 @@ struct DirectionPolicyTests {
             policy.routeToStart(exiting: [.destination(routeId: 1)], routes: Sample.routes, at: kst(7, 0)) == nil)
     }
 }
+
+@Suite("GeofencePlan.sync")
+struct GeofenceSyncTests {
+    let plan = Sample.plan(at: kst(7, 0))
+
+    func registered(_ region: PlannedRegion) -> MonitoredRegion {
+        MonitoredRegion(identifier: region.identifier, center: region.center, radius: region.radius)
+    }
+
+    @Test func firstLaunchStartsEverythingInPlanOrder() {
+        let sync = plan.sync(registered: [])
+        #expect(sync.stop.isEmpty)
+        #expect(sync.start == plan.regions)
+    }
+
+    @Test func unchangedRegionsAreLeftAlone() {
+        #expect(plan.sync(registered: plan.regions.map(registered)).isEmpty)
+    }
+
+    /// 정류장 좌표나 반경을 고치면 같은 식별자라도 다시 건다. 계획에서 빠진 지역은 내린다.
+    @Test func movedOrRemovedRegionsAreReplaced() {
+        var current = plan.regions.map(registered)
+        current[1].center.lat += 0.001  // 약 111m
+        current.append(MonitoredRegion(identifier: "wio.b.9.99", center: Sample.home, radius: 60))
+        let sync = plan.sync(registered: current)
+        #expect(sync.stop == [plan.regions[1].identifier, "wio.b.9.99"].sorted())
+        #expect(sync.start == [plan.regions[1]])
+    }
+
+    @Test func foreignRegionsAreNotTouched() {
+        let foreign = MonitoredRegion(identifier: "other.home", center: Sample.home, radius: 100)
+        let sync = plan.sync(registered: plan.regions.map(registered) + [foreign])
+        #expect(sync.isEmpty)
+    }
+}

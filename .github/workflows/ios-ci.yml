@@ -3,7 +3,7 @@ name: ios-ci
 # Swift 패키지는 Apple 전용 프레임워크에 의존하지 않아 Linux에서 빌드·테스트된다.
 # - WhenIOffKit: API 레이어 (#34)
 # - WhenIOffRecorder: geofence 계획·기록 상태기계·오프라인 outbox·출발 알림 계산 (#82, ADR 0003). Kit에 의존한다
-# 앱 타깃(SwiftUI/CoreLocation)은 Xcode가 필요해 여기서 돌지 않는다.
+# 앱 타깃(ios/App, SwiftUI/CoreLocation)은 Xcode가 필요해 빌드·테스트는 ios-app-ci(macOS)가 한다. 포맷만 여기서 본다.
 on:
   push:
     branches: [main]
@@ -37,3 +37,15 @@ jobs:
         run: swift build --build-tests -Xswiftc -warnings-as-errors
       - name: Tests
         run: swift test
+
+  app-format:
+    name: App (format)
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: ios/App
+    steps:
+      - uses: actions/checkout@v4
+      - name: Format
+        run: swift format lint --strict -r WhenIOff WhenIOffTests

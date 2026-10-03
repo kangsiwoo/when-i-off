@@ -255,7 +255,12 @@ struct RecorderTests {
         #expect(effects.contains(.confirmTripStart(key, .toHome)))
         #expect(effects.reviews == [.unusualDirection])
 
-        let cancel = recorder.handle(.userCancelledTrip(at: kst(8, 1)))
+        // 지난 trip의 알림에 남은 취소 버튼은 지금 기록을 건드리지 않는다.
+        let stale = TripKey(routeId: 2, leftHomeAt: kst(-6, 0))
+        #expect(recorder.handle(.userCancelledTrip(stale, at: kst(8, 1))).isEmpty)
+        #expect(recorder.state.trip?.key == key)
+
+        let cancel = recorder.handle(.userCancelledTrip(key, at: kst(8, 1)))
         #expect(cancel == [.discardOutbox(key), .stopLocationUpdates, .tripEnded(key)])
         #expect(recorder.state.trip == nil)
     }
