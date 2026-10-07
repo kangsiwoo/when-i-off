@@ -1,0 +1,10 @@
+// Cloudflare Workers 정적 자산 배포 설정 — 소개 페이지(site/)만 올린다. 서버 코드는 없다.
+// 대시보드 Git 연결 시: Build command 비움, Deploy command `npx wrangler deploy`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "when-i-off",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./site"
+  }
+}

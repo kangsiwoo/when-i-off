@@ -24,9 +24,23 @@ site/
 
 이 README도 `site/` 안에 있어 배포 시 `/README.md`로 열린다(`_headers`에서 `noindex`). 비밀값은 없다.
 
-## Cloudflare Pages 설정
+## Cloudflare 배포 설정
 
-대시보드 → Workers & Pages → Create → Pages → **Connect to Git** → `kangsiwoo/when-i-off`
+Cloudflare 대시보드의 기본 생성 흐름은 이제 **Workers**(정적 자산)다. 레포 루트의 `wrangler.jsonc`가
+`site/`를 자산 디렉터리로 지정하므로 Workers와 Pages 어느 쪽으로도 올릴 수 있다.
+
+**Workers (기본 흐름)** — Workers & Pages → Create → Import a repository → `kangsiwoo/when-i-off`
+
+| 항목 | 값 |
+|---|---|
+| Project name | `when-i-off` |
+| Build command | (비움) |
+| Deploy command | `npx wrangler deploy` (기본값) |
+
+주소는 `https://when-i-off.<계정 서브도메인>.workers.dev`. `_headers`는 Workers 정적 자산에도 적용되고,
+`site/.assetsignore`가 이 README를 업로드에서 뺀다.
+
+**Pages (대안)** — Create 화면 아래의 Pages 링크 → Connect to Git
 
 | 항목 | 값 |
 |---|---|
@@ -34,14 +48,10 @@ site/
 | Framework preset | `None` |
 | Build command | (비움) |
 | Build output directory | `site` |
-| Root directory (advanced) | (비움 = 레포 루트) |
-| 환경변수 | 없음 |
 
-배포되면 `https://<project>.pages.dev`가 생긴다. 프로젝트 이름을 `when-i-off`로 하면
-`when-i-off.pages.dev`(이미 쓰였으면 접미사가 붙는다). 커스텀 도메인은 나중에 Custom domains에서 붙인다.
-`main`에 머지될 때마다 자동 배포되고, 다른 브랜치는 Preview 배포가 된다(필요 없으면
-Settings → Builds → Branch control에서 끈다). `site/`와 무관한 커밋도 다시 배포되는데 정적 파일 복사뿐이라 문제 없다
-(줄이고 싶으면 Build watch paths에 `site/*`).
+주소는 `https://<project>.pages.dev`.
+
+어느 쪽이든 `main`에 머지될 때마다 자동 배포된다. 커스텀 도메인은 나중에 붙인다.
 
 로컬 확인: `npx serve site` (또는 `python3 -m http.server -d site`). `_headers`는 Cloudflare에서만 적용된다.
 
