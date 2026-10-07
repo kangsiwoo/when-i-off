@@ -518,6 +518,7 @@ export interface components {
       id: number;
       /** Format: date-time */
       leftHomeAt?: string | null;
+      recommendation?: components["schemas"]["DepartureRecommendationResponse"] | null;
       /** Format: int64 */
       routeId: number;
       /** Format: date */

@@ -1,11 +1,20 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { CommuteTrip } from "../api/client";
+import type { CommuteTrip, DepartureRecommendation } from "../api/client";
 import { detail, route, trip } from "../test/fixtures";
-import { ticketStamp, ticketTargetAt } from "../trips/ticket";
+import { buildTicket, ticketStamp, ticketTargetAt } from "../trips/ticket";
 import { TripTicket } from "./TripTicket";
 
 // 승차권(#96). fixtures의 trip: 집 07:30:00 → 동탄 07:43 차 놓침 → 07:57 차 탐 → 수서 08:18 하차 → 도착 08:25:30 (KST).
+
+const rec: DepartureRecommendation = {
+  recommendedLeaveHomeAt: "2026-09-10T22:20:00Z",
+  targetArrivalAt: "2026-09-10T23:20:00Z",
+  catchProbability: 0.95,
+  bufferSeconds: 600,
+  modelVersion: "v2",
+  computedAt: "2026-09-10T21:00:00Z",
+};
 
 const facts = () => within(screen.getByRole("article")).getAllByRole("definition");
 
@@ -63,19 +72,30 @@ describe("TripTicket", () => {
     expect(screen.getByText("—", { selector: ".ticket-time" })).toBeInTheDocument();
   });
 
-  it("취소 표시와 추천 출발 대비 차이", () => {
-    render(
-      <TripTicket
-        trip={trip}
-        route={route}
-        legs={detail.legs}
-        cancelled
-        recommendedLeaveAt="2026-09-10T22:20:00Z"
-      />,
-    );
+  it("취소 표시", () => {
+    render(<TripTicket trip={trip} route={route} legs={detail.legs} cancelled />);
     expect(screen.getByText("취소")).toHaveClass("stamp-cancelled");
-    expect(facts()[0]).toHaveTextContent("07:20");
-    expect(facts()[1]).toHaveTextContent("07:30 +10분");
+  });
+
+  it("trip의 추천(#98): 추천 출발·확률, 실제 − 추천, 목표는 추천의 목표 도착", () => {
+    const withRec: CommuteTrip = { ...trip, recommendation: rec };
+    render(<TripTicket trip={withRec} route={route} legs={detail.legs} />);
+    // 목표가 경로 기본 09:00이 아니라 추천의 08:20이라 08:25:30 도착은 지각이다
+    expect(facts().map((d) => d.textContent)).toEqual([
+      "07:20 95%",
+      "07:30 +10분",
+      "08:20",
+      "+6분",
+    ]);
+    expect(screen.getByText("08:20")).toHaveAttribute("title", "그날 추천의 목표 도착");
+    expect(screen.getByText("지각")).toHaveClass("stamp-late");
+  });
+
+  it("추천이 있어도 집 나선 시각이 없으면 차이는 비운다", () => {
+    const noLeave: CommuteTrip = { ...trip, leftHomeAt: null, recommendation: rec };
+    render(<TripTicket trip={noLeave} route={route} legs={detail.legs} />);
+    expect(facts()[0]).toHaveTextContent("07:20 95%");
+    expect(facts()[1]).toHaveTextContent(/^—$/);
   });
 });
 
@@ -84,6 +104,18 @@ describe("ticket 규칙", () => {
     expect(ticketTargetAt("2026-09-11", "09:00:00")).toBe("2026-09-11T00:00:00Z");
     expect(ticketTargetAt("2026-09-11", "18:30")).toBe("2026-09-11T09:30:00Z");
     expect(ticketTargetAt("2026-09-11", null)).toBeNull();
+  });
+
+  it("목표 출처: 추천 → 경로 기본값 → 없음", () => {
+    expect(buildTicket({ ...trip, recommendation: rec }, route).targetSource).toBe(
+      "recommendation",
+    );
+    const fromRoute = buildTicket(trip, route);
+    expect(fromRoute.targetSource).toBe("route");
+    expect(fromRoute.targetAt).toBe("2026-09-11T00:00:00Z");
+    expect(fromRoute.recommendedLeaveAt).toBeNull();
+    expect(fromRoute.catchProbability).toBeNull();
+    expect(buildTicket(trip).targetSource).toBeNull();
   });
 
   it("도장 순서: 취소 > 기록 중 > 도착(목표 없음) > 지각/정시", () => {
