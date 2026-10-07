@@ -2,6 +2,8 @@ package com.kangsiwoo.whenioff.trip.domain
 
 import com.kangsiwoo.whenioff.route.domain.CommuteRoute
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.Instant
 import java.time.LocalDate
 
@@ -29,5 +31,29 @@ interface DepartureRecommendationRepository : JpaRepository<DepartureRecommendat
         commuteRoute: CommuteRoute,
         from: LocalDate,
         to: LocalDate,
+    ): List<DepartureRecommendation>
+
+    /**
+     * 승차권(#98): 주어진 trip들의 (경로, `trip_date`)마다 `modelVersion`별 마지막 계산 한 건씩 — 추천 이력(#62)의
+     * `recommendations`와 같은 기준(`computed_at DESC, id DESC`)이다. trip 수와 무관하게 한 번에 읽고, 버전 중 하나를
+     * 고르는 것은 [com.kangsiwoo.whenioff.trip.application.TripRecommendations]가 한다.
+     * `idx_departure_reco_lookup (commute_route_id, target_date, computed_at DESC)`를 탄다.
+     */
+    @Query(
+        nativeQuery = true,
+        value = """
+            SELECT DISTINCT ON (r.commute_route_id, r.target_date, r.model_version) r.*
+            FROM departure_recommendations r
+            WHERE EXISTS (
+                SELECT 1 FROM commute_trips t
+                WHERE t.id IN (:tripIds)
+                  AND t.commute_route_id = r.commute_route_id
+                  AND t.trip_date = r.target_date
+            )
+            ORDER BY r.commute_route_id, r.target_date, r.model_version, r.computed_at DESC, r.id DESC
+        """,
+    )
+    fun findLatestPerVersionForTrips(
+        @Param("tripIds") tripIds: Collection<Long>,
     ): List<DepartureRecommendation>
 }

@@ -47,8 +47,19 @@ export interface Ticket {
   to: string;
   leftHomeAt: string | null;
   arrivedAt: string | null;
-  /** 경로의 기본 목표 도착 시각을 그날 KST에 붙인 UTC ISO. 경로에 없으면 null */
+  /** 그날 추천의 출발 시각(UTC ISO). trip 응답에 추천이 없으면 null */
+  recommendedLeaveAt: string | null;
+  /** 실제 출발 − 추천 출발(초). 둘 중 하나라도 없으면 null. 양수면 추천보다 늦게 나섬 */
+  leaveDiffSec: number | null;
+  /** 추천의 놓치지 않을 확률(0~1). 추천이 없으면 null */
+  catchProbability: number | null;
+  /**
+   * 목표 도착(UTC ISO): 그날 추천의 `targetArrivalAt`, 없으면 경로의 기본 목표 도착 시각을 그날 KST에 붙인 값.
+   * 둘 다 없으면 null
+   */
   targetAt: string | null;
+  /** `targetAt`을 어디서 가져왔나 */
+  targetSource: "recommendation" | "route" | null;
   /** 도착 − 목표(초). 둘 중 하나라도 없으면 null. 양수면 늦게 도착 */
   arrivalDiffSec: number | null;
   stamp: TicketStamp;
@@ -133,6 +144,11 @@ export function ticketSegments(trip: CommuteTrip, legs?: RouteLeg[]): TicketSegm
   return segments;
 }
 
+const secondsBetween = (a: string, b: string) => Math.round((Date.parse(a) - Date.parse(b)) / 1000);
+
+/** 확률 0~1 → `95%` (반올림, 추천 vs 실제 표와 같다). */
+export const formatProbability = (p: number) => `${Math.round(p * 100)}%`;
+
 export function buildTicket(
   trip: CommuteTrip,
   route?: CommuteRoute,
@@ -142,18 +158,24 @@ export function buildTicket(
   const toHome = route?.direction === "TO_HOME";
   const leftHomeAt = trip.leftHomeAt ?? null;
   const arrivedAt = trip.arrivedDestinationAt ?? null;
-  const targetAt = ticketTargetAt(trip.tripDate, route?.defaultTargetArrivalTime);
-  const arrivalDiffSec =
-    arrivedAt && targetAt
-      ? Math.round((Date.parse(arrivedAt) - Date.parse(targetAt)) / 1000)
-      : null;
+  // 추천은 trip 응답에 실려 온다(#98): 그날 버전별 마지막 계산 중 가장 늦게 계산된 것 — 추천 vs 실제 표의 지각 기준과 같다.
+  const rec = trip.recommendation ?? null;
+  const routeTargetAt = ticketTargetAt(trip.tripDate, route?.defaultTargetArrivalTime);
+  const targetAt = rec?.targetArrivalAt ?? routeTargetAt;
+  const arrivalDiffSec = arrivedAt && targetAt ? secondsBetween(arrivedAt, targetAt) : null;
+  const recommendedLeaveAt = rec?.recommendedLeaveHomeAt ?? null;
   return {
     direction: route ? (toHome ? "퇴근" : "출근") : "이동",
     from: route ? (toHome ? "회사" : "집") : "출발",
     to: route ? (toHome ? "집" : "회사") : "도착",
     leftHomeAt,
     arrivedAt,
+    recommendedLeaveAt,
+    leaveDiffSec:
+      leftHomeAt && recommendedLeaveAt ? secondsBetween(leftHomeAt, recommendedLeaveAt) : null,
+    catchProbability: rec?.catchProbability ?? null,
     targetAt,
+    targetSource: rec ? "recommendation" : routeTargetAt ? "route" : null,
     arrivalDiffSec,
     stamp: ticketStamp(arrivedAt, arrivalDiffSec, cancelled),
     segments: ticketSegments(trip, legs),

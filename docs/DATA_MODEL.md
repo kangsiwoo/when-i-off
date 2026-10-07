@@ -354,6 +354,8 @@ Analytics가 계산한 최종 산출물. "이 경로로, 이 목표 도착 시�
   입력은 0이라 0이면 콜드스타트, 그 밖에는 `MIN_CALIBRATION_SAMPLES`(5) 이상이다. 성공확률은 TRANSIT 입력으로만
   계산되므로 도보 표본은 세지 않는다. NULL은 V8 이전 행 또는 TRANSIT 구간이 없는 경로("모름")
 - 적재는 값(출발 시각·확률·여유·표본 수)이 최신 행과 같으면 아무것도 쓰지 않고, 하나라도 다르면 새 행을 덧붙인다
+- trip 응답의 `recommendation`(#98, API.md "trip 응답의 그날 추천")은 trip의 (경로, `trip_date`) = (경로, `target_date`)로
+  이 테이블을 읽는다(`idx_departure_reco_lookup`). FK로 trip에 묶지 않고 매 조회 때 고른다
 
 ### `recommendation_evaluations`
 추천 성과 평가 (V7, #72). (경로, `target_date`, `model_version`)마다 한 행으로 "추천대로 나갔을 때 실제로

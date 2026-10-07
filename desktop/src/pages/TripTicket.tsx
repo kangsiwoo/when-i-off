@@ -6,6 +6,7 @@ import { formatKstTime } from "../kst";
 import { formatSignedMinutes } from "../recommendations/history";
 import {
   buildTicket,
+  formatProbability,
   STAMP_LABEL,
   ticketDate,
   ticketNo,
@@ -17,7 +18,7 @@ import { TripResult } from "./TripResult";
 /**
  * 승차권(#96): 출근·퇴근 한 번 = 한 장. 왼쪽 본권(방향·날짜·번호, 출발 → 도착, 구간 띠)과 절취선 너머의
  * 보관권(추천/실제 출발, 목표 대비 도착, 도장). 색·글꼴은 디자인 토큰이고 모양은 전부 CSS(index.css `.ticket`)다.
- * 기록에 없는 값은 "—"로 둔다.
+ * 추천은 trip 응답의 `recommendation`(#98)이라 API 호출이 늘지 않는다. 기록에 없는 값은 "—"로 둔다.
  */
 export function TripTicket({
   trip,
@@ -27,7 +28,6 @@ export function TripTicket({
   href,
   compact = false,
   cancelled = false,
-  recommendedLeaveAt = null,
 }: {
   trip: CommuteTrip;
   route?: CommuteRoute;
@@ -38,11 +38,6 @@ export function TripTicket({
   compact?: boolean;
   /** 서버는 취소한 trip을 지우므로 화면이 넘길 때만 (#88) */
   cancelled?: boolean;
-  /**
-   * 그날 추천 출발(UTC ISO). trip 응답에는 추천이 없어 지금 화면들은 넘기지 않는다(API 호출을 늘리지 않음) —
-   * 없으면 "—"이고 차이도 비운다. 추천과의 비교는 경로의 "추천 vs 실제" 탭에 있다.
-   */
-  recommendedLeaveAt?: string | null;
 }) {
   const t = buildTicket(trip, route, legs, cancelled);
   const summary = summarizeTrip(trip, legs);
@@ -85,19 +80,34 @@ export function TripTicket({
       </div>
       <div className="ticket-stub">
         <dl className="ticket-facts">
-          <Fact label="추천 출발">{recommendedLeaveAt ? hm(recommendedLeaveAt) : "—"}</Fact>
-          <Fact label="실제 출발">
-            {t.leftHomeAt ? hm(t.leftHomeAt) : "—"}
-            {t.leftHomeAt && recommendedLeaveAt && (
-              <small>
+          <Fact label="추천 출발">
+            {t.recommendedLeaveAt ? hm(t.recommendedLeaveAt) : "—"}
+            {t.catchProbability !== null && (
+              <small title="추천대로 나서면 놓치지 않을 확률">
                 {" "}
-                {formatSignedMinutes(
-                  Math.round((Date.parse(t.leftHomeAt) - Date.parse(recommendedLeaveAt)) / 1000),
-                )}
+                {formatProbability(t.catchProbability)}
               </small>
             )}
           </Fact>
-          <Fact label="목표 도착">{t.targetAt ? hm(t.targetAt) : "—"}</Fact>
+          <Fact label="실제 출발">
+            {t.leftHomeAt ? hm(t.leftHomeAt) : "—"}
+            {t.leaveDiffSec !== null && <small> {formatSignedMinutes(t.leaveDiffSec)}</small>}
+          </Fact>
+          <Fact label="목표 도착">
+            {t.targetAt ? (
+              <span
+                title={
+                  t.targetSource === "recommendation"
+                    ? "그날 추천의 목표 도착"
+                    : "경로의 기본 목표 도착"
+                }
+              >
+                {hm(t.targetAt)}
+              </span>
+            ) : (
+              "—"
+            )}
+          </Fact>
           <Fact label="목표 대비">
             {t.arrivalDiffSec === null ? "—" : formatSignedMinutes(t.arrivalDiffSec)}
           </Fact>

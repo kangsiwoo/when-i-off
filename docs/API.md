@@ -151,11 +151,33 @@ TRANSIT 구간은 `transitLineId`/`boardStopId`/`alightStopId`와 함께 **노�
 | ✔ | POST | `/commute-trips` | 이동 시작 (`routeId`, `tripDate`, `leftHomeAt?`) → `201`, 재전송이면 `200` (아래) |
 | ✔ | PATCH | `/commute-trips/{id}` | `leftHomeAt`, `arrivedDestinationAt` 갱신. 이미 기록된 attempt가 새 범위 밖이 되면 400 |
 | ✔ | DELETE | `/commute-trips/{id}` | 잘못 시작된 trip과 딸린 기록 삭제 → `204`. 없거나 남의 trip이면 `404` (아래, #88) |
-| ✔ | GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts 포함, 히스토리 화면용). `to < from`이면 400 |
+| ✔ | GET | `/commute-trips?routeId=&from=&to=` | 이력 조회 (attempts와 그날 추천 포함, 히스토리 화면용). `to < from`이면 400 |
 | ✔ | POST | `/commute-trips/{id}/boarding-attempts` | TRANSIT 구간 탑승 시도(차 한 대) **upsert** (아래) |
 | ✔ | PATCH | `/boarding-attempts/{id}` | 결과 갱신 (`vehicleActualDepartureAt`, `alightedAt`, `result`, `notes`). id로 한 건만. 예측 스냅샷 채움은 upsert와 같다 |
 | ✔ | POST | `/gps-traces/batch` | GPS 포인트 배치 업로드 (아래) |
 | ✔ | GET | `/commute-trips/{id}/gps-traces` | 그 trip에 묶인 GPS 포인트, 기록 시각 순 (데스크탑 trip 상세의 트랙 오버레이, 아래) |
+
+### trip 응답의 그날 추천 (#98)
+trip 응답(`POST`·`PATCH`·`GET /commute-trips`)은 선택 필드 `recommendation`에 그 trip의 (경로, `tripDate`) 추천 한 건을
+싣는다. 모양은 아래 "조회 두 개의 계약"의 추천과 같다(`recommendedLeaveHomeAt`, `targetArrivalAt`, `catchProbability`,
+`bufferSeconds`, `modelVersion`, `computedAt`, `minTransitSampleCount?`). 데스크톱 승차권의 "추천 출발"·"목표 도착"이 쓴다.
+
+```json
+{ "id": 31, "routeId": 7, "tripDate": "2026-09-21", "leftHomeAt": "2026-09-20T22:27:10Z", "...": "...",
+  "recommendation": { "recommendedLeaveHomeAt": "2026-09-20T22:24:00Z", "targetArrivalAt": "2026-09-21T00:00:00Z",
+                      "catchProbability": 0.91, "bufferSeconds": 660, "modelVersion": "v2",
+                      "computedAt": "2026-09-20T21:00:00Z" } }
+```
+
+- **고르는 규칙**: 그날 `modelVersion`마다 마지막 계산(`computed_at DESC, id DESC` — 아래 추천 이력의 `recommendations`와
+  같다) 중 **가장 늦게 계산된 것**, `computedAt`이 같으면 뒤 버전(`v2` < `v10`, 숫자는 숫자로). 추천 vs 실제 화면이 지각
+  판정에 쓰는 기준 추천과 같은 규칙이라 승차권 도장과 그 표의 지각 여부가 어긋나지 않는다. 그날 목표 시각이 여러 개면
+  고른 추천의 `targetArrivalAt`이 목표다
+- 추천 평가(`recommendation_evaluations`)를 읽지 않는다: 평가는 새벽 배치라 오늘 trip에는 아직 없고, 버전마다 한 행이라
+  버전을 고르는 규칙이 어차피 필요하다. 평가가 버전별로 짝짓는 추천도 같은 "버전별 마지막 계산"이다
+- 같은 날 trip이 여럿이면 모두 같은 추천을 받는다. 추천이 trip 뒤에 다시 계산되면 다음 조회부터 새 추천이 나간다
+  (추천 이력·평가와 같다)
+- 그날 이 경로 추천이 없으면 **키가 없다**. 목록은 trip 수와 무관하게 추천을 쿼리 한 번으로 모은다(N+1 없음)
 
 ### trip 생성의 재전송 (#37)
 지하에서 "집 나섬" 응답을 못 받은 앱은 같은 요청을 다시 보낸다. 같은 경로에서 **밀리초까지 같은

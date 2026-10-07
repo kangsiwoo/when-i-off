@@ -52,6 +52,7 @@ class CommuteTripService(
     private val boardingAttemptRepository: BoardingAttemptRepository,
     private val gpsTraceRepository: GpsTraceRepository,
     private val nextVehicleSnapshotResolver: NextVehicleSnapshotResolver,
+    private val tripRecommendations: TripRecommendations,
 ) {
     fun create(
         userId: Long,
@@ -74,7 +75,7 @@ class CommuteTripService(
                             "${existing.tripDate}, not ${request.tripDate}",
                     )
                 }
-                return CreateTripResult(CommuteTripResponse.from(existing, attemptsOf(existing)), created = false)
+                return CreateTripResult(responseOf(existing, attemptsOf(existing)), created = false)
             }
         }
         val trip =
@@ -86,7 +87,7 @@ class CommuteTripService(
                     leftHomeAt = request.leftHomeAt,
                 ),
             )
-        return CreateTripResult(CommuteTripResponse.from(trip, emptyList()), created = true)
+        return CreateTripResult(responseOf(trip, emptyList()), created = true)
     }
 
     fun update(
@@ -102,7 +103,7 @@ class CommuteTripService(
         // 탑승 시도가 먼저 기록된 뒤 trip 시각을 고치는 경우. 탑승 시도 쪽에서만 검사하면 요청 순서를
         // 바꿔 같은 모순을 만들 수 있다 (#37).
         attempts.forEach { requireWithinTrip(trip, it) }
-        return CommuteTripResponse.from(trip, attempts)
+        return responseOf(trip, attempts)
     }
 
     /**
@@ -224,8 +225,15 @@ class CommuteTripService(
             boardingAttemptRepository
                 .findByCommuteTripIdInOrderByRouteLegSeqOrderAscAttemptSeqAsc(trips.map { it.id!! })
                 .groupBy { it.commuteTrip.id!! }
-        return trips.map { CommuteTripResponse.from(it, attemptsByTrip[it.id].orEmpty()) }
+        // 추천도 탑승 시도처럼 trip 수와 무관하게 한 번에 모은다 (#98).
+        val recommendationByTrip = tripRecommendations.forTrips(trips)
+        return trips.map { CommuteTripResponse.from(it, attemptsByTrip[it.id].orEmpty(), recommendationByTrip[it.id]) }
     }
+
+    private fun responseOf(
+        trip: CommuteTrip,
+        attempts: List<BoardingAttempt>,
+    ) = CommuteTripResponse.from(trip, attempts, tripRecommendations.forTrip(trip))
 
     private fun findTrip(
         userId: Long,

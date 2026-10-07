@@ -3,6 +3,7 @@ package com.kangsiwoo.whenioff.trip.api
 import com.kangsiwoo.whenioff.trip.domain.BoardingAttempt
 import com.kangsiwoo.whenioff.trip.domain.BoardingResult
 import com.kangsiwoo.whenioff.trip.domain.CommuteTrip
+import com.kangsiwoo.whenioff.trip.domain.DepartureRecommendation
 import com.kangsiwoo.whenioff.trip.domain.GpsPoint
 import com.kangsiwoo.whenioff.trip.domain.GpsTrace
 import jakarta.validation.Valid
@@ -35,11 +36,17 @@ data class CommuteTripResponse(
     val arrivedDestinationAt: Instant?,
     val createdAt: Instant,
     val boardingAttempts: List<BoardingAttemptResponse>,
+    /**
+     * 그날(경로, `tripDate`)의 추천 한 건 (승차권, #98). `modelVersion`마다 마지막 계산 중 가장 늦게 계산된 것(같으면
+     * 뒤 버전) — 추천 vs 실제 화면의 지각 판정 기준 추천과 같다. 그날 추천이 없으면 키가 빠진다.
+     */
+    val recommendation: DepartureRecommendationResponse? = null,
 ) {
     companion object {
         fun from(
             trip: CommuteTrip,
             attempts: List<BoardingAttempt>,
+            recommendation: DepartureRecommendation? = null,
         ) = CommuteTripResponse(
             id = trip.id!!,
             routeId = trip.commuteRoute.id!!,
@@ -48,6 +55,7 @@ data class CommuteTripResponse(
             arrivedDestinationAt = trip.arrivedDestinationAt,
             createdAt = trip.createdAt,
             boardingAttempts = attempts.map(BoardingAttemptResponse::from),
+            recommendation = recommendation?.let(DepartureRecommendationResponse::from),
         )
     }
 }

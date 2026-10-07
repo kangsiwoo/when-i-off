@@ -58,6 +58,27 @@ describe("trip list", () => {
     expect(second.getByText("기록 중")).toBeInTheDocument();
   });
 
+  it("draws the recommendation carried on the trip without another request (#98)", async () => {
+    const withRec: CommuteTrip = {
+      ...trip,
+      recommendation: {
+        recommendedLeaveHomeAt: "2026-09-10T22:24:00Z",
+        targetArrivalAt: "2026-09-11T00:00:00Z",
+        catchProbability: 0.91,
+        bufferSeconds: 660,
+        modelVersion: "v2",
+        computedAt: "2026-09-10T21:00:00Z",
+      },
+    };
+    const { fetch } = renderApp("/trips", backend([withRec]));
+
+    const ticket = within(await screen.findByRole("article"));
+    const facts = ticket.getAllByRole("definition").map((d) => d.textContent);
+    expect(facts).toEqual(["07:24 91%", "07:30 +6분", "09:00", "−35분"]);
+    // backend()는 recommendation-history 같은 다른 호출에 throw한다 — trip 목록 하나로 그렸다
+    expect(tripGets(fetch)).toBe(1);
+  });
+
   it("passes route and date filters to GET /commute-trips", async () => {
     const { fetch } = renderApp("/trips", backend([]));
     expect(await screen.findByText("조건에 맞는 기록이 없습니다.")).toBeInTheDocument();
