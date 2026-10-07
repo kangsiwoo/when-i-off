@@ -6,15 +6,20 @@
 
 ```
 site/
-  index.html          소개 페이지
+  index.html          소개 페이지 (출발 안내판 컨셉)
   privacy.html        개인정보 처리 안내
-  style.css           라이트/다크 (prefers-color-scheme), 외부 폰트·스크립트 없음
+  style.css           라이트(종이 안내판)/다크(prefers-color-scheme), 인라인 스타일 없음
+  app.js              split-flap 애니메이션, 출발 시각 슬라이더·확률 곡선(설명용 합성 모델)
   _headers            Cloudflare Pages 보안 헤더 (CSP 등)
   assets/
     whenioff_logo.svg / whenioff_logo.png (140x140)   활용사례 "로고 이미지"
     whenioff_screen.png (700x700)                      활용사례 "화면 이미지"
-    favicon-32.png, apple-touch-icon.png
+    favicon-32.png, apple-touch-icon.png (180x180)    whenioff_logo.svg에서 렌더링
     screen_recommendations.jpg, screen_route.jpg, screen_trip.jpg   본문 스크린샷
+    fonts/
+      wio-sans.woff2            Pretendard 1.3.9 가변 글꼴 서브셋 (OFL, 이름 변경 — 아래 참고)
+      jetbrains-mono-wio.woff2  JetBrains Mono 가변 글꼴 서브셋 (OFL)
+      LICENSE-*.txt             두 글꼴의 OFL 전문
 ```
 
 이 README도 `site/` 안에 있어 배포 시 `/README.md`로 열린다(`_headers`에서 `noindex`). 비밀값은 없다.
@@ -39,6 +44,40 @@ Settings → Builds → Branch control에서 끈다). `site/`와 무관한 커�
 (줄이고 싶으면 Build watch paths에 `site/*`).
 
 로컬 확인: `npx serve site` (또는 `python3 -m http.server -d site`). `_headers`는 Cloudflare에서만 적용된다.
+
+## 외부 요청 없음 · CSP
+
+글꼴·스크립트·이미지 전부 이 사이트에서 제공하고 런타임 외부 요청이 없다. CSP는
+`script-src 'self'; style-src 'self'; font-src 'self'`이므로 **인라인 `<script>`, `style="..."` 속성,
+`on*=` 핸들러를 쓰면 막힌다.** 스크립트는 `app.js`, 스타일은 `style.css`에 둔다
+(JS에서 `el.style.x = ...`로 바꾸는 것은 허용된다). `prefers-reduced-motion`이면 split-flap·LED 깜빡임을 끈다.
+
+## 글꼴 서브셋
+
+글꼴은 페이지에 실제로 쓰인 글자(한글 약 330자) + 기본 라틴만 남긴 서브셋이다 (합계 약 90KB).
+**`index.html`/`privacy.html`/`app.js`에 새 한글을 넣으면 서브셋을 다시 만든다** — 빠진 글자는 시스템
+글꼴로 대체되어 모양이 섞인다.
+
+```sh
+mkdir -p /tmp/fonts && cd /tmp/fonts
+npm pack pretendard@1.3.9 @fontsource-variable/jetbrains-mono@5.3.0
+mkdir -p pre jbm && tar xzf pretendard-1.3.9.tgz -C pre && tar xzf fontsource-variable-jetbrains-mono-5.3.0.tgz -C jbm
+cd -  # 레포 루트
+pip install fonttools brotli
+python3 scripts/site-subset-fonts.py \
+  /tmp/fonts/pre/package/dist/web/variable/woff2/PretendardVariable.woff2 \
+  /tmp/fonts/jbm/package/files/jetbrains-mono-latin-wght-normal.woff2
+```
+
+Pretendard는 OFL의 **예약 글꼴 이름(Reserved Font Name)** 이 있어 수정본(서브셋)에 `Pretendard` 이름을 쓸 수
+없다. 그래서 스크립트가 이름 테이블을 `WIO Sans`로 바꾸고 CSS에서도 그 이름으로 쓴다. 저작권 표기와 라이선스는
+그대로 두고 `assets/fonts/LICENSE-Pretendard.txt`를 함께 배포한다.
+
+## 로고 PNG
+
+`whenioff_logo.svg`가 원본이다. PNG는 Chromium으로 SVG를 그대로 렌더링해 만든다:
+`whenioff_logo.png` 140x140(모서리 투명), `favicon-32.png` 32x32, `apple-touch-icon.png` 180x180(모서리 없는 정사각형,
+iOS가 직접 마스크를 씌운다). 열린데이터광장 양식은 로고 140x140을 요구하니 크기를 바꾸지 않는다.
 
 ## 스크린샷 다시 찍기
 

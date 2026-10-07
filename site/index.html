@@ -3,24 +3,24 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>When I Off — 언제 나가야 할까</title>
+        <title>When I Off — 몇 시에 나가면 안 늦나</title>
         <meta
             name="description"
-            content="When I Off는 실시간 도착정보와 내 실제 탑승 기록으로 '이 시각에 나가면 몇 % 확률로 제시간에 도착하는지'를 계산해 출근 출발 시각을 추천하는 개인 프로젝트입니다."
+            content="When I Off는 실시간 도착정보와 내가 실제로 탔던·놓쳤던 기록으로 출발 시각별 제시간 도착 확률을 계산해 출근 출발 시각을 추천하는 개인 프로젝트입니다."
         />
         <meta name="color-scheme" content="light dark" />
         <meta
             name="theme-color"
-            content="#2563eb"
+            content="#efece4"
             media="(prefers-color-scheme: light)"
         />
         <meta
             name="theme-color"
-            content="#0d1117"
+            content="#0c0c0b"
             media="(prefers-color-scheme: dark)"
         />
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="When I Off — 언제 나가야 할까" />
+        <meta property="og:title" content="When I Off — 몇 시에 나가면 안 늦나" />
         <meta
             property="og:description"
             content="지각 확률로 계산하는 출근 출발 시각 추천. 실시간 도착정보 + 내 탑승 기록."
@@ -33,410 +33,704 @@
             sizes="32x32"
         />
         <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+        <link
+            rel="preload"
+            href="assets/fonts/wio-sans.woff2"
+            as="font"
+            type="font/woff2"
+            crossorigin
+        />
+        <link
+            rel="preload"
+            href="assets/fonts/jetbrains-mono-wio.woff2"
+            as="font"
+            type="font/woff2"
+            crossorigin
+        />
         <link rel="stylesheet" href="style.css" />
+        <script src="app.js" defer></script>
     </head>
     <body>
+        <a class="skip" href="#main">본문으로 건너뛰기</a>
         <header class="site-header">
-            <div class="wrap">
-                <a class="brand" href="./">
+            <div class="wrap header-row">
+                <a class="brand" href="./" aria-label="When I Off 홈">
                     <img
-                        src="assets/whenioff_logo.png"
-                        width="140"
-                        height="140"
+                        src="assets/whenioff_logo.svg"
+                        width="28"
+                        height="28"
                         alt=""
                     />
-                    When I Off
+                    <span>When I Off</span>
                 </a>
                 <nav class="nav" aria-label="주요 메뉴">
-                    <a href="#how">동작 방식</a>
-                    <a href="#screens">화면</a>
-                    <a href="#data">사용 데이터</a>
-                    <a href="#status">개발 현황</a>
+                    <a href="#odds"><span>01</span>확률</a>
+                    <a href="#route"><span>02</span>변수</a>
+                    <a href="#how"><span>03</span>동작 방식</a>
+                    <a href="#screens"><span>04</span>화면</a>
+                    <a href="#data"><span>05</span>데이터</a>
                 </nav>
+                <a
+                    class="header-gh"
+                    href="https://github.com/kangsiwoo/when-i-off"
+                    rel="noopener"
+                    >GitHub<span aria-hidden="true"> ↗</span></a
+                >
             </div>
         </header>
 
-        <main>
-            <section class="hero">
+        <main id="main">
+            <!-- HERO ─────────────────────────────────────────── -->
+            <section class="hero" aria-labelledby="hero-title">
                 <div class="wrap">
-                    <div>
-                        <span class="eyebrow"
-                            >출근 출발 시각 추천 · 개인 프로젝트</span
-                        >
-                        <h1>
-                            <span class="quote">“아 언제 나가야 하냐”</span
-                            ><br />
-                            지각 확률로 답합니다
+                    <ul class="meta-row" aria-label="프로젝트 정보">
+                        <li>WIO / 출근 출발 시각 추천</li>
+                        <li>개인 프로젝트 · 개발 중</li>
+                        <li>서울·수도권 광역 출근길</li>
+                    </ul>
+
+                    <div class="hero-grid">
+                        <h1 id="hero-title" class="hero-title">
+                            몇 시에 나가면<br />안 늦나<span class="tick"
+                                >.</span
+                            >
                         </h1>
-                        <p class="lead">
-                            광역버스·GTX·지하철처럼 한 대 놓치면 15~30분을
-                            기다려야 하는 출근길. When I Off는 실시간 도착정보와
-                            <strong>내가 실제로 탔던·놓쳤던 기록</strong>을 합쳐
-                            “몇 시 몇 분에 나가면 몇 % 확률로 제시간에
-                            도착하는지”를 계산합니다.
-                        </p>
-                        <div class="cta">
-                            <a class="btn primary" href="#how"
-                                >어떻게 동작하나요</a
-                            >
-                            <a
-                                class="btn"
-                                href="https://github.com/kangsiwoo/when-i-off"
-                                rel="noopener"
-                                >GitHub에서 보기</a
-                            >
-                        </div>
-                        <div class="notification" aria-label="출발 알림 예시">
-                            <img
-                                src="assets/whenioff_logo.png"
-                                width="140"
-                                height="140"
-                                alt=""
-                            />
-                            <div>
-                                <strong>지금 나가세요 (성공 확률 95%)</strong>
-                                <span
-                                    >07:53 출발 · 동탄 08:14 GTX-A · 09:00 도착
-                                    목표</span
+                        <div class="hero-side">
+                            <p class="lead">
+                                광역버스·GTX·지하철은 한 대 놓치면 15~30분.
+                                When I Off는 실시간 도착정보와
+                                <strong>내가 실제로 탔던·놓쳤던 기록</strong>을
+                                합쳐, 출발 시각마다 제시간에 도착할 확률을
+                                계산합니다.
+                            </p>
+                            <p class="hero-links">
+                                <a class="arrow-link" href="#how"
+                                    >동작 방식<span aria-hidden="true">↓</span></a
                                 >
-                            </div>
+                                <a
+                                    class="arrow-link"
+                                    href="https://github.com/kangsiwoo/when-i-off"
+                                    rel="noopener"
+                                    >소스 코드<span aria-hidden="true">↗</span></a
+                                >
+                            </p>
                         </div>
                     </div>
-                    <figure class="shot">
-                        <img
-                            src="assets/whenioff_screen.png"
-                            width="700"
-                            height="700"
-                            alt="데스크톱 웹의 '추천 vs 실제' 화면. 모델 버전별 성과(평가 13일, 지각률 0%, 평균 출발 차이 +6분)와 날짜별 추천 출발 시각과 실제 출발 시각을 비교한 차트"
-                        />
+
+                    <figure class="board" aria-labelledby="board-cap">
+                        <div class="board-bar">
+                            <span class="board-bar-title"
+                                >출발 안내 <span lang="en">Departure</span></span
+                            >
+                            <span>평일 출근 · 목표 09:00 도착</span>
+                            <span class="board-tag">예시</span>
+                        </div>
+
+                        <div class="board-main">
+                            <div class="board-time">
+                                <span class="board-label">추천 출발</span>
+                                <span
+                                    class="flaps"
+                                    role="img"
+                                    aria-label="추천 출발 7시 53분"
+                                    data-flap
+                                    ><span class="flap">0</span
+                                    ><span class="flap">7</span
+                                    ><span class="flap flap-colon">:</span
+                                    ><span class="flap">5</span
+                                    ><span class="flap">3</span></span
+                                >
+                            </div>
+                            <div class="board-status">
+                                <p class="led">
+                                    <span class="led-dot" aria-hidden="true"></span
+                                    >지금 나가세요
+                                </p>
+                                <p class="board-prob">
+                                    <span class="board-label">제시간 도착 확률</span>
+                                    <span
+                                        class="flaps flaps-sm"
+                                        role="img"
+                                        aria-label="95퍼센트"
+                                        data-flap
+                                        ><span class="flap">9</span
+                                        ><span class="flap">5</span
+                                        ><span class="flap flap-unit">%</span></span
+                                    >
+                                </p>
+                                <span class="meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                            </div>
+                        </div>
+
+                        <table class="board-rows">
+                            <caption class="sr-only">
+                                예시 출근길 시각표
+                            </caption>
+                            <thead>
+                                <tr>
+                                    <th scope="col">시각</th>
+                                    <th scope="col">구간</th>
+                                    <th scope="col">비고</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="is-now">
+                                    <td>07:53</td>
+                                    <td>집 출발 <em>도보 → 동탄역</em></td>
+                                    <td>지금</td>
+                                </tr>
+                                <tr>
+                                    <td>08:14</td>
+                                    <td>
+                                        <span class="line-badge gtx" aria-hidden="true"
+                                            >A</span
+                                        >GTX-A 수서행 <em>동탄 승차</em>
+                                    </td>
+                                    <td>탑승 예정</td>
+                                </tr>
+                                <tr>
+                                    <td>08:36</td>
+                                    <td>수서 하차 <em>도보 → 회사</em></td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td>09:00</td>
+                                    <td>회사 도착</td>
+                                    <td>목표</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <figcaption id="board-cap">
+                            예시 화면입니다. 시각과 확률은 실제 사용자 기록이 아니라
+                            설명용 값입니다.
+                        </figcaption>
                     </figure>
                 </div>
             </section>
 
-            <section class="alt" id="problem">
+            <!-- 01 ODDS ───────────────────────────────────────── -->
+            <section class="sec" id="odds" aria-labelledby="odds-h">
                 <div class="wrap">
-                    <h2>감 대신 근거로 정하는 출발 시각</h2>
-                    <p class="section-lead">
-                        지도 앱의 “예상 소요 시간”은 평균입니다. 하지만 출근에서
-                        중요한 건 평균이 아니라
-                        <strong>그 차를 탈 수 있느냐</strong>입니다. 도보 몇십
-                        초, 신호 한 번 차이로 결과가 갈리니까요.
-                    </p>
-                    <div class="cards">
-                        <div class="card">
-                            <h3>내 걸음 속도</h3>
-                            <p>
-                                GPS 기록으로 집→정류장, 환승 통로처럼 구간마다
-                                실제로 걸린 시간을 학습합니다.
-                            </p>
+                    <header class="sec-head">
+                        <p class="sec-no"><span>01</span>확률</p>
+                        <h2 id="odds-h">1분 늦게 나가면,<br />확률이 절벽처럼 떨어집니다.</h2>
+                        <p class="sec-lead">
+                            지도 앱의 “예상 소요 시간”은 평균 하나입니다. 출근은
+                            평균이 아니라 <strong>그 차를 타느냐</strong>로
+                            갈립니다. 출발 시각을 움직여 보세요.
+                        </p>
+                    </header>
+
+                    <div class="odds" data-odds>
+                        <dl class="odds-readout">
+                            <div>
+                                <dt>출발</dt>
+                                <dd class="odds-big" data-out="time">07:53</dd>
+                            </div>
+                            <div>
+                                <dt>제시간 도착</dt>
+                                <dd class="odds-big">
+                                    <span data-out="prob">95</span><span class="odds-unit">%</span>
+                                </dd>
+                            </div>
+                            <div class="odds-verdict">
+                                <dt>판정</dt>
+                                <dd>
+                                    <span class="verdict" data-out="verdict" data-level="ok"
+                                        >여유 · 추천 범위</span
+                                    >
+                                    <span class="odds-train" data-out="train"
+                                        >타게 될 차 08:14 GTX-A</span
+                                    >
+                                </dd>
+                            </div>
+                        </dl>
+
+                        <div class="odds-chart">
+                            <svg
+                                viewBox="0 0 800 340"
+                                role="img"
+                                aria-labelledby="odds-svg-t"
+                                data-chart
+                            >
+                                <title id="odds-svg-t">
+                                    출발 시각별 제시간 도착 확률 예시 곡선
+                                </title>
+                            </svg>
+                            <div class="odds-slider">
+                                <label class="sr-only" for="depart">출발 시각</label>
+                                <input
+                                    id="depart"
+                                    type="range"
+                                    min="460"
+                                    max="492"
+                                    step="1"
+                                    value="473"
+                                    aria-valuetext="7시 53분 출발"
+                                />
+                            </div>
                         </div>
-                        <div class="card">
+                        <p class="note odds-note">
+                            <span class="tag">예시</span> 12분 간격 열차와
+                            정규분포 도보 시간으로 만든 설명용 곡선입니다. 실제
+                            추천은 내 기록으로 경로마다 따로 계산합니다. 추천
+                            출발은 목표 확률(예: 95%)을 넘는 가장 늦은 시각입니다.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 02 ROUTE ──────────────────────────────────────── -->
+            <section class="sec" id="route" aria-labelledby="route-h">
+                <div class="wrap">
+                    <header class="sec-head">
+                        <p class="sec-no"><span>02</span>변수</p>
+                        <h2 id="route-h">몇십 초가 쌓이는 곳을<br />구간마다 잽니다.</h2>
+                        <p class="sec-lead">
+                            출근길은 구간의 연쇄입니다. 각 구간이 걸리는 시간을
+                            하나의 값이 아니라 분포로 다루고, 내 기록으로 그
+                            분포를 좁혀 갑니다.
+                        </p>
+                    </header>
+
+                    <ol class="routemap" aria-label="예시 출근 경로와 구간별 변수">
+                        <li class="stop">
+                            <span class="stop-name">집</span>
+                        </li>
+                        <li class="seg seg-walk">
+                            <span class="seg-mode">도보</span>
+                            <h3>걸음 속도 · 신호 대기</h3>
+                            <p>
+                                GPS 기록으로 구간마다 실제로 걸린 시간을
+                                학습하고, 지나는 횡단보도의 신호 주기로 대기
+                                시간을 더합니다.
+                            </p>
+                        </li>
+                        <li class="stop">
+                            <span class="stop-name">정류장</span>
+                        </li>
+                        <li class="seg seg-bus">
+                            <span class="seg-mode">광역버스</span>
                             <h3>도착 예측의 오차</h3>
                             <p>
-                                “3분 후 도착”이 실제로는 언제였는지 기록과
-                                비교해, 노선·정류장·시간대별 오차를 보정합니다.
-                            </p>
-                        </div>
-                        <div class="card">
-                            <h3>신호등 대기</h3>
-                            <p>
-                                도보 경로의 횡단보도마다 신호 주기를 반영해 평균
-                                대기 시간까지 출발 시각에 더합니다.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section id="how">
-                <div class="wrap">
-                    <h2>동작 방식</h2>
-                    <p class="section-lead">
-                        iPhone 앱이 출근길을 자동으로 기록하고, 서버가 실시간
-                        정보를 모으고, 분석 배치가 확률을 계산합니다. 데스크톱
-                        웹에서는 추천이 실제로 맞았는지 확인합니다.
-                    </p>
-                    <ol class="steps">
-                        <li>
-                            <h3>경로 등록</h3>
-                            <p>
-                                데스크톱 웹 지도에서 집 → 정류장/역 → 노선 →
-                                하차 → 회사 구간과 지나는 횡단보도를 등록합니다.
+                                “3분 후 도착”이 실제로 언제였는지 탑승 기록과
+                                비교해 노선·정류장·시간대별로 보정합니다.
                             </p>
                         </li>
-                        <li>
-                            <h3>iOS 자동 기록</h3>
+                        <li class="stop stop-transfer">
+                            <span class="stop-name">환승</span>
+                        </li>
+                        <li class="seg seg-gtx">
+                            <span class="seg-mode">GTX-A</span>
+                            <h3>시간표와 실제</h3>
                             <p>
-                                정류장·역에 geofence를 걸어 도착·출발 시각을
-                                자동으로 남기고, 정류장에서는
-                                <strong>탔음 / 놓쳤음</strong> 버튼 한 번으로
-                                결과를 기록합니다.
+                                실시간 정보가 없는 노선은 공개 시간표에 내가
+                                탔던 실제 출발 시각의 오차를 얹습니다.
                             </p>
                         </li>
-                        <li>
-                            <h3>실시간 도착정보 수집</h3>
-                            <p>
-                                출퇴근 시간대에만 버스 도착예측(TAGO), 지하철
-                                실시간 도착정보(서울시), 신호등 정보를
-                                주기적으로 수집해 기록 시점의 예측값과 함께
-                                저장합니다.
-                            </p>
-                        </li>
-                        <li>
-                            <h3>확률 계산</h3>
-                            <p>
-                                목표 도착 시각에서 거꾸로 구간별 소요 시간
-                                분포를 합성해, 출발 시각별 “제시간 도착 확률”을
-                                계산합니다.
-                            </p>
-                        </li>
-                        <li>
-                            <h3>출발 알림</h3>
-                            <p>
-                                추천 시각이 되면 iPhone에
-                                <strong>“지금 나가세요 (성공 확률 P%)”</strong>
-                                알림을 보냅니다.
-                            </p>
-                        </li>
-                        <li>
-                            <h3>추천 vs 실제 비교</h3>
-                            <p>
-                                데스크톱 웹에서 날짜별 추천 출발과 실제
-                                출발·도착, 지각 여부를 비교하고 모델 버전별
-                                성과를 확인합니다.
-                            </p>
+                        <li class="stop stop-end">
+                            <span class="stop-name">회사</span>
                         </li>
                     </ol>
-                    <p class="formula">
+                </div>
+            </section>
+
+            <!-- 03 HOW ────────────────────────────────────────── -->
+            <section class="sec" id="how" aria-labelledby="how-h">
+                <div class="wrap">
+                    <header class="sec-head">
+                        <p class="sec-no"><span>03</span>동작 방식</p>
+                        <h2 id="how-h">기록하고, 모으고,<br />계산해서, 깨웁니다.</h2>
+                        <p class="sec-lead">
+                            iPhone 앱이 출근길을 자동으로 기록하고, 서버가
+                            실시간 정보를 모으고, 분석 배치가 확률을 계산합니다.
+                            데스크톱 웹에서는 추천이 실제로 맞았는지 확인합니다.
+                        </p>
+                    </header>
+
+                    <div class="how-grid">
+                        <ol class="steps">
+                            <li>
+                                <span class="step-no">01</span>
+                                <div>
+                                    <h3>경로 등록 <span class="chip chip-web">웹</span></h3>
+                                    <p>
+                                        데스크톱 웹 지도에서 집 → 정류장·역 →
+                                        노선 → 하차 → 회사 구간과 지나는
+                                        횡단보도를 등록합니다.
+                                    </p>
+                                </div>
+                            </li>
+                            <li>
+                                <span class="step-no">02</span>
+                                <div>
+                                    <h3>자동 기록 <span class="chip chip-ios">iOS</span></h3>
+                                    <p>
+                                        정류장·역에 geofence를 걸어 도착·출발
+                                        시각을 자동으로 남깁니다. 정류장에서는
+                                        <strong>탔음 / 놓쳤음</strong> 한 번이면
+                                        끝입니다.
+                                    </p>
+                                </div>
+                            </li>
+                            <li>
+                                <span class="step-no">03</span>
+                                <div>
+                                    <h3>도착정보 수집 <span class="chip chip-srv">서버</span></h3>
+                                    <p>
+                                        출퇴근 시간대에만 버스 도착예측(TAGO),
+                                        지하철 실시간 도착정보(서울시), 신호등
+                                        정보를 모아 기록 시점의 예측값과 함께
+                                        저장합니다.
+                                    </p>
+                                </div>
+                            </li>
+                            <li>
+                                <span class="step-no">04</span>
+                                <div>
+                                    <h3>확률 계산 <span class="chip chip-ana">분석</span></h3>
+                                    <p>
+                                        목표 도착 시각에서 거꾸로, 구간별 소요
+                                        시간 분포를 합성해 출발 시각별 제시간
+                                        도착 확률을 구합니다.
+                                    </p>
+                                </div>
+                            </li>
+                            <li>
+                                <span class="step-no">05</span>
+                                <div>
+                                    <h3>출발 알림 <span class="chip chip-ios">iOS</span></h3>
+                                    <p>
+                                        추천 시각 5분 전, iPhone에
+                                        <strong>“지금 나가세요 (성공 확률 P%)”</strong>.
+                                    </p>
+                                </div>
+                            </li>
+                            <li>
+                                <span class="step-no">06</span>
+                                <div>
+                                    <h3>추천 vs 실제 <span class="chip chip-web">웹</span></h3>
+                                    <p>
+                                        날짜별 추천 출발과 실제 출발·도착,
+                                        지각 여부를 나란히 놓고 모델 버전별
+                                        성과를 확인합니다.
+                                    </p>
+                                </div>
+                            </li>
+                        </ol>
+
+                        <figure class="phone-fig">
+                            <div class="phone" aria-hidden="true">
+                                <div class="phone-island"></div>
+                                <div class="phone-status">
+                                    <span>8:10</span>
+                                    <span class="phone-icons"
+                                        ><i></i><i></i><i></i
+                                    ></span>
+                                </div>
+                                <div class="phone-clock">
+                                    <span class="phone-date">10월 7일 수요일</span>
+                                    <span class="phone-time">8:10</span>
+                                </div>
+                                <div class="notif-stack">
+                                    <div class="notif notif-expanded">
+                                        <div class="notif-head">
+                                            <img
+                                                src="assets/whenioff_logo.svg"
+                                                width="20"
+                                                height="20"
+                                                alt=""
+                                            />
+                                            <span>WHEN I OFF</span>
+                                            <span class="notif-when">지금</span>
+                                        </div>
+                                        <p class="notif-title">동탄 도착</p>
+                                        <p class="notif-body">
+                                            GTX-A (수서~동탄) · 탔으면 “탔음”,
+                                            보냈으면 “놓쳤음”을 눌러 주세요
+                                        </p>
+                                    </div>
+                                    <div class="notif-actions">
+                                        <span>탔음</span>
+                                        <span>놓쳤음</span>
+                                    </div>
+                                    <div class="notif">
+                                        <div class="notif-head">
+                                            <img
+                                                src="assets/whenioff_logo.svg"
+                                                width="20"
+                                                height="20"
+                                                alt=""
+                                            />
+                                            <span>WHEN I OFF</span>
+                                            <span class="notif-when">22분 전</span>
+                                        </div>
+                                        <p class="notif-title">
+                                            지금 나가세요 (성공 확률 95%)
+                                        </p>
+                                        <p class="notif-body">
+                                            07:53 출발 권장 · 09:00 도착 목표
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="phone-bar"></div>
+                            </div>
+                            <figcaption>
+                                <span class="fig-no">FIG. A</span>
+                                잠금 화면 알림 예시. 07:48에 출발 알림, 08:10
+                                동탄역 도착 때 탑승 확인. 길게 누르면
+                                <strong>탔음 / 놓쳤음</strong>.
+                            </figcaption>
+                        </figure>
+                    </div>
+
+                    <p class="callout">
                         기록이 쌓일수록 계산이 내 출근길에 맞춰집니다. 표본이
-                        적은 동안은 보수적인 기본값을 쓰고, 추천에 쓰인 실측
-                        표본 수를 함께 보여 줍니다.
+                        적은 동안은 보수적인 기본값을 쓰고, 추천에 쓰인 실측 표본
+                        수를 함께 보여 줍니다.
                     </p>
                 </div>
             </section>
 
-            <section class="alt" id="screens">
+            <!-- 04 SCREENS ────────────────────────────────────── -->
+            <section class="sec" id="screens" aria-labelledby="screens-h">
                 <div class="wrap">
-                    <h2>화면</h2>
-                    <p class="section-lead">
-                        실제 동작하는 데스크톱 웹 화면입니다.
-                    </p>
+                    <header class="sec-head">
+                        <p class="sec-no"><span>04</span>화면</p>
+                        <h2 id="screens-h">추천이 맞았는지,<br />매일 대조합니다.</h2>
+                        <p class="sec-lead">
+                            실제로 동작하는 데스크톱 웹 화면입니다. 화면 속
+                            경로와 수치는 공개 장소(동탄역 → GTX-A → 수서역)를
+                            기준으로 만든 <strong>합성 데이터</strong>이며 실제
+                            사용 결과가 아닙니다.
+                        </p>
+                    </header>
+
                     <div class="gallery">
-                        <figure>
-                            <img
-                                class="shot"
-                                src="assets/screen_recommendations.jpg"
-                                width="920"
-                                height="920"
-                                loading="lazy"
-                                alt="추천 vs 실제 화면: 버전별 성과 카드와 추천 출발 vs 실제 출발 차트"
-                            />
+                        <figure class="shot shot-main">
+                            <div class="chrome">
+                                <div class="chrome-bar" aria-hidden="true">
+                                    <span class="chrome-dots"><i></i><i></i><i></i></span>
+                                    <span class="chrome-url">when-i-off / 경로 / 추천 vs 실제</span>
+                                </div>
+                                <img
+                                    src="assets/screen_recommendations.jpg"
+                                    width="920"
+                                    height="920"
+                                    loading="lazy"
+                                    alt="추천 vs 실제 화면: 모델 버전별 성과 카드와 날짜별 추천 출발 vs 실제 출발 차트"
+                                />
+                            </div>
                             <figcaption>
-                                추천 vs 실제 — 추천대로 나갔을 때 실제로
-                                어땠는지
+                                <span class="fig-no">FIG. 1</span>추천 vs 실제 —
+                                추천대로 나갔을 때 실제로 어땠는지
                             </figcaption>
                         </figure>
-                        <figure>
-                            <img
-                                class="shot"
-                                src="assets/screen_route.jpg"
-                                width="1100"
-                                height="1115"
-                                loading="lazy"
-                                alt="경로 상세 화면: 출발·도착 좌표, 목표 도착 시각 설정, 지도 위 GTX-A 구간"
-                            />
+                        <figure class="shot shot-side">
+                            <div class="chrome">
+                                <div class="chrome-bar" aria-hidden="true">
+                                    <span class="chrome-dots"><i></i><i></i><i></i></span>
+                                    <span class="chrome-url">when-i-off / 경로 / 구간</span>
+                                </div>
+                                <div class="crop">
+                                    <img
+                                        src="assets/screen_route.jpg"
+                                        width="1100"
+                                        height="1115"
+                                        loading="lazy"
+                                        alt="경로 상세 화면: 출발·도착 좌표, 목표 도착 시각 설정, 지도 위 GTX-A 구간"
+                                    />
+                                </div>
+                            </div>
                             <figcaption>
-                                경로 상세 — 구간·목표 도착 시각·지도
+                                <span class="fig-no">FIG. 2</span>경로 상세 —
+                                구간·목표 도착 시각·지도
                             </figcaption>
                         </figure>
-                        <figure>
-                            <img
-                                class="shot"
-                                src="assets/screen_trip.jpg"
-                                width="1100"
-                                height="1100"
-                                loading="lazy"
-                                alt="이동 기록 상세 화면: 집 나섬부터 도착까지의 타임라인과 GPS 트랙 지도"
-                            />
+                        <figure class="shot shot-side">
+                            <div class="chrome">
+                                <div class="chrome-bar" aria-hidden="true">
+                                    <span class="chrome-dots"><i></i><i></i><i></i></span>
+                                    <span class="chrome-url">when-i-off / 이동 기록</span>
+                                </div>
+                                <div class="crop crop-top">
+                                    <img
+                                        src="assets/screen_trip.jpg"
+                                        width="1100"
+                                        height="1100"
+                                        loading="lazy"
+                                        alt="이동 기록 상세 화면: 집 나섬부터 도착까지의 타임라인과 GPS 트랙 지도"
+                                    />
+                                </div>
+                            </div>
                             <figcaption>
-                                이동 기록 — 타임라인과 GPS 트랙
+                                <span class="fig-no">FIG. 3</span>이동 기록 —
+                                타임라인과 GPS 트랙
                             </figcaption>
                         </figure>
                     </div>
-                    <p class="note">
-                        화면의 경로와 기록은 공개 장소(동탄역 → GTX-A →
-                        수서역)를 기준으로 만든 예시 데이터입니다. 지도 ©
-                        OpenStreetMap contributors.
-                    </p>
+                    <p class="note">지도 © OpenStreetMap contributors.</p>
                 </div>
             </section>
 
-            <section id="data">
+            <!-- 05 DATA ───────────────────────────────────────── -->
+            <section class="sec" id="data" aria-labelledby="data-h">
                 <div class="wrap">
-                    <h2>사용하는 공공데이터</h2>
-                    <p class="section-lead">
-                        아래 공공데이터를 활용합니다. 각 데이터의 저작권과 이용
-                        조건은 제공 기관에 있습니다.
-                    </p>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>데이터</th>
-                                    <th>제공 기관</th>
-                                    <th>용도</th>
-                                    <th>상태</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td data-label="데이터">
-                                        버스노선정보 · 버스도착정보 (TAGO)<br /><a
-                                            href="https://www.data.go.kr/"
-                                            rel="noopener"
-                                            >공공데이터포털</a
-                                        >
-                                    </td>
-                                    <td data-label="제공 기관">국토교통부</td>
-                                    <td data-label="용도">
-                                        노선·정류장 정보, 정류장별 버스 도착예측
-                                        수집
-                                    </td>
-                                    <td data-label="상태">
-                                        <span class="badge">사용 중</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td data-label="데이터">
-                                        서울시 지하철 실시간 도착정보<br /><a
-                                            href="https://data.seoul.go.kr/"
-                                            rel="noopener"
-                                            >서울 열린데이터광장</a
-                                        >
-                                    </td>
-                                    <td data-label="제공 기관">서울특별시</td>
-                                    <td data-label="용도">
-                                        지하철 구간의 열차 도착 예측 수집, 탑승
-                                        기록과 오차 비교
-                                    </td>
-                                    <td data-label="상태">
-                                        <span class="badge pending"
-                                            >연동 준비 중</span
-                                        >
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td data-label="데이터">
-                                        전국통합데이터 실시간 신호등 정보<br /><a
-                                            href="https://www.data.go.kr/"
-                                            rel="noopener"
-                                            >공공데이터포털</a
-                                        >
-                                    </td>
-                                    <td data-label="제공 기관">
-                                        행정안전부 · 한국지역정보개발원(KLID)
-                                    </td>
-                                    <td data-label="용도">
-                                        교차로 위치, 신호 잔여시간(제공 지역),
-                                        보행 대기 시간 추정
-                                    </td>
-                                    <td data-label="상태">
-                                        <span class="badge">사용 중</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td data-label="데이터">
-                                        GTX-A 열차 시간표
-                                    </td>
-                                    <td data-label="제공 기관">
-                                        GTX-A 운영사 공개 시간표
-                                    </td>
-                                    <td data-label="용도">
-                                        실시간 정보가 없는 노선의 정적 시간표
-                                    </td>
-                                    <td data-label="상태">
-                                        <span class="badge">사용 중</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td data-label="데이터">
-                                        OpenStreetMap 지도
-                                    </td>
-                                    <td data-label="제공 기관">
-                                        OpenStreetMap contributors
-                                    </td>
-                                    <td data-label="용도">
-                                        데스크톱 웹의 경로·GPS 트랙 지도
-                                    </td>
-                                    <td data-label="상태">
-                                        <span class="badge">사용 중</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <header class="sec-head">
+                        <p class="sec-no"><span>05</span>데이터</p>
+                        <h2 id="data-h">사용하는 공공데이터</h2>
+                        <p class="sec-lead">
+                            아래 데이터를 활용합니다. 각 데이터의 저작권과 이용
+                            조건은 제공 기관에 있습니다.
+                        </p>
+                    </header>
+
+                    <table class="timetable">
+                        <thead>
+                            <tr>
+                                <th scope="col">데이터</th>
+                                <th scope="col">제공 기관</th>
+                                <th scope="col">용도</th>
+                                <th scope="col">상태</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row" data-label="데이터">
+                                    버스노선정보 · 버스도착정보 (TAGO)
+                                    <a href="https://www.data.go.kr/" rel="noopener"
+                                        >공공데이터포털 ↗</a
+                                    >
+                                </th>
+                                <td data-label="제공 기관">국토교통부</td>
+                                <td data-label="용도">
+                                    노선·정류장 정보, 정류장별 버스 도착예측 수집
+                                </td>
+                                <td data-label="상태">
+                                    <span class="status on">사용 중</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row" data-label="데이터">
+                                    서울시 지하철 실시간 도착정보
+                                    <a href="https://data.seoul.go.kr/" rel="noopener"
+                                        >서울 열린데이터광장 ↗</a
+                                    >
+                                </th>
+                                <td data-label="제공 기관">서울특별시</td>
+                                <td data-label="용도">
+                                    지하철 구간의 열차 도착 예측 수집, 탑승 기록과
+                                    오차 비교
+                                </td>
+                                <td data-label="상태">
+                                    <span class="status wait">연동 준비 중</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row" data-label="데이터">
+                                    전국통합데이터 실시간 신호등 정보
+                                    <a href="https://www.data.go.kr/" rel="noopener"
+                                        >공공데이터포털 ↗</a
+                                    >
+                                </th>
+                                <td data-label="제공 기관">
+                                    행정안전부 · 한국지역정보개발원(KLID)
+                                </td>
+                                <td data-label="용도">
+                                    교차로 위치, 신호 잔여시간(제공 지역), 보행
+                                    대기 시간 추정
+                                </td>
+                                <td data-label="상태">
+                                    <span class="status on">사용 중</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row" data-label="데이터">GTX-A 열차 시간표</th>
+                                <td data-label="제공 기관">GTX-A 운영사 공개 시간표</td>
+                                <td data-label="용도">
+                                    실시간 정보가 없는 노선의 정적 시간표
+                                </td>
+                                <td data-label="상태">
+                                    <span class="status on">사용 중</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row" data-label="데이터">OpenStreetMap 지도</th>
+                                <td data-label="제공 기관">OpenStreetMap contributors</td>
+                                <td data-label="용도">데스크톱 웹의 경로·GPS 트랙 지도</td>
+                                <td data-label="상태">
+                                    <span class="status on">사용 중</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
-            <section class="alt" id="status">
+            <!-- 06 STATUS ─────────────────────────────────────── -->
+            <section class="sec" id="status" aria-labelledby="status-h">
                 <div class="wrap">
-                    <h2>개발 현황</h2>
-                    <div class="cards">
-                        <div class="card">
-                            <h3>개인 프로젝트 · 개발 중</h3>
-                            <p>
-                                한 사람의 실제 출근길(광역버스·GTX·지하철)에
-                                맞춰 만들고 있는 비상업 개인 프로젝트입니다.
-                                소스 코드는 GitHub에 공개되어 있습니다.
-                            </p>
+                    <header class="sec-head">
+                        <p class="sec-no"><span>06</span>현황</p>
+                        <h2 id="status-h">한 사람의 출근길에서<br />시작한 프로젝트.</h2>
+                    </header>
+
+                    <dl class="facts">
+                        <div>
+                            <dt>개인 프로젝트 · 개발 중</dt>
+                            <dd>
+                                한 사람의 실제 출근길(광역버스·GTX·지하철)에 맞춰
+                                만들고 있는 비상업 개인 프로젝트입니다. 소스
+                                코드는 GitHub에 공개되어 있습니다.
+                            </dd>
                         </div>
-                        <div class="card">
-                            <h3>구성</h3>
-                            <p>
-                                iOS 앱(Swift) · 서버(Kotlin/Spring, PostgreSQL)
-                                · 분석 배치(Python) · 데스크톱
-                                웹(TypeScript/React).
-                            </p>
+                        <div>
+                            <dt>구성</dt>
+                            <dd>
+                                iOS 앱(Swift) · 서버(Kotlin/Spring, PostgreSQL) ·
+                                분석 배치(Python) · 데스크톱 웹(TypeScript/React)
+                            </dd>
                         </div>
-                        <div class="card">
-                            <h3>개인정보</h3>
-                            <p>
+                        <div>
+                            <dt>개인정보</dt>
+                            <dd>
                                 위치·이동 기록은 사용자 본인이 운영하는 서버에만
                                 저장하고, 제3자에게 제공하거나 광고·분석 도구로
                                 보내지 않습니다.
-                                <a href="privacy.html">개인정보 처리 안내</a>
-                            </p>
+                                <a href="privacy.html">개인정보 처리 안내 →</a>
+                            </dd>
                         </div>
-                    </div>
-                </div>
-            </section>
+                    </dl>
 
-            <section id="contact">
-                <div class="wrap">
-                    <h2>문의</h2>
-                    <p class="section-lead">
-                        질문이나 제안은 GitHub 이슈로 남겨 주세요 —
-                        <a
-                            href="https://github.com/kangsiwoo/when-i-off/issues"
-                            rel="noopener"
-                            >github.com/kangsiwoo/when-i-off</a
-                        >
-                    </p>
+                    <div class="contact" id="contact">
+                        <p class="sec-no"><span>문의</span></p>
+                        <p class="contact-line">
+                            질문이나 제안은
+                            <a
+                                href="https://github.com/kangsiwoo/when-i-off/issues"
+                                rel="noopener"
+                                >GitHub 이슈로<span aria-hidden="true"> ↗</span></a
+                            >
+                        </p>
+                    </div>
                 </div>
             </section>
         </main>
 
         <footer class="site-footer">
             <div class="wrap">
-                <span>© 2026 When I Off · 개인 프로젝트</span>
-                <span
-                    ><a href="privacy.html">개인정보 처리 안내</a> ·
-                    <a
-                        href="https://github.com/kangsiwoo/when-i-off"
-                        rel="noopener"
-                        >GitHub</a
-                    ></span
-                >
+                <p class="footer-mark" aria-hidden="true">When I Off</p>
+                <div class="footer-row">
+                    <span>© 2026 When I Off · 개인 프로젝트</span>
+                    <span
+                        ><a href="privacy.html">개인정보 처리 안내</a>
+                        <a
+                            href="https://github.com/kangsiwoo/when-i-off"
+                            rel="noopener"
+                            >GitHub ↗</a
+                        ></span
+                    >
+                </div>
             </div>
         </footer>
     </body>
