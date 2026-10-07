@@ -91,6 +91,8 @@ when-i-off/
   필드/커버리지를 재확인한다 ([backend/README.md](../backend/README.md) 체크리스트).
   화성/동탄 권역 커버리지가 비어 있으면 경기 GBIS 병행을 다시 검토 (ADR 0001 "후속")
 - 지하철 실시간 도착정보 → 같은 `ArrivalPredictionProvider`로 추가
+  - 서울 열린데이터광장 키는 활용사례(공개 URL) 등록이 필요해서 소개 페이지 `site/`를 Cloudflare Pages로
+    공개한다 (#92, 설정과 등록 문구는 [site/README.md](../site/README.md))
 - ✔ 정적 시간표 import: GTX 등 실시간 없는 노선은 CSV를 `POST /admin/schedules/import`로 올려
   `transit_schedules`에 적재(조합 단위 교체로 멱등), `GET /transit-lines/{id}/schedules/next`로
   자정을 넘겨 다음 N대를 절대 시각으로 조회. 추천 계산에 fallback으로 꽂는 것은 다음 작업
