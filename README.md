@@ -28,4 +28,5 @@ Swagger UI는 `localhost:8080/swagger-ui.html`, health는 `localhost:8080/actuat
 - [최적 출발 시각 계산 알고리즘](docs/ALGORITHM.md)
 - [API 설계](docs/API.md)
 - [개발 계획](docs/DEVELOPMENT_PLAN.md) — Phase별 이슈: [#2](../../issues/2) [#3](../../issues/3) [#4](../../issues/4) [#5](../../issues/5) [#6](../../issues/6) [#7](../../issues/7) [#8](../../issues/8)
+- [서비스 소개 페이지](site/README.md) — Cloudflare Pages 정적 랜딩(`site/`), 서울 열린데이터 활용사례용 공개 URL (#92)
 - [개발 컨벤션](docs/CONVENTIONS.md) — 이슈 → 브랜치 → PR → 리뷰 → Squash merge
