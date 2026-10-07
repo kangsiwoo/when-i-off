@@ -22,6 +22,7 @@ import {
   formatSpeed,
   modeLabel,
 } from "../format";
+import { lineTone } from "../map/lineTone";
 import { RouteTabs } from "./RouteTabs";
 import { ErrorMessage, Loading } from "./Status";
 
@@ -181,7 +182,12 @@ function TransitLeg({
   return (
     <article className="calibration-leg" aria-label={`구간 ${leg.seqOrder}`}>
       <h2>
-        {leg.seqOrder}. <span className="badge badge-transit">대중교통</span>{" "}
+        {leg.seqOrder}.{" "}
+        <span
+          className={`badge badge-transit line-${mode ? lineTone({ name: leg.transitLineName ?? "", mode }) : "ink"}`}
+        >
+          대중교통
+        </span>{" "}
         {leg.transitLineName ?? "노선 ?"}
         {mode ? ` (${modeLabel(mode)})` : ""} {leg.boardStopName ?? "?"} →{" "}
         {leg.alightStopName ?? "?"}

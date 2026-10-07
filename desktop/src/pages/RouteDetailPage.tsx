@@ -11,6 +11,7 @@ import {
   modeLabel,
 } from "../format";
 import { LazyMap } from "../map/LazyMap";
+import { lineTone } from "../map/lineTone";
 import { routeOverlay } from "../map/overlay";
 import { RouteSettingsForm } from "./RouteSettingsForm";
 import { RouteTabs } from "./RouteTabs";
@@ -107,7 +108,9 @@ function LegRow({ leg }: { leg: RouteLeg }) {
     <tr>
       <td>{leg.seqOrder}</td>
       <td>
-        <span className={`badge badge-${leg.legType.toLowerCase()}`}>
+        <span
+          className={`badge badge-${leg.legType.toLowerCase()}${transit ? ` line-${lineTone(leg.transitLine)}` : ""}`}
+        >
           {legTypeLabel(leg.legType)}
         </span>
       </td>

@@ -18,12 +18,18 @@
     font-display: swap;
 }
 
-/* ── 토큰 ─────────────────────────────────────────────────── */
+/* ── 토큰 ─────────────────────────────────────────────────
+   기준은 desktop/src/styles/tokens.css. 아래 값은 그 사본이고 desktop의 tokens.test.ts가
+   두 파일이 같은지 검사한다. 바꿀 때는 두 곳을 같이 바꾼다. */
 :root {
+    /* 사이트 전용 (토큰 검사 대상 아님) */
     --sans: "WIO Sans", "Pretendard", "Apple SD Gothic Neo",
         "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
     --mono: "JetBrains Mono WIO", "WIO Sans", ui-monospace, "SF Mono",
         Menlo, Consolas, monospace;
+    --wrap: 1360px;
+    --gutter: clamp(16px, 4vw, 56px);
+    --col-gap: clamp(16px, 2.2vw, 32px);
 
     /* 인쇄된 안내판 · 종이 */
     --paper: #efece4;
@@ -47,19 +53,48 @@
     --led: #ffb000;
     --led-soft: rgb(255 176 0 / 14%);
 
-    /* 실제 노선색 — 선과 점에만 쓴다 */
+    /* 실제 노선색 — 선과 점에만 쓴다 (글자에는 쓰지 않는다) */
     --gtx-a: #9a6292;
     --bus-red: #e60012;
     --line-2: #00a84d;
     --suin: #f5a200;
 
+    /* 상태색 — 언제나 점·아이콘 + 글자와 같이 쓴다 */
     --ok: #00804a;
     --warn: #b06a00;
     --bad: #c4291c;
 
-    --wrap: 1360px;
-    --gutter: clamp(16px, 4vw, 56px);
-    --col-gap: clamp(16px, 2.2vw, 32px);
+    /* 차트 계열 (dataviz validate_palette.js로 --paper/다크 --paper에 대해 검사) */
+    --series-2: #00a84d;
+    --series-3: #9a3d8f;
+
+    /* 글자 크기 */
+    --fs-label: 12px;
+    --fs-small: 14px;
+    --fs-body: 16px;
+    --fs-lead: 1.125rem;
+    --fs-h3: 1.375rem;
+    --fs-h2: 2rem;
+    --fs-h1: 3rem;
+    --tracking-tight: -0.035em;
+    --tracking-label: 0.02em;
+
+    /* 간격 */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+    --space-8: 64px;
+
+    /* 규칙선 · 모서리 */
+    --rule-w: 1px;
+    --radius-sm: 2px;
+    --radius: 6px;
+    --radius-lg: 8px;
+
     color-scheme: light;
 }
 
@@ -81,6 +116,7 @@
         --ok: #3ccf8a;
         --warn: #ffb000;
         --bad: #ff6b5b;
+        --series-3: #b565a8;
         color-scheme: dark;
     }
 }
@@ -1362,6 +1398,276 @@ input[type="range"]:focus-visible {
     border-left: 4px solid var(--led);
 }
 
+/* ── 03 승차권 예시 (데스크톱 앱 TripTicket과 같은 모양, desktop/src/index.css .ticket) ── */
+.ticket-demo {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--col-gap);
+    row-gap: 24px;
+    margin-top: clamp(56px, 7vw, 96px);
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+}
+
+.ticket-demo-head {
+    grid-column: 1 / span 4;
+}
+
+.ticket-demo-head h3 {
+    font-size: clamp(1.5rem, 1.1rem + 1.2vw, 2.125rem);
+    letter-spacing: -0.04em;
+    margin: 12px 0 14px;
+}
+
+.ticket-demo-head p:last-child {
+    color: var(--ink-2);
+    font-size: 15px;
+}
+
+.ticket-demo .ticket,
+.ticket-demo .note {
+    grid-column: 5 / span 8;
+}
+
+.ticket-demo .note {
+    margin-top: 0;
+}
+
+.ticket {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 216px;
+    background: var(--paper-2);
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius);
+}
+
+.ticket-main {
+    min-width: 0;
+    padding: 16px 24px;
+}
+
+.ticket-head,
+.ticket-label,
+.ticket-time,
+.ticket-total,
+.ticket-leg-name,
+.ticket-leg-meta,
+.ticket-facts {
+    font-family: var(--mono);
+    letter-spacing: 0.02em;
+    word-spacing: -0.3em;
+}
+
+.ticket-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 12px;
+}
+
+.ticket-kind {
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--led);
+    color: #141413;
+    font-weight: 700;
+}
+
+.ticket-date {
+    font-weight: 700;
+}
+
+.ticket-no {
+    margin-left: auto;
+    color: var(--ink-3);
+}
+
+.ticket-route {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr);
+    align-items: end;
+    gap: 0 24px;
+    margin: 14px 0 18px;
+}
+
+.ticket-end {
+    display: grid;
+    gap: 2px;
+}
+
+.ticket-label {
+    font-size: 11px;
+    color: var(--ink-3);
+}
+
+.ticket-place {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+}
+
+.ticket-time {
+    font-size: clamp(2.25rem, 1.6rem + 1.6vw, 3.25rem);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+    line-height: 1;
+}
+
+.ticket-arrow {
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--ink-3);
+    padding-bottom: 6px;
+}
+
+.ticket-total {
+    justify-self: end;
+    margin: 0;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.ticket-total span {
+    color: var(--ink-3);
+}
+
+.ticket-legs {
+    list-style: none;
+    display: flex;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+}
+
+.ticket-leg {
+    flex: 1 1 0;
+    min-width: 0;
+    display: grid;
+    align-content: start;
+    gap: 5px;
+}
+
+.ticket-leg-transit {
+    flex-grow: 3;
+}
+
+.ticket-leg-void {
+    flex-grow: 1.6;
+}
+
+.ticket-bar {
+    display: block;
+    height: 8px;
+    background: var(--gtx-a);
+}
+
+.ticket-leg-walk .ticket-bar {
+    height: 0;
+    margin: 2px 0;
+    background: none;
+    border-top: 4px dotted var(--ink-3);
+}
+
+.ticket-leg-void .ticket-bar {
+    background: transparent;
+    border: 2px solid var(--gtx-a);
+}
+
+.ticket-leg-name {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ticket-leg-void .ticket-leg-name {
+    font-weight: 500;
+    color: var(--bad);
+}
+
+.ticket-leg-void s {
+    color: var(--ink-3);
+}
+
+.ticket-leg-meta {
+    font-size: 11px;
+    color: var(--ink-2);
+}
+
+.ticket-stub {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 24px;
+    border-left: 2px dashed var(--rule-strong);
+}
+
+.ticket-stub::before,
+.ticket-stub::after {
+    content: "";
+    position: absolute;
+    left: -12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 1px solid var(--rule-strong);
+}
+
+.ticket-stub::before {
+    top: -12px;
+    clip-path: inset(50% 0 0 0);
+}
+
+.ticket-stub::after {
+    bottom: -12px;
+    clip-path: inset(0 0 50% 0);
+}
+
+.ticket-facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 0;
+}
+
+.ticket-facts dt {
+    font-size: 10.5px;
+    color: var(--ink-3);
+}
+
+.ticket-facts dd {
+    margin: 2px 0 0;
+    font-size: 17px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.ticket-facts dd small {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-2);
+}
+
+.ticket-stamp {
+    align-self: center;
+    padding: 4px 14px 5px;
+    border: 4px double currentColor;
+    border-radius: var(--radius);
+    font-size: 1.375rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    line-height: 1.2;
+    transform: rotate(-8deg);
+}
+
 /* ── 04 화면 ──────────────────────────────────────────────── */
 .gallery {
     display: grid;
@@ -1712,6 +2018,12 @@ input[type="range"]:focus-visible {
 
 /* ── 반응형 ───────────────────────────────────────────────── */
 @media (max-width: 1100px) {
+    .ticket-demo-head,
+    .ticket-demo .ticket,
+    .ticket-demo .note {
+        grid-column: 1 / -1;
+    }
+
     .hero-title {
         grid-column: 1 / -1;
     }
@@ -1823,6 +2135,52 @@ input[type="range"]:focus-visible {
 }
 
 @media (max-width: 820px) {
+    .ticket {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ticket-route {
+        grid-template-columns: auto auto auto;
+    }
+
+    .ticket-total {
+        grid-column: 1 / -1;
+        justify-self: start;
+        margin-top: 10px;
+    }
+
+    .ticket-legs {
+        flex-wrap: wrap;
+    }
+
+    .ticket-leg {
+        flex-basis: 40%;
+    }
+
+    .ticket-stub {
+        flex-direction: row;
+        align-items: center;
+        border-left: 0;
+        border-top: 2px dashed var(--rule-strong);
+    }
+
+    .ticket-stub::before,
+    .ticket-stub::after {
+        top: -12px;
+        bottom: auto;
+    }
+
+    .ticket-stub::before {
+        left: -12px;
+        clip-path: inset(0 0 0 50%);
+    }
+
+    .ticket-stub::after {
+        left: auto;
+        right: -12px;
+        clip-path: inset(0 50% 0 0);
+    }
+
     .nav {
         display: none;
     }

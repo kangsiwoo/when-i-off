@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import type { BoardingAttempt, CommuteTrip, RouteLeg } from "../api/client";
 import { useCommuteRoute, useCommuteTrips, type TripFilter } from "../api/queries";
-import { formatDuration, formatKst, resultLabel, transitLegLabel } from "../format";
-import { buildTimeline, summarizeTrip } from "../trips/timeline";
+import { formatKst, resultLabel, transitLegLabel } from "../format";
+import { buildTimeline } from "../trips/timeline";
 import { AttemptForm } from "./AttemptForm";
 import { ErrorMessage, Loading } from "./Status";
-import { TripResult } from "./TripResult";
+import { TripTicket } from "./TripTicket";
 import { TripGpsMap } from "./TripGpsMap";
 import { TripTimeline } from "./TripTimeline";
 import { TripTimesForm } from "./TripTimesForm";
@@ -40,7 +40,6 @@ function TripDetail({ trip }: { trip: CommuteTrip }) {
   const route = useCommuteRoute(trip.routeId);
   // 경로 상세(구간 이름·순서)를 못 받아도 기록만으로 타임라인은 그린다.
   const legs = route.data?.legs;
-  const summary = summarizeTrip(trip, legs);
 
   return (
     <section>
@@ -50,13 +49,9 @@ function TripDetail({ trip }: { trip: CommuteTrip }) {
       <h1>
         {trip.tripDate} · {route.data?.route.name ?? `경로 #${trip.routeId}`}
       </h1>
+      <TripTicket trip={trip} route={route.data?.route} legs={legs} />
+      {/* 총 소요·결과는 승차권에 있다 */}
       <dl className="facts">
-        <dt>총 소요</dt>
-        <dd>{formatDuration(summary.totalSec)}</dd>
-        <dt>결과</dt>
-        <dd>
-          <TripResult summary={summary} />
-        </dd>
         <dt>기록 생성</dt>
         <dd>{formatKst(trip.createdAt)}</dd>
       </dl>

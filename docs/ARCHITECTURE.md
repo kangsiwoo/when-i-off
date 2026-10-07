@@ -87,6 +87,9 @@
 ### 데스크탑 웹 (TS/React)
 - 조회·관리 중심 (경로/정류장/신호등 등록, 기록 히스토리, 캘리브레이션 상태 확인)
 - 실시간 GPS 수집은 하지 않음 (그건 앱의 역할)
+- UI: Vite + React, 차트 Recharts, 지도 Leaflet(OSM 타일). 디자인 시스템은 소개 페이지(`site/`)와 공용 —
+  토큰 기준은 `desktop/src/styles/tokens.css`, 글꼴 Pretendard · JetBrains Mono 번들, 이동 기록 한 번 = 승차권 한 장
+  ([desktop/README.md](../desktop/README.md) "디자인 시스템")
 
 ## 외부 데이터 동기화
 

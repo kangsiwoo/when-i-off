@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - "desktop/**"
+      # 디자인 토큰 사본 — desktop의 tokens.test.ts가 desktop/src/styles/tokens.css와 같은지 검사한다 (#96)
+      - "site/style.css"
       - ".github/workflows/desktop-ci.yml"
   pull_request:
     paths:
       - "desktop/**"
+      # 디자인 토큰 사본 — desktop의 tokens.test.ts가 desktop/src/styles/tokens.css와 같은지 검사한다 (#96)
+      - "site/style.css"
       - ".github/workflows/desktop-ci.yml"
 
 jobs:

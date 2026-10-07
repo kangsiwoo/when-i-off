@@ -1,6 +1,7 @@
 /** 지도에 올릴 마커·선을 API 응답에서 만든다 (화면 없는 순수 로직, #64). */
 import type { BoardingAttempt, CommuteRoute, GpsTrace, RouteLeg } from "../api/client";
 import { formatKstTime } from "../kst";
+import { lineTone } from "./lineTone";
 import type { MapLine, MapMarker } from "./types";
 
 /** 경로 상세의 읽기 전용 지도: 출발/도착, 도보 선, 대중교통(승차→하차) 점선과 정류장. */
@@ -37,7 +38,12 @@ export function routeOverlay(route: CommuteRoute, legs: RouteLeg[]) {
     } else if (leg.boardStop && leg.alightStop) {
       const b = { lat: leg.boardStop.lat, lng: leg.boardStop.lng };
       const a = { lat: leg.alightStop.lat, lng: leg.alightStop.lng };
-      lines.push({ id: `leg-${leg.id}`, kind: "transit", positions: [b, a] });
+      lines.push({
+        id: `leg-${leg.id}`,
+        kind: "transit",
+        tone: lineTone(leg.transitLine),
+        positions: [b, a],
+      });
       markers.push(
         stopMarker(leg, "board", `승차 ${leg.boardStop.name}`),
         stopMarker(leg, "alight", `하차 ${leg.alightStop.name}`),

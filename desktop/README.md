@@ -6,7 +6,7 @@ TypeScript + React(Vite) 관리·조회 웹. 지금은 토큰 로그인 → 경�
 상세는 [docs/DEVELOPMENT_PLAN.md](../docs/DEVELOPMENT_PLAN.md) Phase 5, 이슈 #7.
 
 스택: Vite · React 18 · TypeScript(strict) · TanStack Query · react-router · openapi-fetch · Recharts(차트),
-Leaflet + react-leaflet 4(지도, React 18용 마지막 메이저),
+Leaflet + react-leaflet 4(지도, React 18용 마지막 메이저), 글꼴 Pretendard · JetBrains Mono(번들, 아래 "디자인 시스템"),
 검사는 ESLint(flat config) · Prettier · Vitest + Testing Library(jsdom). Node 22, npm(`package-lock.json` 커밋).
 
 ## 실행
@@ -68,6 +68,44 @@ npm run gen:api
 - **backend-ci** `OpenAPI spec is up to date`: `exportOpenApi`를 돌려 `desktop/openapi.json`에 diff가 있으면 실패
 - **desktop-ci** `Generated API types are up to date`: `gen:api`를 돌려 `src/api/schema.d.ts`에 diff가 있으면 실패
 
+## 디자인 시스템 (#96)
+
+소개 페이지([site/](../site/README.md))와 같은 "출발 안내판 × 스위스 타이포그래피"다. 종이색 바탕(라이트 `#efece4`)과
+거의 검정(다크 `#0c0c0b`, `prefers-color-scheme`를 따른다) 위에 잉크 글자, 헤어라인 규칙선, 번호 붙은 모노 라벨, 최소 모서리.
+그라데이션·그림자·유리 효과·이모지·아이콘 세트는 쓰지 않는다.
+
+- **토큰**: `src/styles/tokens.css`가 기준(single source of truth)이다 — 색(라이트/다크), 안내판, 앰버 LED `--led`,
+  실제 노선색(`--gtx-a` `--bus-red` `--line-2` `--suin`), 상태색(`--ok` `--warn` `--bad`), 차트 계열, 글자 크기, 간격, 규칙선, 모서리.
+  `site/style.css`의 `:root` 토큰 블록은 이 파일의 사본이고 `src/styles/tokens.test.ts`가 두 파일의 라이트·다크 값이 같은지 검사한다
+  (사이트 전용 `--sans` `--mono` `--wrap` `--gutter` `--col-gap`만 예외). 토큰을 바꾸면 두 파일을 같이 바꾼다.
+  CI는 `site/style.css`가 바뀌어도 desktop 검사를 돌린다. `index.css`는 토큰만 쓰고 새 hex를 만들지 않는다
+- **글꼴**: 수정하지 않은 [Pretendard](https://github.com/orioncactus/pretendard) 1.3.9(npm `pretendard`, OFL)의 dynamic subset과
+  `@fontsource-variable/jetbrains-mono`(OFL)를 `main.tsx`에서 import해 Vite가 번들한다. 런타임 CDN 요청은 없고, 글꼴 조각은
+  `unicode-range`로 화면에 나온 글자가 속한 것만 받는다(`vite.config.ts`에서 woff2는 CSS에 data URI로 넣지 않는다). 사이트의 서브셋은
+  이름을 바꾼 수정본(WIO Sans)이지만 앱은 원본 그대로라 이름이 `Pretendard Variable`이다. OFL 전문은 `public/fonts/`로 배포된다.
+  모노 글자 속 한글 띄어쓰기는 `word-spacing: -0.3em`으로 줄인다(사이트와 같다)
+- **셸·페이지**: 머리는 로고 + 워드마크 + `01 경로` 식 모노 메뉴(번호는 CSS `content: attr(data-no) / ""`라 화면 읽기에서 빠진다),
+  현재 메뉴·탭은 앰버 밑줄. 페이지 안 `h2`는 굵은 규칙선 + CSS 카운터 번호(`01`, `02` …). 표는 시간표처럼 바깥 테두리 없이
+  모노 머리글과 헤어라인 행. 버튼은 잉크 채움(누르면 앰버), 보조 버튼·프리셋은 잉크 테두리, `aria-pressed`면 잉크 채움
+- **버전별 성과**: 두 테마 모두 어두운 출발 안내판(`--board`) 위에 앰버 LED 모노 숫자
+- **배지**: 수단은 사각/원 견본 + 모노 글자(대중교통은 노선색), 상태는 점 + 글자. 색만으로 뜻을 싣지 않는다
+- 포커스 링은 `--focus`(라이트 잉크, 다크 앰버) 2px
+
+## 승차권 (#96)
+
+출근·퇴근 한 번 = 승차권 한 장(`pages/TripTicket.tsx`, 로직은 `trips/ticket.ts`). 이동 기록 목록은 작은 승차권 묶음이고,
+trip 상세는 위에 큰 승차권을 두고 그 아래는 예전 그대로(타임라인·GPS·보정)다. API 호출은 늘리지 않았다.
+
+- 본권: 방향 + "승차권" 태그, 날짜(요일), 번호(`No.` + trip id 6자리), 출발 → 도착 장소와 KST 시각(안내판식 모노 숫자), 소요
+- 구간 띠: 경로 구간 순서대로 — 도보는 점선, 대중교통은 노선색 띠(`lineTone`), 놓친 차는 속이 빈 띠 + 취소선("무효" 구간),
+  탑승 기록이 없는 구간은 점선 테두리. 경로 상세를 못 받으면 기록이 있는 대중교통 구간만
+- 절취선(점선 + 양 끝 반원 홈, CSS만) 너머 보관권: 추천 출발 / 실제 출발 / 목표 도착 / 목표 대비 도착, 도장
+- 목표는 **경로의 기본 목표 도착 시각**을 그 trip 날짜(KST)에 붙인 값이다. 도장: 도착 기록 없음 → "기록 중", 목표 없음 → "도착",
+  1초라도 늦으면 "지각"(추천 vs 실제 표와 같은 기준), 아니면 "정시". "취소"는 화면이 `cancelled`를 넘길 때만(서버는 취소한 trip을 지운다, #88)
+- trip 응답에 추천이 없어서 지금 화면의 "추천 출발"은 "—"다. 컴포넌트는 `recommendedLeaveAt`을 받으면 시각과 차이(+N분)를 그린다
+  (연결하려면 `recommendation-history` 호출이 하나 늘어난다). 없는 값은 언제나 "—"이고 지어내지 않는다
+- 철도 회사 이름·로고·색은 쓰지 않는다. 일반 승차권 문법(본권/절취선/보관권/도장)만 빌린다
+
 ## 이동 기록 (#58)
 
 - `/trips?routeId=&from=&to=`: `GET /commute-trips` 필터를 주소에 둔다. 행마다 날짜, 집 나섬 → 도착, 총 소요,
@@ -98,9 +136,10 @@ npm run gen:api
 - 차트 두 개(Recharts, 이 탭에서만 쓰므로 lazy로 따로 읽는다): ① 날짜별 추천 출발(모델 버전별 선)과 실제 출발(점),
   y는 KST 하루 중 시각 ② 날짜별 `bufferSeconds`(분, 0부터). 단위가 달라 축 두 개짜리 한 차트로 겹치지 않는다.
   범례 + 겹치지 않는 끝점에만 직접 라벨 + 크로스헤어 툴팁. 표가 차트의 표 보기를 겸한다
-- 색은 dataviz 기준 팔레트(`index.css`의 `.viz` 토큰)이고 `validate_palette.js --pairs all`로 앱 표면(라이트 `#ffffff`,
-  다크 `#1a1b1e`)에 대해 검사했다. 실제 출발 = 1번, 버전은 `vN`의 N이 홀수면 2번·짝수면 3번(버전이 늘 같은 색).
-  같은 자리를 원하는 더 오래된 버전과 번호 없는 버전은 회색으로 접는다
+- 색은 디자인 토큰이다(#96): 실제 출발 = 잉크 점(1번), 버전은 `vN`의 N이 홀수면 2번(2호선 초록 `--series-2`)·짝수면
+  3번(GTX-A 보라를 진하게 조정한 `--series-3`, 다크는 밝게). dataviz `validate_palette.js --pairs all`로 라이트 `#efece4`·다크 `#0c0c0b`에
+  대해 검사했다(초록은 라이트에서 대비 3:1 미만이라 끝점 직접 라벨과 표가 같이 있다). 같은 자리를 원하는 더 오래된 버전과 번호 없는
+  버전은 회색(`--ink-3`)으로 접는다. 축 눈금은 모노, 격자는 헤어라인(`--rule`)
 - 표: 날짜(그날 trip이 여럿이면 trip마다 한 줄) / 추천 출발(버전별, 확률·여유) / 실제 출발과 버전별 차이(±분, +면
   늦게 나섬) / 목표 도착 / 실제 도착과 지각 여부 / 결과(전 구간 탑승, 놓친 차). 지각 판정 기준은 그날 가장 늦게
   계산된 추천의 목표 시각이고, 1초라도 늦으면 지각이다
@@ -116,7 +155,9 @@ npm run gen:api
 
 - 지도는 Leaflet + OpenStreetMap 기본 타일(`tile.openstreetmap.org`), 오른쪽 아래에 OSM 출처 표기. leaflet(JS·CSS)은
   `src/map/MapView.tsx` 한 파일만 import하고 `LazyMap`이 lazy로 읽으므로 지도가 있는 화면에서만 따로 받는 청크다.
-  마커는 이미지 대신 CSS 핀(`.map-pin-*`, 다크 모드 토큰 포함)이고 타일 자체는 다크 모드에서도 기본 색 그대로다
+  타일은 CSS `filter`로 채도를 뺀다(다크는 반전) — 노선색 선이 보이게. 선 색은 `MapView`가 붙인 `.map-line-*` 클래스를 CSS가 토큰으로
+  칠한다: 대중교통은 노선색 굵은 실선(`src/map/lineTone.ts`: GTX → `--gtx-a`, 버스 → `--bus-red`, 이름이 수인분당/2호선이면 그 색,
+  모르는 지하철은 잉크), 도보는 점선, GPS는 잉크. 마커는 이미지 대신 소개 페이지 노선도의 역 점 모양 CSS 핀(`.map-pin-*`)
 - `/routes/new`: 이름·방향을 넣고 지도를 눌러 출발(집)·도착을 찍는다(마커는 끌어서 옮김). `POST /commute-routes` 후 구간 편집으로 간다
 - `/routes/:id/edit` (경로 탭 "구간 편집"): 구간 카드 목록 + 지도. `PUT /commute-routes/{id}/legs`로 **전체 교체**하고
   저장된 구간은 `id`를 붙여 보낸다(재정렬해도 실측 기록·crossing 유지, API.md "구간 교체의 의미"). 구간이 없는 경로는
@@ -173,8 +214,8 @@ npm run gen:api
 - 아래: 소스(TAGO/KLID)마다 op별 표 — 오늘(KST)·최근 1시간의 호출 수, 실패율(+ 결과별 실패 내역), p50/p95, 일 한도 사용률 막대.
   단위는 HTTP 시도(재시도 포함)
 - 강조 규칙(`src/ops/ops.ts`): 오늘이나 최근 1시간 실패율이 20% 이상이면 행 배경 + "실패율 높음". 한도 막대는 70% 이상
-  노랑 "한도 70%+", 90% 이상 빨강 "한도 90%+"(ADR 0002의 재검토 기준과 같은 70%). 상태 색은 고정 팔레트이고 언제나
-  아이콘 + 글자와 같이 나온다 — 색만으로 뜻을 싣지 않는다. 막대의 빈 칸은 채움과 같은 계열의 옅은(다크에서는 어두운) 색
+  주황 "한도 70%+", 90% 이상 빨강 "한도 90%+"(ADR 0002의 재검토 기준과 같은 70%). 상태 색은 토큰(`--ok` `--warn` `--bad`)이고 언제나
+  아이콘 + 글자와 같이 나온다 — 색만으로 뜻을 싣지 않는다. 평소 막대 채움은 잉크, 빈 칸은 `--paper-3`
 - 서버 집계는 메모리라 재시작하면 0부터다. 화면 위에 "집계 시작" 시각을 보여 주고, 기록이 하나도 없으면 빈 상태 문구를 띄운다
 
 ## 구조
@@ -184,7 +225,7 @@ src/
   api/        schema.d.ts(생성), client.ts(openapi-fetch + 토큰/401 미들웨어), queries.ts(TanStack Query 훅)
   auth/       token.ts(localStorage), RequireAuth.tsx
   pages/      LoginPage, Layout, RouteListPage, RouteDetailPage,
-              TripListPage, TripDetailPage(+ TripTimeline, TripTimesForm, AttemptForm),
+              TripListPage, TripDetailPage(+ TripTicket, TripTimeline, TripTimesForm, AttemptForm),
               RouteCreatePage, RouteEditPage(+ LegCards, SignalCrossingsEditor), TripGpsMap,
               RouteSettingsForm(+ TargetFields),
               RouteCalibrationPage(+ RouteTabs), RouteRecommendationsPage(+ RecommendationCharts lazy, EvaluationSummary),
@@ -192,10 +233,13 @@ src/
   calibration/ chain.ts(보정값 조회 순서·기본값 — analytics lookup.py를 옮김) — 화면 없는 순수 로직
   recommendations/ history.ts(추천 vs 실제: 차이·지각·차트 계열·축·버전 색), evaluations.ts(버전별 성과 tile) — 화면 없는 순수 로직
   legs/       legRules.ts(구간 초안 ↔ PUT 본문, 서버와 같은 검증, crossing 코드) — 화면 없는 순수 로직
-  map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선)
+  map/        MapView.tsx(leaflet, lazy 청크), LazyMap.tsx, geo.ts(대권거리·범위), overlay.ts(경로·GPS 마커/선),
+              lineTone.ts(노선 → 노선색 토큰)
+  styles/     tokens.css(디자인 토큰 — site/style.css와 공용 기준), tokens.test.ts(두 파일 값 일치 검사)
   target/     defaultTarget.ts(기본 목표 도착 시각·추천할 날 초안 ↔ 생성 필드/PATCH 본문, 검증) — 화면 없는 순수 로직
   schedules/  csv.ts(시간표 CSV 검사·미리보기 — 서버 파서를 옮김), next.ts(다음 출발 조회 파라미터·후보) — 화면 없는 순수 로직
-  trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문) — 화면 없는 순수 로직
+  trips/      timeline.ts(타임라인·결과 요약·예측 오차), corrections.ts(보정 폼 → PATCH 본문),
+              ticket.ts(승차권: 구간 띠·목표·도장) — 화면 없는 순수 로직
   ops/        ops.ts(운영 화면: 실패율 강조·한도 단계·표시 형식) — 화면 없는 순수 로직
   kst.ts      datetime-local ↔ UTC ISO. 브라우저 시간대와 상관없이 KST(UTC+9)로 읽고 쓴다
   routes.tsx  라우트 표

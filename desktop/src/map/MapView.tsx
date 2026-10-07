@@ -23,18 +23,23 @@ const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const SEOUL: [number, number] = [37.5665, 126.978];
 
+// 선의 색은 CSS(index.css `.map-line-*`)가 디자인 토큰으로 칠한다 — 테마가 바뀌어도 따라가게. 여기서는 굵기와 모양만.
+// 대중교통은 노선색 실선(소개 페이지 노선도처럼 굵게), 도보는 잉크 점선, GPS는 잉크 실선이다.
 const LINE_STYLE: Record<MapLine["kind"], L.PolylineOptions> = {
-  walk: { color: "#2e7d32", weight: 4, opacity: 0.8 },
-  transit: { color: "#1565c0", weight: 4, opacity: 0.8, dashArray: "8 8" },
-  gps: { color: "#eb6834", weight: 3, opacity: 0.9 },
+  walk: { weight: 4, opacity: 1, dashArray: "2 8", lineCap: "round" },
+  transit: { weight: 7, opacity: 1, lineCap: "butt" },
+  gps: { weight: 3, opacity: 0.9 },
 };
+
+const lineClass = (line: MapLine) =>
+  `map-line map-line-${line.kind}${line.kind === "transit" ? ` map-line-${line.tone ?? "ink"}` : ""}`;
 
 function icon(marker: MapMarker) {
   // 기본 마커 이미지는 번들러에서 경로가 깨지므로 CSS로 그린 divIcon을 쓴다 (index.css .map-pin).
   return L.divIcon({
     className: `map-pin map-pin-${marker.kind}${marker.selected ? " map-pin-selected" : ""}`,
     html: `<span>${escapeHtml(marker.text ?? "")}</span>`,
-    iconSize: marker.kind === "gps-point" ? [8, 8] : [24, 24],
+    iconSize: marker.kind === "gps-point" ? [8, 8] : [22, 22],
   });
 }
 
@@ -84,13 +89,15 @@ export default function MapView({
         <FitBounds points={fitPoints} fitKey={fitKey} />
         {lines.map((line) => (
           <Polyline
-            key={line.id}
+            // className은 Leaflet이 선을 만들 때만 붙이므로, 노선색이 바뀌면 다시 만든다.
+            key={`${line.id}:${line.tone ?? ""}`}
             positions={line.positions.map((p) => [p.lat, p.lng] as [number, number])}
             // 선은 보기만 한다. 클릭이 선에 먹히지 않고 지도로 가야 "지도에서 찍기"가 선 위에서도 된다.
             interactive={false}
             pathOptions={{
               ...LINE_STYLE[line.kind],
-              ...(line.selected ? { weight: 7, opacity: 1 } : {}),
+              className: lineClass(line),
+              ...(line.selected ? { weight: (LINE_STYLE[line.kind].weight ?? 4) + 3 } : {}),
             }}
           />
         ))}
