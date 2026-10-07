@@ -489,6 +489,77 @@
                         적은 동안은 보수적인 기본값을 쓰고, 추천에 쓰인 실측 표본
                         수를 함께 보여 줍니다.
                     </p>
+
+                    <div class="ticket-demo">
+                        <div class="ticket-demo-head">
+                            <p class="fig-no">FIG. B</p>
+                            <h3>한 번의 출근, 한 장의 승차권</h3>
+                            <p>
+                                출근이나 퇴근 한 번이 승차권 한 장입니다. 탄
+                                차는 노선색 구간으로, 놓친 차는 무효 처리한
+                                구간으로 남고, 절취선 너머 보관권에는 추천 대비
+                                실제 출발과 목표 대비 도착이 찍힙니다. 데스크톱
+                                웹의 이동 기록이 이 승차권 묶음입니다.
+                            </p>
+                        </div>
+                        <article class="ticket" aria-label="승차권 예시: 출근, 정시 도착">
+                            <div class="ticket-main">
+                                <div class="ticket-head">
+                                    <span class="ticket-kind">출근 승차권</span>
+                                    <span class="ticket-date">2026-10-07 (수)</span>
+                                    <span class="ticket-no">예시 · No. 000001</span>
+                                </div>
+                                <div class="ticket-route">
+                                    <div class="ticket-end">
+                                        <span class="ticket-label">출발</span>
+                                        <strong class="ticket-place">집</strong>
+                                        <span class="ticket-time">07:55</span>
+                                    </div>
+                                    <span class="ticket-arrow" aria-hidden="true">→</span>
+                                    <div class="ticket-end">
+                                        <span class="ticket-label">도착</span>
+                                        <strong class="ticket-place">회사</strong>
+                                        <span class="ticket-time">08:47</span>
+                                    </div>
+                                    <p class="ticket-total"><span>소요</span> 52분</p>
+                                </div>
+                                <ol class="ticket-legs" aria-label="구간">
+                                    <li class="ticket-leg ticket-leg-walk">
+                                        <span class="ticket-bar"></span>
+                                        <span class="ticket-leg-name">도보</span>
+                                        <span class="ticket-leg-meta">720 m</span>
+                                    </li>
+                                    <li class="ticket-leg ticket-leg-void">
+                                        <span class="ticket-bar"></span>
+                                        <span class="ticket-leg-name"><s>1번째 차</s> 놓침</span>
+                                        <span class="ticket-leg-meta">08:04 출발</span>
+                                    </li>
+                                    <li class="ticket-leg ticket-leg-transit">
+                                        <span class="ticket-bar"></span>
+                                        <span class="ticket-leg-name">GTX-A</span>
+                                        <span class="ticket-leg-meta">동탄 08:14 → 수서 08:35</span>
+                                    </li>
+                                    <li class="ticket-leg ticket-leg-walk">
+                                        <span class="ticket-bar"></span>
+                                        <span class="ticket-leg-name">도보</span>
+                                        <span class="ticket-leg-meta">480 m</span>
+                                    </li>
+                                </ol>
+                            </div>
+                            <div class="ticket-stub">
+                                <dl class="ticket-facts">
+                                    <div><dt>추천 출발</dt><dd>07:53</dd></div>
+                                    <div><dt>실제 출발</dt><dd>07:55 <small>+2분</small></dd></div>
+                                    <div><dt>목표 도착</dt><dd>09:00</dd></div>
+                                    <div><dt>목표 대비</dt><dd>−13분</dd></div>
+                                </dl>
+                                <p class="ticket-stamp">정시</p>
+                            </div>
+                        </article>
+                        <p class="note">
+                            예시 승차권 — 수치는 설명용 합성 값입니다.
+                        </p>
+                    </div>
                 </div>
             </section>
 
@@ -518,7 +589,7 @@
                                     width="920"
                                     height="920"
                                     loading="lazy"
-                                    alt="추천 vs 실제 화면: 모델 버전별 성과 카드와 날짜별 추천 출발 vs 실제 출발 차트"
+                                    alt="추천 vs 실제 화면: 모델 버전별 성과를 보여 주는 출발 안내판과 날짜별 추천 출발 vs 실제 출발 차트"
                                 />
                             </div>
                             <figcaption>
@@ -536,9 +607,9 @@
                                     <img
                                         src="assets/screen_route.jpg"
                                         width="1100"
-                                        height="1115"
+                                        height="1100"
                                         loading="lazy"
-                                        alt="경로 상세 화면: 출발·도착 좌표, 목표 도착 시각 설정, 지도 위 GTX-A 구간"
+                                        alt="경로 상세 화면: 목표 도착 시각 설정과 지도 위 GTX-A 노선색 구간"
                                     />
                                 </div>
                             </div>
@@ -559,13 +630,13 @@
                                         width="1100"
                                         height="1100"
                                         loading="lazy"
-                                        alt="이동 기록 상세 화면: 집 나섬부터 도착까지의 타임라인과 GPS 트랙 지도"
+                                        alt="이동 기록 상세 화면: 출근 한 번을 한 장으로 보여 주는 승차권(놓친 차는 무효 구간, 정시 도장)과 타임라인"
                                     />
                                 </div>
                             </div>
                             <figcaption>
                                 <span class="fig-no">FIG. 3</span>이동 기록 —
-                                타임라인과 GPS 트랙
+                                승차권과 타임라인
                             </figcaption>
                         </figure>
                     </div>

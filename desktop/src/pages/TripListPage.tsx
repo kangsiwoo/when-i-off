@@ -1,16 +1,12 @@
-import { Link, useSearchParams } from "react-router";
-import type { CommuteTrip, RouteLeg } from "../api/client";
+import { useSearchParams } from "react-router";
 import {
   useCommuteRouteDetails,
   useCommuteRoutes,
   useCommuteTrips,
   type TripFilter,
 } from "../api/queries";
-import { formatDuration } from "../format";
-import { formatKstTime } from "../kst";
-import { summarizeTrip } from "../trips/timeline";
 import { ErrorMessage, Loading } from "./Status";
-import { TripResult } from "./TripResult";
+import { TripTicket } from "./TripTicket";
 
 /** 필터는 주소(`?routeId=&from=&to=`)에 둔다 — 상세에서 돌아와도 그대로다. */
 function useTripFilter(): [TripFilter, (key: keyof TripFilter, value: string) => void] {
@@ -86,59 +82,22 @@ export function TripListPage() {
       ) : trips.data.length === 0 ? (
         <p className="muted">조건에 맞는 기록이 없습니다.</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>날짜</th>
-              <th>경로</th>
-              <th>집 나섬 → 도착 (KST)</th>
-              <th>총 소요</th>
-              <th>결과</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trips.data.map((trip) => (
-              <TripRow
-                key={trip.id}
+        <ol className="ticket-list" aria-label="승차권">
+          {trips.data.map((trip) => (
+            <li key={trip.id}>
+              <TripTicket
+                compact
                 trip={trip}
+                route={routes.data?.find((r) => r.id === trip.routeId)}
                 routeName={routeName(trip.routeId)}
                 legs={legsOf(trip.routeId)}
+                // 단건 조회 API가 없어 상세는 경로·날짜로 좁힌 목록에서 찾는다
+                href={`/trips/${trip.id}?routeId=${trip.routeId}&date=${trip.tripDate}`}
               />
-            ))}
-          </tbody>
-        </table>
+            </li>
+          ))}
+        </ol>
       )}
     </section>
-  );
-}
-
-function TripRow({
-  trip,
-  routeName,
-  legs,
-}: {
-  trip: CommuteTrip;
-  routeName: string;
-  legs?: RouteLeg[];
-}) {
-  const summary = summarizeTrip(trip, legs);
-  const time = (iso?: string | null) => (iso ? formatKstTime(iso) : "—");
-  return (
-    <tr>
-      <td>
-        {/* 단건 조회 API가 없어 상세는 경로·날짜로 좁힌 목록에서 찾는다 */}
-        <Link to={`/trips/${trip.id}?routeId=${trip.routeId}&date=${trip.tripDate}`}>
-          {trip.tripDate}
-        </Link>
-      </td>
-      <td>{routeName}</td>
-      <td>
-        {time(trip.leftHomeAt)} → {time(trip.arrivedDestinationAt)}
-      </td>
-      <td>{formatDuration(summary.totalSec)}</td>
-      <td>
-        <TripResult summary={summary} />
-      </td>
-    </tr>
   );
 }

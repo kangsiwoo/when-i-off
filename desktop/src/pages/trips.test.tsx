@@ -36,22 +36,26 @@ describe("trip list", () => {
     };
     renderApp("/trips", backend([trip, incomplete]));
 
-    const rows = (await screen.findAllByRole("row")).slice(1);
-    expect(rows).toHaveLength(2);
-    const first = within(rows[0]!);
+    const tickets = await screen.findAllByRole("article");
+    expect(tickets).toHaveLength(2);
+    const first = within(tickets[0]!);
     expect(first.getByRole("link", { name: "2026-09-11" })).toHaveAttribute(
       "href",
       "/trips/50?routeId=7&date=2026-09-11",
     );
-    expect(first.getByText("07:30:00 → 08:25:30")).toBeInTheDocument();
+    expect(first.getByText("출근 승차권")).toBeInTheDocument();
+    expect(first.getByText("No. 000050")).toBeInTheDocument();
+    expect(first.getAllByText("07:30")).not.toHaveLength(0);
+    expect(first.getAllByText("08:25")).not.toHaveLength(0);
     expect(first.getByText("55분 30초")).toBeInTheDocument();
     expect(await first.findByText("전 구간 탑승")).toBeInTheDocument();
     expect(first.getByText(/놓친 차 1대/)).toBeInTheDocument();
     expect(await first.findByText("집 → 회사")).toBeInTheDocument();
+    expect(first.getByText("정시")).toBeInTheDocument();
 
-    const second = within(rows[1]!);
-    expect(second.getByText("07:30:00 → —")).toBeInTheDocument();
+    const second = within(tickets[1]!);
     expect(second.getByText("0/1 구간 탑승")).toBeInTheDocument();
+    expect(second.getByText("기록 중")).toBeInTheDocument();
   });
 
   it("passes route and date filters to GET /commute-trips", async () => {

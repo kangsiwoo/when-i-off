@@ -8,14 +8,15 @@
 site/
   index.html          소개 페이지 (출발 안내판 컨셉)
   privacy.html        개인정보 처리 안내
-  style.css           라이트(종이 안내판)/다크(prefers-color-scheme), 인라인 스타일 없음
+  style.css           라이트(종이 안내판)/다크(prefers-color-scheme), 인라인 스타일 없음. 맨 위 토큰 블록은
+                      desktop/src/styles/tokens.css의 사본 (아래 "디자인 토큰")
   app.js              split-flap 애니메이션, 출발 시각 슬라이더·확률 곡선(설명용 합성 모델)
   _headers            Cloudflare Pages 보안 헤더 (CSP 등)
   assets/
     whenioff_logo.svg / whenioff_logo.png (140x140)   활용사례 "로고 이미지"
     whenioff_screen.png (700x700)                      활용사례 "화면 이미지"
     favicon-32.png, apple-touch-icon.png (180x180)    whenioff_logo.svg에서 렌더링
-    screen_recommendations.jpg, screen_route.jpg, screen_trip.jpg   본문 스크린샷
+    screen_recommendations.jpg (920x920), screen_route.jpg, screen_trip.jpg (1100x1100)   본문 스크린샷
     fonts/
       wio-sans.woff2            Pretendard 1.3.9 가변 글꼴 서브셋 (OFL, 이름 변경 — 아래 참고)
       jetbrains-mono-wio.woff2  JetBrains Mono 가변 글꼴 서브셋 (OFL)
@@ -62,6 +63,17 @@ Cloudflare 대시보드의 기본 생성 흐름은 이제 **Workers**(정적 자
 `on*=` 핸들러를 쓰면 막힌다.** 스크립트는 `app.js`, 스타일은 `style.css`에 둔다
 (JS에서 `el.style.x = ...`로 바꾸는 것은 허용된다). `prefers-reduced-motion`이면 split-flap·LED 깜빡임을 끈다.
 
+## 디자인 토큰
+
+색·글자 크기·간격·규칙선·모서리 토큰의 기준은 **`desktop/src/styles/tokens.css`** 다 (#96). 데스크톱 앱이 같은 디자인
+시스템을 쓰고, 이 사이트는 빌드 단계가 없어 그 파일을 import할 수 없으므로 `style.css` 맨 위 `:root` 블록(라이트)과
+`prefers-color-scheme: dark` 블록에 같은 값을 옮겨 둔다. `desktop/src/styles/tokens.test.ts`가 두 파일의 값이 같은지 검사하고
+(사이트 전용 `--sans` `--mono` `--wrap` `--gutter` `--col-gap`만 예외), desktop CI는 `site/style.css`가 바뀌어도 돈다.
+토큰을 바꿀 때는 두 파일을 같이 바꾼다.
+
+03 섹션의 승차권 예시(FIG. B)는 데스크톱 앱 이동 기록의 승차권(`desktop/src/pages/TripTicket.tsx`)과 같은 모양을 HTML/CSS로만
+그린 것이다. 값은 설명용 합성 값이고 화면에 "예시"로 적혀 있다.
+
 ## 글꼴 서브셋
 
 글꼴은 페이지에 실제로 쓰인 글자(한글 약 330자) + 기본 라틴만 남긴 서브셋이다 (합계 약 90KB).
@@ -93,11 +105,21 @@ iOS가 직접 마스크를 씌운다). 열린데이터광장 양식은 로고 14
 
 화면 이미지는 **개발 DB(`when_i_off`)가 아니라 테스트 DB(`when_i_off_test`)** 에 공개 장소 기준 합성 데이터
 (동탄역 → GTX-A → 수서역)를 API로 넣고 찍었다. 개발 DB에는 실제 집·회사 위치가 있을 수 있으니 쓰지 않는다.
+화면은 소개 페이지의 종이 테마와 맞춰 **라이트**로 찍는다.
 
-1. backend를 테스트 DB로 띄운다: `WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio WIO_API_TOKEN=<임의> java -jar backend/build/libs/*.jar`
-2. API로 경로·구간·trip·attempt·GPS를 넣고, analytics `derive-walking-segments` → `calibrate` → `recommend` → `evaluate`를 같은 DB로 돌린다
-3. `desktop`에서 `npm run dev`, Playwright로 `localStorage['wio.apiToken']`을 넣고 `/routes/<id>/recommendations` 등을 캡처
-4. 넣은 행을 지운다 (테스트 DB는 통합 테스트가 `flyway clean`하므로 남아도 다음 테스트 때 사라지지만, 바로 지운다)
+1. 테스트 DB의 테이블별 행 수를 적어 둔다 (끝나고 같아야 한다)
+2. backend를 테스트 DB로 띄운다: `WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio WIO_API_TOKEN=<임의> java -jar backend/build/libs/*.jar`
+3. API로 경로·구간·신호등·trip(평일 15일, 그중 이틀은 첫 차를 놓침)·attempt·GPS를 넣고, analytics `derive-walking-segments` →
+   `calibrate` → `recommend --route-id <id> --target-arrival-at <날짜>T09:00`(평일마다) → `evaluate --from --to`를 같은 DB로 돌린다
+4. `desktop`에서 `npm run dev`, Playwright(Chromium)로 `localStorage['wio.apiToken']`을 넣고 라이트 테마로 캡처한다
+   - `whenioff_screen.png`: `/routes/<id>/recommendations` 를 CSS 880px 창에서 `deviceScaleFactor` 700/880로 — **정확히 700x700**
+   - `screen_recommendations.jpg`: 같은 화면, 1150px 창 × 0.8 = 920x920
+   - `screen_route.jpg`: `/routes/<id>`, 지도가 아래 끝에 오게 1100x1100 (페이지는 16:10 아래쪽을 잘라 보여 준다)
+   - `screen_trip.jpg`: `/trips/<id>?routeId=&date=` 위에서부터 1100x1100 (승차권 + 타임라인, 첫 차를 놓친 날)
+   - OSM 타일은 출처 표기를 그대로 둔 채 찍는다 (페이지 04 아래에도 출처를 적는다)
+5. 넣은 행을 지우고 1의 행 수와 비교한다. 평가·추천(`commute_route_id`) → 전역 도보 프로필(`route_leg_id IS NULL`) → 경로(trip·attempt·구간·
+   구간별 프로필·도보 실측·crossing이 캐스케이드) → 신호등(주기 캐스케이드) → 대중교통 보정 두 테이블 순. GPS 포인트는 trip을 지워도
+   `commute_trip_id`만 비므로 따로 지운다
 
 ## 활용사례 등록 문구 (초안)
 

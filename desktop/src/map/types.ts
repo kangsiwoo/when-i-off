@@ -1,4 +1,5 @@
 import type { LatLng } from "./geo";
+import type { LineTone } from "./lineTone";
 
 export type MarkerKind =
   | "origin"
@@ -31,6 +32,8 @@ export interface MapLine {
   id: string;
   positions: LatLng[];
   kind: "walk" | "transit" | "gps";
+  /** 대중교통 선의 노선색 (`lineTone`). 없으면 잉크색. */
+  tone?: LineTone;
   selected?: boolean;
 }
 

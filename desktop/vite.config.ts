@@ -11,13 +11,18 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    server: { proxy },
+    // 글꼴 조각은 data: URI로 CSS에 넣지 않는다 (unicode-range로 필요할 때만 받게).
+    build: { assetsInlineLimit: (file: string) => (file.endsWith(".woff2") ? false : undefined) },
+    // 토큰 검사(src/styles/tokens.test.ts)만 레포의 site/style.css를 읽는다. 개발 서버는 그대로 desktop/ 안만 연다.
+    server: mode === "test" ? { proxy, fs: { allow: [".", "../site"] } } : { proxy },
     preview: { proxy },
     test: {
       environment: "jsdom",
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
       restoreMocks: true,
+      // CSS는 기본으로 빈 모듈이 된다. 토큰 검사가 `?raw`로 읽는 두 파일만 실제 내용을 받는다.
+      css: { include: [/src\/styles\/tokens\.css/, /site\/style\.css/] },
     },
   };
 });

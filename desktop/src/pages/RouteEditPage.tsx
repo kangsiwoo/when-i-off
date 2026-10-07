@@ -17,6 +17,7 @@ import {
 import { signalName } from "../format";
 import { haversineM, midpoint, walkDistanceM, type LatLng } from "../map/geo";
 import { LazyMap } from "../map/LazyMap";
+import { lineTone } from "../map/lineTone";
 import type { MapLine, MapMarker } from "../map/types";
 import { TransitLegCard, WalkLegCard, type PickTarget, type StopWhich } from "./LegCards";
 import { RouteTabs } from "./RouteTabs";
@@ -274,7 +275,14 @@ function LegEditor({ detail }: { detail: CommuteRouteDetail }) {
       } else {
         const b = pointOf(d.boardStop);
         const a = pointOf(d.alightStop);
-        if (b && a) lines.push({ id: d.key, positions: [b, a], kind: "transit", selected: isSel });
+        if (b && a)
+          lines.push({
+            id: d.key,
+            positions: [b, a],
+            kind: "transit",
+            tone: lineTone(d.line),
+            selected: isSel,
+          });
         for (const [stop, label] of [
           [d.boardStop, "승차"],
           [d.alightStop, "하차"],

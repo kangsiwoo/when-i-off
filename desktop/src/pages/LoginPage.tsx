@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router";
+import logo from "../assets/whenioff_logo.svg";
 import { setToken } from "../auth/token";
 
 interface LoginState {
@@ -23,7 +24,10 @@ export function LoginPage() {
   return (
     <div className="login">
       <form className="card login-card" onSubmit={submit}>
-        <h1>when-i-off</h1>
+        <h1>
+          <img src={logo} alt="" width={36} height={36} />
+          When I Off
+        </h1>
         <p className="muted">
           backend의 API 토큰(<code>WIO_API_TOKEN</code>)을 입력하세요.
         </p>
