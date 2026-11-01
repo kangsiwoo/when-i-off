@@ -18,6 +18,10 @@ concurrency:
   group: ios-app-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 빌드·테스트만 한다. GITHUB_TOKEN은 체크아웃용 읽기 권한만 준다.
+permissions:
+  contents: read
+
 jobs:
   app:
     name: WhenIOff (simulator)

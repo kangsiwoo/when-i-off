@@ -15,6 +15,10 @@ on:
       - "ios/**"
       - ".github/workflows/ios-ci.yml"
 
+# 빌드·테스트만 한다. GITHUB_TOKEN은 체크아웃용 읽기 권한만 준다.
+permissions:
+  contents: read
+
 jobs:
   package:
     name: ${{ matrix.package }}
