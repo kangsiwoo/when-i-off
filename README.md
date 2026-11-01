@@ -16,11 +16,12 @@
 backend MVP(#10) 진행 중. 상세한 실행/테스트 방법은 [backend/README.md](backend/README.md).
 
 ```bash
-cp .env.example .env      # WIO_API_TOKEN은 아무 문자열이면 된다
+cp .env.example .env      # WIO_API_TOKEN·WIO_DB_PASSWORD는 아무 문자열이면 된다
 docker compose up -d --build
 curl -s -H "X-Api-Token: $WIO_API_TOKEN" localhost:8080/api/v1/commute-routes
 ```
 
+포트(5432·8080)는 `127.0.0.1`에만 열린다 — 같은 네트워크의 다른 기기에서는 붙지 못한다.
 Swagger UI는 `localhost:8080/swagger-ui.html`, health는 `localhost:8080/actuator/health`(인증 없음).
 
 - [아키텍처 개요](docs/ARCHITECTURE.md)
@@ -28,5 +29,5 @@ Swagger UI는 `localhost:8080/swagger-ui.html`, health는 `localhost:8080/actuat
 - [최적 출발 시각 계산 알고리즘](docs/ALGORITHM.md)
 - [API 설계](docs/API.md)
 - [개발 계획](docs/DEVELOPMENT_PLAN.md) — Phase별 이슈: [#2](../../issues/2) [#3](../../issues/3) [#4](../../issues/4) [#5](../../issues/5) [#6](../../issues/6) [#7](../../issues/7) [#8](../../issues/8)
-- [서비스 소개 페이지](site/README.md) — Cloudflare Pages 정적 랜딩(`site/`), 서울 열린데이터 활용사례용 공개 URL (#92)
+- [서비스 소개 페이지](site/README.md) — Cloudflare Workers 정적 자산 랜딩(`site/`, 루트 `wrangler.jsonc`. Pages도 가능), 서울 열린데이터 활용사례용 공개 URL (#92)
 - [개발 컨벤션](docs/CONVENTIONS.md) — 이슈 → 브랜치 → PR → 리뷰 → Squash merge

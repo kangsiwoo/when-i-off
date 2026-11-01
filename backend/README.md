@@ -11,7 +11,7 @@ Kotlin + Spring Boot 3.5, JDK 21, PostgreSQL 16, Flyway. 설계는 [`docs/`](../
 
 ```bash
 # 1. 환경변수. 루트의 .env.example을 복사해서 채운다
-cp .env.example .env          # WIO_API_TOKEN은 아무 문자열, TAGO/KLID 키는 있으면 그대로 넣는다
+cp .env.example .env          # WIO_API_TOKEN·WIO_DB_PASSWORD는 아무 문자열, TAGO/KLID 키는 있으면 그대로 넣는다
 
 # 2. 빌드 + 기동 (Flyway가 V1 스키마 + V2 기본 사용자를 적용)
 docker compose up -d --build
@@ -20,7 +20,10 @@ docker compose ps             # backend가 healthy가 될 때까지 기다린다
 docker compose logs -f backend
 ```
 
-`WIO_API_TOKEN`이 비어 있으면 compose가 바로 실패한다 (앱이 뜬 뒤 401로 헤매지 않게).
+`WIO_API_TOKEN`이나 `WIO_DB_PASSWORD`가 비어 있으면 compose가 바로 실패한다 (앱이 뜬 뒤 401·인증 실패로 헤매지 않게).
+Postgres 계정은 `.env`의 `WIO_DB_USER`/`WIO_DB_PASSWORD`로 **최초 기동 때만** 만들어진다. 볼륨이 이미 있으면 비밀번호를
+바꿔도 반영되지 않으니 `ALTER USER`로 맞추거나 `docker compose down -v`로 볼륨을 지운다(데이터도 지워진다).
+5432·8080은 `127.0.0.1`에만 바인딩된다. 폰 등 다른 기기에서 붙이려면 TLS 리버스 프록시를 앞에 둔다.
 TAGO/KLID 키는 없어도 뜨고, 관리 동기화 API만 `503`이 된다.
 
 ### B. DB만 컨테이너로, 앱은 로컬에서 (개발용)
@@ -48,7 +51,7 @@ cd backend
 
 | 키 | 환경변수 | 기본값 | 의미 |
 |---|---|---|---|
-| `spring.datasource.*` | `WIO_DB_URL`, `WIO_DB_USER`, `WIO_DB_PASSWORD` | `jdbc:postgresql://localhost:5432/when_i_off`, `wio`/`wio` | DB |
+| `spring.datasource.*` | `WIO_DB_URL`, `WIO_DB_USER`, `WIO_DB_PASSWORD` | `jdbc:postgresql://localhost:5432/when_i_off`, `wio`/`wio` | DB. compose의 Postgres 비밀번호는 `.env`의 값이라 bootRun 때도 `.env`를 읽어 맞춘다 |
 | `spring.datasource.url` (`test` 프로필) | `WIO_TEST_DB_URL` | `jdbc:postgresql://localhost:5432/when_i_off_test` | 테스트 DB. 이름이 `_test`로 끝나야 한다 |
 | `wio.api-token` | `WIO_API_TOKEN` | (필수) | 고정 API 토큰 |
 | `wio.tago.service-key` | `TAGO_BUS_API` | 빈 문자열 | TAGO 버스노선정보/버스도착정보 공용 서비스 키 (Decoding/Encoding 둘 다 가능) |
@@ -152,17 +155,17 @@ Docker가 없는 환경에서도 돌게). 테스트는 각 테스트 전에 테�
 
 ```bash
 # compose를 쓰면 when_i_off_test는 최초 기동 때 자동으로 만들어진다
-# (docker/postgres-init/01-create-test-db.sql). 이미 볼륨이 있던 환경이라 없다면 직접:
-docker compose exec postgres psql -U wio -d when_i_off -c "CREATE DATABASE when_i_off_test OWNER wio;"
+# (docker/postgres-init/01-create-test-db.sh). 이미 볼륨이 있던 환경이라 없다면 직접:
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d when_i_off -c "CREATE DATABASE when_i_off_test OWNER \"$POSTGRES_USER\";"'
 
 # Docker가 없으면 (예: 리눅스에 postgresql 패키지 설치)
 service postgresql start
 su postgres -c "psql -c \"CREATE USER wio WITH PASSWORD 'wio' CREATEDB;\""
 su postgres -c "psql -c \"CREATE DATABASE when_i_off_test OWNER wio;\""
 
-# 실행
+# 실행. 비밀번호는 compose면 .env의 WIO_DB_PASSWORD, 위 패키지 설치면 'wio'
 cd backend
-WIO_TEST_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio \
+WIO_TEST_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD="$WIO_DB_PASSWORD" \
   ./gradlew ktlintFormat check
 ```
 
