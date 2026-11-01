@@ -404,6 +404,29 @@ class IngestionIT {
     }
 
     @Test
+    fun `polling cycle calls TAGO once for a line and board stop shared by several routes`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
+        intersectionSync.syncIntersections(SEOUL)
+        val line = line(ROUTE_ID)
+        val board = stop(BOARD_NODE)
+        val alight = stop(ALIGHT_NODE)
+        val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
+        // 출근 경로 두 개가 같은 버스 구간(같은 노선·승차 정류장)과 같은 신호를 지난다.
+        seedActiveRoute(line, board, alight, signal)
+        seedActiveRoute(line, board, alight, signal)
+        val observationsBefore = arrivalRepository.count()
+        val requestsBefore = server.requestCount
+
+        val result = cycleService.runCycle()
+
+        // TAGO 1회 + KLID 1회. 중복 구간을 따로 조회하면 TAGO가 2회가 된다.
+        assertEquals(requestsBefore + 2, server.requestCount)
+        assertEquals(1, result.legsPredicted)
+        assertEquals(2, result.predictions)
+        assertEquals(observationsBefore + 2, arrivalRepository.count())
+    }
+
+    @Test
     fun `polling cycle marks a failed bus cityCode and still ingests signals`() {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
         intersectionSync.syncIntersections(SEOUL)
