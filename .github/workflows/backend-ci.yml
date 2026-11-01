@@ -22,18 +22,19 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: when_i_off
+          POSTGRES_DB: when_i_off_test
           POSTGRES_USER: wio
           POSTGRES_PASSWORD: wio
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U wio -d when_i_off"
+          --health-cmd "pg_isready -U wio -d when_i_off_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      WIO_DB_URL: jdbc:postgresql://localhost:5432/when_i_off
+      # test 프로필은 WIO_TEST_DB_URL을 읽고, DB 이름이 _test로 끝나야 테스트가 뜬다.
+      WIO_TEST_DB_URL: jdbc:postgresql://localhost:5432/when_i_off_test
       WIO_DB_USER: wio
       WIO_DB_PASSWORD: wio
     defaults:

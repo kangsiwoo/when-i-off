@@ -97,8 +97,11 @@ spring:
   config:
     activate:
       on-profile: test
+  # 테스트는 TRUNCATE로 데이터를 지우므로 개발 DB(WIO_DB_URL)와 다른 변수를 쓰고, 기본값도 테스트 DB다.
+  # 붙은 DB 이름이 _test로 끝나지 않으면 TestDatabaseGuard(테스트 코드)가 기동을 실패시킨다.
+  datasource:
+    url: ${WIO_TEST_DB_URL:jdbc:postgresql://localhost:5432/when_i_off_test}
   flyway:
-    clean-disabled: false
     locations: classpath:db/migration
 wio:
   api-token: test-token

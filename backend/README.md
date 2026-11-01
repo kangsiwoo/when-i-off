@@ -49,6 +49,7 @@ cd backend
 | 키 | 환경변수 | 기본값 | 의미 |
 |---|---|---|---|
 | `spring.datasource.*` | `WIO_DB_URL`, `WIO_DB_USER`, `WIO_DB_PASSWORD` | `jdbc:postgresql://localhost:5432/when_i_off`, `wio`/`wio` | DB |
+| `spring.datasource.url` (`test` 프로필) | `WIO_TEST_DB_URL` | `jdbc:postgresql://localhost:5432/when_i_off_test` | 테스트 DB. 이름이 `_test`로 끝나야 한다 |
 | `wio.api-token` | `WIO_API_TOKEN` | (필수) | 고정 API 토큰 |
 | `wio.tago.service-key` | `TAGO_BUS_API` | 빈 문자열 | TAGO 버스노선정보/버스도착정보 공용 서비스 키 (Decoding/Encoding 둘 다 가능) |
 | `wio.tago.connect-timeout` / `read-timeout` / `max-retries` / `retry-backoff` | | 5s / 20s / 2 / 500ms | TAGO 클라이언트 |
@@ -144,8 +145,10 @@ pg_restore -h localhost -U wio -d when_i_off --clean --if-exists --no-owner /var
 `./gradlew check`가 CI 게이트다 (ktlint + 테스트). 커밋 전에 `./gradlew ktlintFormat`을 먼저 돌린다.
 
 통합 테스트는 **Testcontainers를 쓰지 않고** 실제 로컬 PostgreSQL에 붙는다 (`test` 프로필,
-Docker가 없는 환경에서도 돌게). 테스트는 Flyway `clean` 후 마이그레이션을 다시 적용하므로
-**개발용 DB와 다른 DB 이름**을 쓴다.
+Docker가 없는 환경에서도 돌게). 테스트는 각 테스트 전에 테이블을 `TRUNCATE ... CASCADE`로 비우므로
+**개발용 DB와 다른 DB**를 쓴다. `test` 프로필은 `WIO_DB_URL`이 아니라 `WIO_TEST_DB_URL`을 읽고,
+기본값은 `jdbc:postgresql://localhost:5432/when_i_off_test`다. 붙은 DB의 `current_database()`가
+`_test`로 끝나지 않으면 테스트 컨텍스트가 Flyway보다 먼저 실패한다(`support/TestDatabaseGuard`).
 
 ```bash
 # compose를 쓰면 when_i_off_test는 최초 기동 때 자동으로 만들어진다
@@ -159,7 +162,7 @@ su postgres -c "psql -c \"CREATE DATABASE when_i_off_test OWNER wio;\""
 
 # 실행
 cd backend
-WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio \
+WIO_TEST_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio \
   ./gradlew ktlintFormat check
 ```
 
