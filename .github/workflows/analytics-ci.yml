@@ -14,6 +14,10 @@ on:
       - ".github/workflows/analytics-ci.yml"
       - "backend/src/main/resources/calendar/kr-holidays.txt"
 
+# 빌드·테스트만 한다. GITHUB_TOKEN은 체크아웃용 읽기 권한만 준다.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
