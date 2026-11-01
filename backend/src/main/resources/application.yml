@@ -9,10 +9,8 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
+    # hibernate.jdbc.time_zone은 두지 않는다. 절대 시각은 전부 TIMESTAMPTZ라 필요 없고, 설정하면
+    # Hibernate가 TIME(KST 하루 중 시각) 값까지 JVM 시간대와 UTC 사이로 옮겨 KST JVM에서 9시간 밀린다.
   flyway:
     enabled: true
     # db/seed는 스키마가 아니라 시드 데이터(R__ 반복 마이그레이션)다. 테스트 프로필에서는
@@ -97,8 +95,11 @@ spring:
   config:
     activate:
       on-profile: test
+  # 테스트는 TRUNCATE로 데이터를 지우므로 개발 DB(WIO_DB_URL)와 다른 변수를 쓰고, 기본값도 테스트 DB다.
+  # 붙은 DB 이름이 _test로 끝나지 않으면 TestDatabaseGuard(테스트 코드)가 기동을 실패시킨다.
+  datasource:
+    url: ${WIO_TEST_DB_URL:jdbc:postgresql://localhost:5432/when_i_off_test}
   flyway:
-    clean-disabled: false
     locations: classpath:db/migration
 wio:
   api-token: test-token

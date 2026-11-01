@@ -114,15 +114,16 @@
 - 마이그레이션은 Flyway `V<n>__<snake_description>.sql`, 한 번 머지된 마이그레이션은 수정하지 않는다
 - 린트: ktlint. `./gradlew ktlintFormat` 후 `./gradlew check`가 CI 게이트
 - 테스트: 단위(`*Test`) + `@SpringBootTest`(`test` 프로필) 통합. **Testcontainers는 쓰지 않는다**
-  (Docker 없는 환경에서도 돌게). 통합 테스트는 로컬 PostgreSQL에 붙고 Flyway `clean` 후
-  다시 마이그레이션하므로 개발 DB와 분리된 테스트 DB를 쓴다. 외부 API는 fixture +
+  (Docker 없는 환경에서도 돌게). 통합 테스트는 로컬 PostgreSQL에 붙고 테스트마다 테이블을
+  `TRUNCATE`하므로 개발 DB와 분리된 테스트 DB(`WIO_TEST_DB_URL`, 기본 `when_i_off_test`)를 쓴다.
+  DB 이름이 `_test`로 끝나지 않으면 테스트가 뜨지 않는다(`TestDatabaseGuard`). 외부 API는 fixture +
   okhttp `MockWebServer`로만, 실제 호출 금지
 - 로컬 테스트 DB 준비 (Docker가 없을 때):
   ```bash
   service postgresql start
   su postgres -c "psql -c \"CREATE USER wio WITH PASSWORD 'wio' CREATEDB;\""
   su postgres -c "psql -c \"CREATE DATABASE when_i_off_test OWNER wio;\""
-  WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio \
+  WIO_TEST_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio \
     ./gradlew ktlintFormat check
   ```
   Docker가 있으면 `docker compose up -d` 후 같은 컨테이너에 테스트 DB만 하나 더 만든다.

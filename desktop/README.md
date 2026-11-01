@@ -52,7 +52,7 @@ backend API를 바꿨으면:
 # 1) backend 스펙을 desktop/openapi.json으로 내보낸다.
 #    test 프로필로 앱을 띄워 /v3/api-docs를 받는다. 테스트와 같은 로컬 PostgreSQL(테스트 DB)이 필요하다.
 cd backend
-WIO_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD=wio \
+WIO_TEST_DB_URL=jdbc:postgresql://localhost:5432/when_i_off_test WIO_DB_USER=wio WIO_DB_PASSWORD="${WIO_DB_PASSWORD:-wio}" \
   ./gradlew exportOpenApi
 
 # 2) 타입을 다시 만든다 (openapi-typescript → prettier).

@@ -35,6 +35,49 @@ describe("login", () => {
     expect(router.state.location.pathname).toBe("/login");
     expect(getToken()).toBeNull();
   });
+
+  it("after a 401, logging in again returns to the page that got the 401", async () => {
+    setToken("stale");
+    const { router } = renderApp("/routes/7?tab=legs", (req) => {
+      if (req.headers.get("X-Api-Token") !== "fresh") {
+        return json({ title: "Unauthorized", status: 401, detail: "bad token" }, 401);
+      }
+      const url = new URL(req.url);
+      if (url.pathname === "/api/v1/commute-routes") return json([route]);
+      return json(detail);
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("토큰이 없거나 맞지 않습니다");
+    expect(router.state.location.pathname).toBe("/login");
+
+    fireEvent.change(screen.getByLabelText("API 토큰"), { target: { value: "fresh" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/routes/7"));
+    expect(router.state.location.search).toBe("?tab=legs");
+  });
+
+  it("without a token, keeps the query string through the login redirect", async () => {
+    const { router } = renderApp("/trips?page=2", () => json([]));
+    fireEvent.change(await screen.findByLabelText("API 토큰"), { target: { value: "devtoken" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/trips"));
+    expect(router.state.location.search).toBe("?page=2");
+  });
+
+  it("ignores an off-site ?from= and goes home", async () => {
+    const { router } = renderApp("/login?from=%2F%2Fevil.test", () => json([route]));
+    fireEvent.change(await screen.findByLabelText("API 토큰"), { target: { value: "devtoken" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+  });
+
+  it("honors an in-app ?from= (router-less 401 fallback)", async () => {
+    const { router } = renderApp("/login?from=%2Ftrips", () => json([]));
+    fireEvent.change(await screen.findByLabelText("API 토큰"), { target: { value: "devtoken" } });
+    fireEvent.click(screen.getByRole("button", { name: "로그인" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/trips"));
+  });
 });
 
 describe("route list", () => {

@@ -94,6 +94,13 @@ class PollingCycleService(
                     log.warn(e) { "prediction failed for $cityCode" }
                     failed += cityCode
                     break
+                } catch (e: RuntimeException) {
+                    // 그 밖의 예외(저장 실패, 예상 못 한 응답 등)는 이 구간만의 문제일 수 있다. 사이클 전체를
+                    // 멈추지 않고 실패로만 남긴 뒤 같은 도시의 다음 구간과 신호 폴링을 계속한다.
+                    log.error(
+                        e,
+                    ) { "prediction failed for line ${target.lineId} stop ${target.boardStopId} in $cityCode" }
+                    failed += cityCode
                 }
             }
         }
@@ -120,6 +127,10 @@ class PollingCycleService(
             } catch (e: KlidException) {
                 log.warn(e) { "tl_drct_info fetch failed for $stdgCd" }
                 failed += stdgCd
+            } catch (e: RuntimeException) {
+                // 한 지자체의 예상 못 한 실패(저장 실패 등)가 다른 지자체 폴링을 막지 않게 한다.
+                log.error(e) { "signal ingest failed for $stdgCd" }
+                failed += stdgCd
             }
         }
 
@@ -141,19 +152,24 @@ class PollingCycleService(
     }
 
     private fun collectBusTargets(): List<BusLegTarget> =
-        transactionTemplate.execute {
-            routeLegRepository.findActiveByLegType(LegType.TRANSIT).mapNotNull { leg ->
-                val line = leg.transitLine ?: return@mapNotNull null
-                val board = leg.boardStop ?: return@mapNotNull null
-                val cityCode = line.stdgCd
-                if (line.mode != TransitMode.BUS || !line.hasRealtimeApi || cityCode == null) return@mapNotNull null
-                // TAGO 조회에는 노선(routeId)과 정류장(nodeId)의 외부 ID가 둘 다 필요하다.
-                if (line.externalId == null || board.externalId == null) return@mapNotNull null
-                val direction =
-                    directionResolver.resolve(line.id!!, board.id!!, leg.alightStop?.id) ?: return@mapNotNull null
-                BusLegTarget(cityCode, line.id!!, board.id!!, direction)
-            }
-        }!!
+        transactionTemplate
+            .execute {
+                routeLegRepository.findActiveByLegType(LegType.TRANSIT).mapNotNull { leg ->
+                    val line = leg.transitLine ?: return@mapNotNull null
+                    val board = leg.boardStop ?: return@mapNotNull null
+                    val cityCode = line.stdgCd
+                    if (line.mode != TransitMode.BUS || !line.hasRealtimeApi || cityCode == null) return@mapNotNull null
+                    // TAGO 조회에는 노선(routeId)과 정류장(nodeId)의 외부 ID가 둘 다 필요하다.
+                    if (line.externalId == null || board.externalId == null) return@mapNotNull null
+                    val direction =
+                        directionResolver.resolve(line.id!!, board.id!!, leg.alightStop?.id) ?: return@mapNotNull null
+                    BusLegTarget(cityCode, line.id!!, board.id!!, direction)
+                }
+            }!!
+            // 여러 경로(또는 한 경로의 여러 구간)가 같은 (노선, 승차 정류장)을 타면 TAGO 응답도 같다.
+            // 한 번만 조회해야 일 한도를 아끼고 같은 관측이 중복 저장되지 않는다. 방향은 TAGO 조회
+            // 파라미터가 아니므로(TagoArrivalPredictionProvider) 키에서 뺀다.
+            .distinctBy { Triple(it.cityCode, it.lineId, it.boardStopId) }
 
     private fun collectSignalStdgCds(): Set<String> =
         transactionTemplate.execute {

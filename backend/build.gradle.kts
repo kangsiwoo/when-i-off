@@ -59,9 +59,12 @@ tasks.withType<Test> {
     useJUnitPlatform()
     // 통합 테스트는 실제 DB에 붙으므로 빌드 캐시에서 결과를 되살리지 않고, 접속 환경이 바뀌면 다시 돈다.
     outputs.cacheIf { false }
-    listOf("WIO_DB_URL", "WIO_DB_USER", "WIO_DB_PASSWORD").forEach { name ->
+    listOf("WIO_DB_URL", "WIO_TEST_DB_URL", "WIO_DB_USER", "WIO_DB_PASSWORD").forEach { name ->
         inputs.property(name, providers.environmentVariable(name)).optional(true)
     }
+    // 개발 PC(KST)와 CI(UTC)의 JVM 시간대가 달라 시간대 버그가 CI에서만 숨는 일을 막는다.
+    // KST로 고정하면 TIME 컬럼이 9시간 밀리는 회귀(hibernate.jdbc.time_zone)를 CalibrationApiIT가 어디서나 잡는다.
+    systemProperty("user.timezone", "Asia/Seoul")
     testLogging {
         events("passed", "skipped", "failed")
     }
