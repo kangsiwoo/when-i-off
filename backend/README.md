@@ -156,7 +156,7 @@ Docker가 없는 환경에서도 돌게). 테스트는 각 테스트 전에 테�
 ```bash
 # compose를 쓰면 when_i_off_test는 최초 기동 때 자동으로 만들어진다
 # (docker/postgres-init/01-create-test-db.sh). 이미 볼륨이 있던 환경이라 없다면 직접:
-docker compose exec postgres psql -U wio -d when_i_off -c "CREATE DATABASE when_i_off_test OWNER wio;"
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d when_i_off -c "CREATE DATABASE when_i_off_test OWNER \"$POSTGRES_USER\";"'
 
 # Docker가 없으면 (예: 리눅스에 postgresql 패키지 설치)
 service postgresql start
