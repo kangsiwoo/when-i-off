@@ -1,10 +1,18 @@
 package com.kangsiwoo.whenioff.common.config
 
+import jakarta.validation.constraints.NotBlank
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.validation.annotation.Validated
 import java.time.Duration
 
+/**
+ * `apiToken`이 비거나 공백뿐이면 기동을 실패시킨다. 빈 토큰이면 빈 `X-Api-Token` 헤더가
+ * 그대로 통과해 인증이 사실상 꺼지기 때문이다 (compose의 `:?` 검사를 거치지 않는 bootRun·java -jar 경로).
+ */
+@Validated
 @ConfigurationProperties(prefix = "wio")
 data class WioProperties(
+    @field:NotBlank
     val apiToken: String,
     val tago: Tago = Tago(),
     val klid: Klid = Klid(),
