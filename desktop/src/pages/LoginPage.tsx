@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import logo from "../assets/whenioff_logo.svg";
+import { safeReturnPath } from "../auth/returnPath";
 import { setToken } from "../auth/token";
 
 interface LoginState {
@@ -11,6 +12,7 @@ interface LoginState {
 export function LoginPage() {
   const navigate = useNavigate();
   const state = (useLocation().state ?? {}) as LoginState;
+  const [searchParams] = useSearchParams();
   const [token, setTokenInput] = useState("");
 
   const submit = (e: FormEvent) => {
@@ -18,7 +20,8 @@ export function LoginPage() {
     const trimmed = token.trim();
     if (!trimmed) return;
     setToken(trimmed);
-    void navigate(state.from ?? "/", { replace: true });
+    // 라우터 state(RequireAuth·401 처리) 또는 `?from=`(라우터 밖 기본 401 처리)으로 받은 원래 경로로 돌아간다.
+    void navigate(safeReturnPath(state.from ?? searchParams.get("from")), { replace: true });
   };
 
   return (

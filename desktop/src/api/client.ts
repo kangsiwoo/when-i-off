@@ -1,4 +1,5 @@
 import createClient, { type Middleware } from "openapi-fetch";
+import { currentPath, safeReturnPath } from "../auth/returnPath";
 import { clearToken, getToken } from "../auth/token";
 import type { components, paths } from "./schema";
 
@@ -77,12 +78,18 @@ export function authMiddleware(onUnauthorized: () => void): Middleware {
   };
 }
 
+/** 라우터 없이 쓸 때의 기본 401 처리: 지금 경로를 `?from=`에 실어 로그인 화면으로 보낸다. */
+function redirectToLogin() {
+  const from = safeReturnPath(currentPath(window.location));
+  window.location.assign(from === "/" ? "/login" : `/login?from=${encodeURIComponent(from)}`);
+}
+
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const client = createClient<paths>({
     baseUrl: options.baseUrl ?? "",
     ...(options.fetch ? { fetch: options.fetch } : {}),
   });
-  client.use(authMiddleware(options.onUnauthorized ?? (() => window.location.assign("/login"))));
+  client.use(authMiddleware(options.onUnauthorized ?? redirectToLogin));
   return client;
 }
 
