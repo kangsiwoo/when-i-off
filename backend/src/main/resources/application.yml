@@ -9,10 +9,8 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
+    # hibernate.jdbc.time_zone은 두지 않는다. 절대 시각은 전부 TIMESTAMPTZ라 필요 없고, 설정하면
+    # Hibernate가 TIME(KST 하루 중 시각) 값까지 JVM 시간대와 UTC 사이로 옮겨 KST JVM에서 9시간 밀린다.
   flyway:
     enabled: true
     # db/seed는 스키마가 아니라 시드 데이터(R__ 반복 마이그레이션)다. 테스트 프로필에서는

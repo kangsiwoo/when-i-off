@@ -62,6 +62,9 @@ tasks.withType<Test> {
     listOf("WIO_DB_URL", "WIO_TEST_DB_URL", "WIO_DB_USER", "WIO_DB_PASSWORD").forEach { name ->
         inputs.property(name, providers.environmentVariable(name)).optional(true)
     }
+    // 개발 PC(KST)와 CI(UTC)의 JVM 시간대가 달라 시간대 버그가 CI에서만 숨는 일을 막는다.
+    // KST로 고정하면 TIME 컬럼이 9시간 밀리는 회귀(hibernate.jdbc.time_zone)를 CalibrationApiIT가 어디서나 잡는다.
+    systemProperty("user.timezone", "Asia/Seoul")
     testLogging {
         events("passed", "skipped", "failed")
     }
