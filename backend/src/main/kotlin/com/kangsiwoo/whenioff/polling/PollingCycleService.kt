@@ -94,6 +94,13 @@ class PollingCycleService(
                     log.warn(e) { "prediction failed for $cityCode" }
                     failed += cityCode
                     break
+                } catch (e: RuntimeException) {
+                    // 그 밖의 예외(저장 실패, 예상 못 한 응답 등)는 이 구간만의 문제일 수 있다. 사이클 전체를
+                    // 멈추지 않고 실패로만 남긴 뒤 같은 도시의 다음 구간과 신호 폴링을 계속한다.
+                    log.error(
+                        e,
+                    ) { "prediction failed for line ${target.lineId} stop ${target.boardStopId} in $cityCode" }
+                    failed += cityCode
                 }
             }
         }
@@ -119,6 +126,10 @@ class PollingCycleService(
                 }
             } catch (e: KlidException) {
                 log.warn(e) { "tl_drct_info fetch failed for $stdgCd" }
+                failed += stdgCd
+            } catch (e: RuntimeException) {
+                // 한 지자체의 예상 못 한 실패(저장 실패 등)가 다른 지자체 폴링을 막지 않게 한다.
+                log.error(e) { "signal ingest failed for $stdgCd" }
                 failed += stdgCd
             }
         }

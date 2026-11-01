@@ -36,12 +36,15 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
+import org.mockito.Mockito.doThrow
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import org.springframework.transaction.annotation.Transactional
@@ -62,9 +65,9 @@ class IngestionIT {
 
     @Autowired lateinit var intersectionSync: IntersectionSyncService
 
-    @Autowired lateinit var signalIngest: SignalStateIngestService
+    @MockitoSpyBean lateinit var signalIngest: SignalStateIngestService
 
-    @Autowired lateinit var arrivalProvider: TagoArrivalPredictionProvider
+    @MockitoSpyBean lateinit var arrivalProvider: TagoArrivalPredictionProvider
 
     @Autowired lateinit var directionResolver: LegDirectionResolver
 
@@ -427,6 +430,48 @@ class IngestionIT {
     }
 
     @Test
+    fun `an unexpected prediction failure on one leg does not stop the other legs or signals`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
+        intersectionSync.syncIntersections(SEOUL)
+        val line = line(ROUTE_ID)
+        val board = stop(BOARD_NODE)
+        val alight = stop(ALIGHT_NODE)
+        val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
+        seedActiveRoute(line, board, alight, signal)
+        // 같은 노선의 다른 정류장에서 타는 두 번째 버스 구간
+        val otherBoard =
+            lineStopRepository
+                .findAllByTransitLineIn(listOf(line))
+                .map { it.stop }
+                .first { it.id != board.id && it.id != alight.id }
+        seedTransitOnlyRoute(line, otherBoard, alight)
+        doThrow(IllegalStateException("boom"))
+            .`when`(arrivalProvider)
+            .predict(anyNonNull(), stopMatching(board) { it.id == board.id }, anyNonNull())
+
+        val result = cycleService.runCycle()
+
+        assertEquals(setOf(HWASEONG), result.failedCodes)
+        assertEquals(1, result.legsPredicted)
+        assertEquals(6, result.signalStatesInserted)
+    }
+
+    @Test
+    fun `an unexpected signal ingest failure is recorded and the cycle still finishes`() {
+        masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
+        intersectionSync.syncIntersections(SEOUL)
+        val signal = signalRepository.findAllByStdgCd(SEOUL).single { it.crsrdId == "1850" }
+        seedActiveRoute(line(ROUTE_ID), stop(BOARD_NODE), stop(ALIGHT_NODE), signal)
+        doThrow(IllegalStateException("boom")).`when`(signalIngest).ingest(SEOUL)
+
+        val result = cycleService.runCycle()
+
+        assertEquals(setOf(SEOUL), result.failedCodes)
+        assertEquals(1, result.legsPredicted)
+        assertEquals(0, result.signalStatesInserted)
+    }
+
+    @Test
     fun `polling cycle marks a failed bus cityCode and still ingests signals`() {
         masterSync.syncBusRoute(HWASEONG, ROUTE_NO)
         intersectionSync.syncIntersections(SEOUL)
@@ -547,6 +592,44 @@ class IngestionIT {
             ),
         )
         crossingRepository.save(RouteLegSignalCrossing(walk, signal, 1, "nt", "Pd"))
+    }
+
+    // Mockito 매처는 null을 돌려주므로 Kotlin 비널 파라미터에 넘길 때 검사를 피한다.
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> anyNonNull(): T {
+        Mockito.any<T>()
+        return null as T
+    }
+
+    private fun stopMatching(
+        placeholder: TransitStop,
+        predicate: (TransitStop) -> Boolean,
+    ): TransitStop {
+        Mockito.argThat<TransitStop> { it != null && predicate(it) }
+        return placeholder
+    }
+
+    /** 버스 구간 하나만 있는 경로. */
+    private fun seedTransitOnlyRoute(
+        line: TransitLine,
+        board: TransitStop,
+        alight: TransitStop,
+    ) {
+        val route =
+            routeRepository.save(
+                CommuteRoute(user(), "버스만", CommuteDirection.TO_WORK, 37.2000, 127.0700, 37.5696, 126.9773),
+            )
+        legRepository.save(
+            RouteLeg(
+                commuteRoute = route,
+                seqOrder = 1,
+                legType = LegType.TRANSIT,
+                transitLine = line,
+                boardStop = board,
+                alightStop = alight,
+                plannedTravelSec = 600,
+            ),
+        )
     }
 
     /** KLID 호출만 일어나는 최소 경로 — 신호 폴링의 호출 수를 그대로 셀 수 있다. */
